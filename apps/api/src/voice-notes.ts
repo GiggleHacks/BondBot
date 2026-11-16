@@ -6,6 +6,11 @@ import type {
   SandboxProvider,
   SecretStore,
 } from "@rakazo/adapter-kit";
+import {
+  createVoiceProvider,
+  OPENAI_COMPATIBLE_VOICE_PROVIDER_ID,
+  serializeOpenAiCompatibleVoiceSecret,
+} from "@rakazo/adapters";
 import type { Actor } from "@rakazo/contracts";
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import {
@@ -55,7 +60,16 @@ export interface VoiceNoteDeps {
   events: ThreadEvents;
   jobs: JobPublisher;
   sandbox: SandboxProvider;
-  env: { dataDir: string; mcpAllowPrivateEndpoint?: boolean; maxAttachmentsPerMessage?: number };
+  env: {
+    dataDir: string;
+    mcpAllowPrivateEndpoint?: boolean;
+    maxAttachmentsPerMessage?: number;
+    /**
+     * A speech server the deployment runs for everyone (`VOICE_NOTES_STT_URL`, OpenAI-compatible):
+     * tried after the member's own connections, so voice notes work before anyone connects one.
+     */
+    sttFallback?: { baseUrl: string; model: string };
+  };
 }
 
 const DeclareInput = z.object({
@@ -151,6 +165,20 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
       if (!loaded) continue;
       const adapter = await voiceProviderFor(deps, provider);
       if (adapter.transcribe) ready.push({ provider, apiKey: loaded.apiKey, adapter });
+    }
+    const fallback = deps.env.sttFallback;
+    if (fallback) {
+      ready.push({
+        provider: OPENAI_COMPATIBLE_VOICE_PROVIDER_ID,
+        apiKey: serializeOpenAiCompatibleVoiceSecret(
+          { baseUrl: fallback.baseUrl, sttModel: fallback.model },
+          undefined,
+          { allowPrivate: true },
+        ),
+        adapter: createVoiceProvider(OPENAI_COMPATIBLE_VOICE_PROVIDER_ID, {
+          allowPrivateEndpoint: true,
+        }),
+      });
     }
     return ready;
   }
@@ -260,6 +288,7 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
         ).slice(0, row.segmentsTotal === pieces.length ? undefined : 0);
         await update({ segmentsTotal: pieces.length, segmentsDone: texts.length });
         const engines = await transcribers(actor);
+        if (engines.length === 0) throw new NoTranscriberError();
         for (let i = texts.length; i < pieces.length; i += 1) {
           texts.push(await transcribePiece(actor, engines, pieces[i]!, signal));
           await update({ segmentsDone: texts.length, segmentTexts: texts });
@@ -302,7 +331,7 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
       tries.set(id, attempt);
       const message = error instanceof Error ? error.message : String(error);
       log.warn("voice note failed", { voiceNoteId: id, attempt, reason: message });
-      const giveUp = attempt >= MAX_TRIES;
+      const giveUp = attempt >= MAX_TRIES || error instanceof NoTranscriberError;
       const row = await runAsSystem("voice note: record a failure", () =>
         deps.prisma.voiceNote.update({
           where: { id },
@@ -356,6 +385,13 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
       timer = null;
     },
   };
+}
+
+/** Nothing can transcribe: retrying will not help until a connection is added. */
+class NoTranscriberError extends Error {
+  constructor() {
+    super("No voice connection can transcribe. Connect one in Voice settings, then retry.");
+  }
 }
 
 class VoiceNoteRequestError extends Error {

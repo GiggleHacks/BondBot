@@ -61,20 +61,24 @@ export function VoiceNoteQueue({ target }: { target: ArtifactTarget }) {
     if (!sameTarget(note.target, target)) continue;
     if (state.queue.some((local) => local.clientId === note.clientId)) continue;
     const failed = note.status === "failed";
+    // A note still being worked on that hit an error waits for an automatic retry; say why.
+    const stalled = !failed && Boolean(note.error);
     rows.push({
       key: `server:${note.clientId}`,
       durationMs: note.durationMs,
-      failed,
+      failed: failed || stalled,
       status: failed
         ? (note.error ?? t`Could not transcribe`)
-        : note.status === "sending"
-          ? t`Sending…`
-          : note.segmentsTotal > 1
-            ? t`Transcribing ${note.segmentsDone}/${note.segmentsTotal}`
-            : t`Transcribing…`,
+        : stalled
+          ? t`Retrying: ${note.error}`
+          : note.status === "sending"
+            ? t`Sending…`
+            : note.segmentsTotal > 1
+              ? t`Transcribing ${note.segmentsDone}/${note.segmentsTotal}`
+              : t`Transcribing…`,
       onRetry: failed ? () => void voiceNotes.retryOnServer(note.clientId) : undefined,
       onDelete:
-        failed || note.status === "queued"
+        failed || stalled || note.status === "queued"
           ? () => void voiceNotes.deleteOnServer(note.clientId)
           : undefined,
     });

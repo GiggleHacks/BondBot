@@ -1069,6 +1069,12 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
       dataDir: env.dataDir,
       mcpAllowPrivateEndpoint: env.mcpAllowPrivateEndpoint,
       maxAttachmentsPerMessage: env.maxAttachmentsPerMessage,
+      sttFallback: process.env.VOICE_NOTES_STT_URL?.trim()
+        ? {
+            baseUrl: process.env.VOICE_NOTES_STT_URL.trim(),
+            model: process.env.VOICE_NOTES_STT_MODEL?.trim() || "whisper-1",
+          }
+        : undefined,
     },
   };
   const voiceNotes = createVoiceNotes(voiceNoteDeps);
