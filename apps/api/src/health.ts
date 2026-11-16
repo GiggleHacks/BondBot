@@ -1,3 +1,4 @@
+import { BONDBOT_VERSION } from "@rakazo/contracts";
 import { logSinkHealth } from "@rakazo/logging";
 import { Hono } from "hono";
 
@@ -34,7 +35,7 @@ export function healthRoutes(
       ok ? 200 : 503,
     );
   });
-  app.get("/health", (c) => c.json({ ok: true }));
+  app.get("/health", (c) => c.json({ ok: true, version: BONDBOT_VERSION }));
   app.get("/internal/health", (c) => {
     if (c.req.header("x-forwarded-for") || c.req.header("forwarded")) return c.notFound();
     return c.json({ ok: true, ...details(), telemetry: logSinkHealth() });

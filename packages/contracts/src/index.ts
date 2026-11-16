@@ -8,6 +8,7 @@ export * from "./audit-events.js";
 export * from "./auth.js";
 export * from "./billing.js";
 export * from "./board.js";
+export * from "./bondbot-version.js";
 export * from "./bot-avatar.js";
 export * from "./bot-email.js";
 export * from "./bot-memory.js";

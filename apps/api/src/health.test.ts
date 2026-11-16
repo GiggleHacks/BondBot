@@ -1,4 +1,5 @@
 import { InfisicalSecretStore } from "@rakazo/adapters";
+import { BONDBOT_VERSION } from "@rakazo/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { infisicalFake } from "../../../packages/adapters/src/secret-store-fake.js";
 import { DATABASE_CHECK_TIMEOUT_MS, healthRoutes } from "./health.js";
@@ -73,7 +74,7 @@ describe("health routes", () => {
   it("keeps public liveness free of deployment details", async () => {
     const response = await app.request("/health");
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true });
+    await expect(response.json()).resolves.toEqual({ ok: true, version: BONDBOT_VERSION });
   });
 
   it("serves details to direct requests on the API port", async () => {

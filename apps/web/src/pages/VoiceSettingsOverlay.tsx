@@ -34,7 +34,6 @@ import { useSpaceQueries } from "../lib/query";
 import { useBoundSpaceId, useSpaceRpc } from "../lib/space-rpc";
 import { speaker } from "../lib/tts";
 import { errorText } from "../lib/user-error";
-import { VOICE_NOTES_VERSION } from "../lib/voice-notes/voice-notes";
 
 export function VoiceSettingsOverlay({
   onClose,
@@ -733,17 +732,8 @@ export function VoiceSettingsOverlay({
     </>
   );
 
-  const versioned = (
-    <>
-      {content}
-      <p className="mt-6 text-label text-muted-foreground tabular-nums">
-        voice notes v{VOICE_NOTES_VERSION}
-      </p>
-    </>
-  );
-
   if (embedded) {
-    return <div data-testid="voice-settings">{versioned}</div>;
+    return <div data-testid="voice-settings">{content}</div>;
   }
 
   return (
@@ -777,7 +767,7 @@ export function VoiceSettingsOverlay({
           </DialogClose>
         </div>
         <div className="rk-scroll min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8">
-          <div className="max-w-xl">{versioned}</div>
+          <div className="max-w-xl">{content}</div>
         </div>
       </DialogContent>
     </Dialog>

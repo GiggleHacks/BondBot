@@ -1,5 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import type { BotAvatarSet, LabFeature, SpaceMemoryConfig, UsageSummary } from "@rakazo/contracts";
+import { BONDBOT_VERSION } from "@rakazo/contracts";
 import {
   Button,
   Dialog,
@@ -15,6 +16,7 @@ import { computersAreUnavailable } from "../components/ComputersUnavailableHint"
 import { PlanUsage } from "../components/PlanUsage";
 import { SETTINGS_CONTENT_WIDTH, SettingsGroup, SettingsRow } from "../components/SettingsRows";
 import { VaultSettings } from "../components/VaultSettings";
+import { CLIENT_BUILD } from "../lib/client-build";
 import { canChooseOwnComputer } from "../lib/computer-sandbox";
 import { desktopBridge } from "../lib/desktop";
 import type { RpcClient } from "../lib/rpc";
@@ -322,6 +324,13 @@ export function SettingsOverlay({
                   </button>
                 );
               })}
+              <span
+                data-testid="app-version"
+                className="shrink-0 self-center whitespace-nowrap px-2.5 text-label text-muted-foreground tabular-nums md:mt-auto md:self-start md:pt-3"
+                title={CLIENT_BUILD ? `build ${CLIENT_BUILD}` : undefined}
+              >
+                BondBot {BONDBOT_VERSION}
+              </span>
             </nav>
             <Button
               variant="ghost"
