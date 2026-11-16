@@ -182,6 +182,7 @@ import { SYSTEM_CONTEXT_PATHS } from "./system-context-routes.js";
 import { settleWithTimeout } from "./team-chat-startup.js";
 import { endUserDeviceSession, mountUserDeviceRoutes } from "./user-devices.js";
 import { mountVoiceHttpRoutes } from "./voice.js";
+import { createVoiceNotes, mountVoiceNoteRoutes } from "./voice-notes.js";
 import { mountWebhookHttpRoutes } from "./webhook.js";
 
 /**
@@ -1057,6 +1058,26 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     if (actor) enrichLogContext({ "user.id": actor.userId, "space.id": actor.spaceId });
     return actor;
   });
+  const voiceNoteDeps = {
+    prisma,
+    secrets,
+    artifacts,
+    events,
+    jobs,
+    sandbox,
+    env: {
+      dataDir: env.dataDir,
+      mcpAllowPrivateEndpoint: env.mcpAllowPrivateEndpoint,
+      maxAttachmentsPerMessage: env.maxAttachmentsPerMessage,
+    },
+  };
+  const voiceNotes = createVoiceNotes(voiceNoteDeps);
+  mountVoiceNoteRoutes(app, voiceNoteDeps, voiceNotes, async (c) => {
+    const actor = await sessionActor(c.req.raw);
+    if (actor) enrichLogContext({ "user.id": actor.userId, "space.id": actor.spaceId });
+    return actor;
+  });
+  voiceNotes.start();
   mountAccountImportRoute(
     app,
     {

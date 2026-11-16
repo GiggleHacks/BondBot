@@ -756,6 +756,7 @@ model SpaceMember {
   modelRoleChoices SpaceModelRoleChoice[]
   settingOverrides SpaceSettingOverride[]
   threadReads      ThreadRead[]
+  voiceNotes       VoiceNote[]
 
   @@unique([spaceId, userId])
   @@index([organizationId, userId])
@@ -1169,6 +1170,41 @@ model Thread {
 /// One member's personal state for a chat: how far they've read, and whether they've snoozed
 /// it. Named for its first use (reads). No row means caught up and not snoozed.
 /// Leaving the Space deletes it with the membership.
+/// A recorded voice note on its way into a chat: uploaded in parts, transcribed after it
+/// arrives, then sent as the member's message (the audio plus its transcript).
+model VoiceNote {
+  id            String      @id @default(cuid())
+  /// The recording device's id for the note, so a resumed upload finds the same row.
+  clientId      String
+  userId        String
+  spaceId       String
+  member        SpaceMember @relation(fields: [spaceId, userId], references: [spaceId, userId], onDelete: Cascade)
+  botId         String?
+  groupId       String?
+  mimeType      String
+  durationMs    Int
+  bytes         Int
+  parts         Int
+  receivedParts Int[]       @default([])
+  /// uploading | queued | transcribing | sending | done | failed
+  status        String      @default("uploading")
+  segmentsDone  Int         @default(0)
+  segmentsTotal Int         @default(0)
+  /// Transcripts of finished segments, so a restart resumes where it stopped.
+  segmentTexts  Json?
+  artifactId    String?
+  transcript    String?
+  error         String?
+  recordedAt    DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([userId, clientId])
+  @@index([spaceId, userId, status])
+  @@index([status, updatedAt])
+  @@map("voice_notes")
+}
+
 model ThreadRead {
   threadId    String
   thread      Thread      @relation(fields: [threadId], references: [id], onDelete: Cascade)

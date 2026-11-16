@@ -140,7 +140,7 @@ export class FishAudioVoiceProvider implements VoiceProvider {
       method: "POST",
       headers: { ...fishAudioHeaders(request.apiKey), model },
       body: form,
-      signal: deadlineSignal(60_000, request.signal ?? context.signal),
+      signal: deadlineSignal(request.timeoutMs ?? 60_000, request.signal ?? context.signal),
     });
     const body = await readFishResponse(res);
     if (!res.ok) rejectFish(res.status, "transcribing", body, request.apiKey);

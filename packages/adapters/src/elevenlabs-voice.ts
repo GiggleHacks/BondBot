@@ -102,7 +102,7 @@ export class ElevenLabsVoiceProvider implements VoiceProvider {
       method: "POST",
       headers: { "xi-api-key": request.apiKey },
       body: form,
-      signal: deadlineSignal(60_000, request.signal ?? context.signal),
+      signal: deadlineSignal(request.timeoutMs ?? 60_000, request.signal ?? context.signal),
     });
     const body = await readVoiceJson(res, { requireValid: res.ok });
     if (!res.ok) throw voiceRequestError(res.status, "ElevenLabs", "transcribing", body);

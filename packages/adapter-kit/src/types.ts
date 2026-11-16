@@ -913,6 +913,11 @@ export interface VoiceTranscribeRequest {
    */
   language?: string;
   signal?: AbortSignal;
+  /**
+   * How long the provider may take. A short dictation keeps the default; a long voice note
+   * transcribed in the background allows more, since a slow server is still making progress.
+   */
+  timeoutMs?: number;
 }
 
 export interface BackgroundJobPayloads {

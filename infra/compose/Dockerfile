@@ -65,7 +65,8 @@ FROM node:24.22.2-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3
 COPY infra/sandboxes/computer/apt-security.sh /tmp/apt-security.sh
 RUN /tmp/apt-security.sh
 # Prisma's migration engine detects and links against OpenSSL.
-RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+# ffmpeg converts voice notes for playback and splits them for transcription.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 ENV COREPACK_HOME=/usr/local/share/corepack
 COPY --from=manifests /usr/local/share/corepack /usr/local/share/corepack

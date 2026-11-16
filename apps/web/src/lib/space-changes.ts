@@ -2,7 +2,7 @@ import type { SpaceChangeKind } from "@rakazo/contracts";
 import { queryClient } from "./query";
 import type { RpcClient } from "./rpc";
 
-type ReadChangeKind = Exclude<SpaceChangeKind, "computerUpdates">;
+type ReadChangeKind = Exclude<SpaceChangeKind, "computerUpdates" | "voiceNotes">;
 /** A procedure as its query key ends, typed so a renamed procedure fails to compile here. */
 type Procedure = {
   [Router in keyof RpcClient & string]: readonly [Router, keyof RpcClient[Router] & string];

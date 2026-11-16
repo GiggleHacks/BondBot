@@ -4,7 +4,9 @@ import { Button, cn } from "@rakazo/ui-web";
 import { ArrowUp, ChevronUp, Lock, Mic, Trash2 } from "lucide-react";
 import type { PointerEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { dictation } from "../../lib/dictation";
+import type { ArtifactTarget } from "../../lib/artifact-open";
+import { selectedSpaceId } from "../../lib/rpc";
+import { voiceNotes } from "../../lib/voice-notes/voice-notes";
 import { IconTooltip } from "../IconTooltip";
 
 /** How far the finger travels up before the recording locks hands-free. */
@@ -16,32 +18,25 @@ const HINT_MS = 2_500;
 type Recording = { locked: boolean; startedAt: number } | null;
 
 /**
- * Telegram-style dictation: hold to talk and release to send the text; slide up
- * while holding to lock, then send or discard by hand. Keyboard activation starts
- * locked, since a key cannot be held and slid.
+ * Telegram-style voice notes: hold to talk and release to send, or tap to record
+ * hands-free and send by hand; slide up while holding to lock. Nothing is transcribed
+ * while recording: the note is stored on the device, uploaded when there is a
+ * connection, and transcribed by the server after it arrives.
  */
 export function useHoldToTalk({
-  transcribe,
+  target,
   disabled,
-  onText,
 }: {
-  transcribe?: boolean;
+  target: ArtifactTarget;
   disabled?: boolean;
-  onText: (text: string) => void;
 }) {
   const { t } = useLingui();
   const [recording, setRecording] = useState<Recording>(null);
-  const [transcribing, setTranscribing] = useState(false);
-  const [transcript, setTranscript] = useState("");
   const [lift, setLift] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const recordingRef = useRef(recording);
-  const onTextRef = useRef(onText);
-  useEffect(() => {
-    onTextRef.current = onText;
-  }, [onText]);
-  /** Dictation reported listening for this recording, so a later idle means it ended. */
-  const started = useRef(false);
+  const targetRef = useRef(target);
+  targetRef.current = target;
   const gesture = useRef<{ startY: number; startedAt: number } | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -51,66 +46,62 @@ export function useHoldToTalk({
     noticeTimer.current = setTimeout(() => setNotice(null), HINT_MS);
   }, []);
 
+  const clear = useCallback(() => {
+    gesture.current = null;
+    recordingRef.current = null;
+    setRecording(null);
+    setLift(0);
+  }, []);
+
+  // The hour limit (or another tab) can end the recording without this composer.
   useEffect(
     () =>
-      dictation.subscribe((snapshot) => {
-        if (!recordingRef.current) return;
-        if (snapshot.status === "listening") started.current = true;
-        setTranscript(snapshot.transcript);
-        setTranscribing(snapshot.status === "transcribing");
-        if (snapshot.status !== "idle" || !started.current) return;
-        started.current = false;
-        recordingRef.current = null;
-        setRecording(null);
-        setTranscribing(false);
-        setLift(0);
-        if (snapshot.error) showNotice(snapshot.error);
+      voiceNotes.subscribe(() => {
+        if (recordingRef.current && !voiceNotes.state.recording && !voiceNotes.busy) clear();
       }),
-    [showNotice],
+    [clear],
   );
 
   useEffect(
     () => () => {
       if (noticeTimer.current) clearTimeout(noticeTimer.current);
-      // Words already on their way to the server were meant to be kept, so only a recording
-      // still listening is cancelled; `onText` decides where late words go.
-      if (recordingRef.current && dictation.state.status !== "transcribing")
-        dictation.stop("cancel");
+      // Leaving mid-recording keeps what was said: it is sent like a release.
+      if (recordingRef.current) void voiceNotes.stop(true);
     },
     [],
   );
 
   const start = useCallback(
     (locked: boolean) => {
-      started.current = false;
       setNotice(null);
-      setTranscript("");
       const next = { locked, startedAt: Date.now() };
       recordingRef.current = next;
       setRecording(next);
-      void dictation.listen({
-        mode: "hold",
-        transcribe,
-        onFinal: (text) => onTextRef.current(text),
-      });
+      voiceNotes
+        .record({ spaceId: selectedSpaceId(), target: targetRef.current })
+        .catch((error: unknown) => {
+          clear();
+          showNotice(
+            error instanceof DOMException && error.name === "NotAllowedError"
+              ? t`Allow microphone access to record`
+              : t`Could not start recording`,
+          );
+        });
     },
-    [transcribe],
+    [clear, showNotice, t],
   );
 
   const submit = useCallback(() => {
     if (!recordingRef.current) return;
-    dictation.submitHold();
-  }, []);
+    clear();
+    void voiceNotes.stop(true);
+  }, [clear]);
 
   const cancel = useCallback(() => {
-    gesture.current = null;
-    started.current = false;
-    recordingRef.current = null;
-    setRecording(null);
-    setTranscribing(false);
-    setLift(0);
-    dictation.stop("cancel");
-  }, []);
+    if (!recordingRef.current) return;
+    clear();
+    void voiceNotes.stop(false);
+  }, [clear]);
 
   const lock = useCallback(() => {
     gesture.current = null;
@@ -127,15 +118,34 @@ export function useHoldToTalk({
     start(true);
   }, [disabled, start]);
 
+  /** Push-to-talk from the keyboard: starts unlocked; `release` decides tap or hold. */
+  const startHeld = useCallback(() => {
+    if (disabled || recordingRef.current) return;
+    start(false);
+  }, [disabled, start]);
+
+  /** A short press keeps recording hands-free; a long one sends on release. */
+  const release = useCallback(
+    (heldMs: number) => {
+      if (!recordingRef.current || recordingRef.current.locked) return;
+      if (heldMs < TAP_MS) lock();
+      else submit();
+    },
+    [lock, submit],
+  );
+
   return {
     recording,
-    transcribing,
-    transcript,
+    /** Transcription happens on the server after sending, never while recording. */
+    transcribing: false,
+    transcript: "",
     lift,
     notice,
     submit,
     cancel,
     startHandsFree,
+    startHeld,
+    release,
     buttonProps: {
       onPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
         if (disabled || event.button !== 0 || recordingRef.current) return;
@@ -158,18 +168,14 @@ export function useHoldToTalk({
         const hold = gesture.current;
         gesture.current = null;
         setLift(0);
-        if (!hold || !recordingRef.current || recordingRef.current.locked) return;
-        if (Date.now() - hold.startedAt < TAP_MS) {
-          cancel();
-          showNotice(t`Hold to talk, release to send`);
-          return;
-        }
-        submit();
+        if (!hold) return;
+        release(Date.now() - hold.startedAt);
       },
       onPointerCancel: () => {
         if (!gesture.current) return;
         gesture.current = null;
-        if (!recordingRef.current?.locked) cancel();
+        // The system took the pointer (a scroll, a call): keep recording hands-free.
+        lock();
       },
       onClick: (event: { detail: number }) => {
         // detail 0 is a keyboard press; pointer presses are handled above.
@@ -191,11 +197,7 @@ export function HoldToTalkStrip({ talk }: { talk: ReturnType<typeof useHoldToTal
   const startedAt = talk.recording?.startedAt ?? Date.now();
   const seconds = useSeconds(startedAt);
   if (!talk.recording) return null;
-  const hint = talk.transcribing
-    ? t`Transcribing…`
-    : talk.recording.locked
-      ? t`Listening…`
-      : t`Slide up to lock`;
+  const hint = talk.recording.locked ? t`Recording…` : t`Slide up to lock`;
   return (
     <div
       data-testid="hold-to-talk-strip"
@@ -244,7 +246,6 @@ export function HoldToTalkControls({
         <Button
           size="icon"
           aria-label={t`Send recording`}
-          disabled={talk.transcribing}
           onClick={talk.submit}
           className="size-8 shrink-0 rounded-full shadow-sm"
         >
@@ -273,11 +274,11 @@ export function HoldToTalkControls({
           {talk.notice}
         </span>
       ) : null}
-      <IconTooltip label={t`Hold to talk, release to send`}>
+      <IconTooltip label={t`Tap to record, hold to talk`}>
         <Button
           variant="outline"
           size="icon"
-          aria-label={t`Hold to talk`}
+          aria-label={t`Record voice note`}
           disabled={disabled}
           {...talk.buttonProps}
           className={cn(

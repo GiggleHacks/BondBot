@@ -27,6 +27,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { HoldToTalkStrip, useHoldToTalk } from "../../components/composer/HoldToTalk";
+import { VoiceNoteQueue } from "../../components/composer/VoiceNoteQueue";
 import { recordMessageSent } from "../../components/GitHubStarPrompt";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { attachmentPickerAccept } from "../../lib/attachment-picker-accept";
@@ -50,6 +51,7 @@ import { hasOpenDialog } from "../../lib/has-open-dialog";
 import { usePageSession } from "../../lib/pages";
 import { isFilePaste } from "../../lib/pending-attachments";
 import { useEventListener } from "../../lib/use-event-listener";
+import { voiceNotesSupported } from "../../lib/voice-notes/voice-notes";
 import { ComposerReplyPreview } from "./chat-context";
 import type { PendingAttachment } from "./chat-shared";
 import { previewMessageText } from "./chat-shared";
@@ -241,23 +243,8 @@ const ComposerBody = memo(function Composer({
   });
   const onCall = useCallSession() !== null;
   const talk = useHoldToTalk({
-    transcribe: dictationTranscribe,
-    disabled: disabled || onCall || !phoneCallsEnabled,
-    onText: (text) => {
-      // Dictation rides the typed-message path: the words land in the draft and
-      // the normal send carries them, with its nonce, edit guards and recovery.
-      // Words added to a draft, a skill or attachments wait for the user to review
-      // and send; an armed reply or an open page is context and still sends.
-      const reviewFirst =
-        compositionRef.current.text.trim().length > 0 ||
-        selectedSkill !== null ||
-        pendingAttachments.length > 0;
-      if (!appendDictation(text) || reviewFirst) return;
-      const clientNonce = newClientId();
-      retryNonce.current = clientNonce;
-      queuedDictation.current = editRevision.current;
-      setDictationSendDue(editRevision.current);
-    },
+    target: artifactTarget,
+    disabled: disabled || onCall || !voiceNotesSupported(),
   });
 
   const editRevision = useRef(0);
@@ -340,27 +327,43 @@ const ComposerBody = memo(function Composer({
     composerFieldRef,
     expanded,
   } = useComposerLayout(draft, selectedSkill !== null);
-  // Cmd/Ctrl+D in the message field dictates hands-free, like a keyboard press on the mic button,
-  // and sends once pressed again. The field hides while recording, so the key is heard window-wide.
-  const dictateKey = useRef({ talk, available: false });
+  // Cmd/Ctrl+D records a voice note like the mic button: tap to record hands-free (press
+  // again to send), or hold to talk and release to send. Escape discards. The field hides
+  // while recording, so the keys are heard window-wide.
+  const dictateKey = useRef({ talk, available: false, downAt: 0 });
   dictateKey.current = {
     talk,
-    available: Boolean(phoneCallsEnabled) && !disabled && !onCall && draft.trim().length === 0,
+    available: !disabled && !onCall && voiceNotesSupported() && draft.trim().length === 0,
+    downAt: dictateKey.current.downAt,
   };
   useEventListener(window, "keydown", (event) => {
+    const { talk, available } = dictateKey.current;
+    if (talk.recording && event.key === "Escape" && !hasOpenDialog(document)) {
+      event.preventDefault();
+      talk.cancel();
+      return;
+    }
     if (event.repeat || event.altKey || event.shiftKey || event.key?.toLowerCase() !== "d") return;
     if (!primaryModifier(event, isApplePlatform())) return;
-    const { talk, available } = dictateKey.current;
     if (talk.recording) {
       // Pressed while typing elsewhere, it belongs to that field rather than this recording.
-      if (!talk.recording.locked || talk.transcribing) return;
+      if (!talk.recording.locked) return;
       if (isEditableTarget(event.target) || hasOpenDialog(document)) return;
       event.preventDefault();
       talk.submit();
     } else if (available && document.activeElement === textareaRef.current) {
       event.preventDefault();
-      talk.startHandsFree();
+      dictateKey.current.downAt = Date.now();
+      talk.startHeld();
     }
+  });
+  useEventListener(window, "keyup", (event) => {
+    const { talk, downAt } = dictateKey.current;
+    if (!downAt || !talk.recording || talk.recording.locked) return;
+    const key = event.key?.toLowerCase();
+    if (key !== "d" && key !== "control" && key !== "meta") return;
+    dictateKey.current.downAt = 0;
+    talk.release(Date.now() - downAt);
   });
   useLayoutEffect(() => {
     if (pendingCaret.current === null) return;
@@ -684,6 +687,7 @@ const ComposerBody = memo(function Composer({
           </Button>
         </fieldset>
       ) : null}
+      <VoiceNoteQueue target={artifactTarget} />
       <PendingAttachmentChips
         attachments={pendingAttachments}
         onRemove={(attachment) => {
@@ -914,7 +918,7 @@ const ComposerBody = memo(function Composer({
           expanded={expanded}
           talk={talk}
           running={running}
-          showTalk={Boolean(phoneCallsEnabled) && draft.trim().length === 0}
+          showTalk={voiceNotesSupported() && draft.trim().length === 0}
           talkDisabled={disabled || onCall}
           sendDisabled={sending || !canSend || disabled}
           stopDisabled={sending}

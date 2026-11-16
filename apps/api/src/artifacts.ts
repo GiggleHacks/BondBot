@@ -124,7 +124,7 @@ export async function storeInboundAttachment(
 
 type ArtifactOwner = Pick<Actor, "spaceId" | "userId">;
 
-async function storeOwnedArtifact(
+export async function storeOwnedArtifact(
   deps: { prisma: PrismaClient; artifacts: ArtifactStore },
   actor: ArtifactOwner,
   input: {

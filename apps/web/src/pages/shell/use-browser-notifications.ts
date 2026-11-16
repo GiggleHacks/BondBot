@@ -12,6 +12,7 @@ import { followStream } from "../../lib/follow-stream";
 import { notificationIcon, prepareNotificationIcons } from "../../lib/notification-icon";
 import type { RpcClient } from "../../lib/rpc";
 import { isReadChangeKind, spaceChanged } from "../../lib/space-changes";
+import { voiceNotes } from "../../lib/voice-notes/voice-notes";
 
 type PendingBrowserNotification = {
   event: Pick<ProductEvent, "id" | "type" | "threadId" | "botId" | "payload">;
@@ -125,6 +126,7 @@ export function useBrowserNotifications(
       (frame) => {
         if (frame.type === "roster") rosterRef.current?.changed();
         else if (frame.type === "computerUpdates") computerUpdates.signalled();
+        else if (frame.type === "voiceNotes") voiceNotes.serverChanged();
         else if (isReadChangeKind(frame.type)) void spaceChanged(frame.type);
         else if (frame.alert) show(frame.alert);
       },

@@ -5,8 +5,7 @@ import { act } from "react";
 import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DictationSnapshot } from "../../lib/dictation";
-import { dictation } from "../../lib/dictation";
+import { voiceNotes } from "../../lib/voice-notes/voice-notes";
 import {
   HoldToTalkControls,
   HoldToTalkStrip,
@@ -20,41 +19,20 @@ vi.mock("@lingui/react/macro", () => {
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
 });
 
-const watchers = new Set<(snapshot: DictationSnapshot) => void>();
-let onFinal: ((text: string) => void) | null = null;
-let transcript = "";
+vi.mock("../../lib/rpc", () => ({ selectedSpaceId: () => "space-1" }));
 
-function emit(snapshot: DictationSnapshot) {
-  for (const watcher of [...watchers]) watcher(snapshot);
-}
-
-vi.mock("../../lib/dictation", () => ({
-  dictation: {
-    subscribe: vi.fn((watcher: (snapshot: DictationSnapshot) => void) => {
-      watchers.add(watcher);
-      watcher({ status: "idle", transcript: "" });
-      return () => watchers.delete(watcher);
-    }),
-    listen: vi.fn(async (opts: { onFinal: (text: string) => void }) => {
-      onFinal = opts.onFinal;
-      emit({ status: "listening", transcript: "" });
-    }),
-    submitHold: vi.fn(() => {
-      const final = onFinal;
-      onFinal = null;
-      emit({ status: "idle", transcript: "" });
-      if (transcript) final?.(transcript);
-    }),
-    stop: vi.fn(() => {
-      onFinal = null;
-      emit({ status: "idle", transcript: "" });
-    }),
-    state: { status: "listening", transcript: "" },
+vi.mock("../../lib/voice-notes/voice-notes", () => ({
+  voiceNotes: {
+    subscribe: vi.fn(() => () => {}),
+    record: vi.fn(async () => {}),
+    stop: vi.fn(async () => {}),
+    state: { recording: null },
+    busy: false,
   },
 }));
 
-function Harness({ onText }: { onText: (text: string) => void }) {
-  const talk = useHoldToTalk({ transcribe: false, onText });
+function Harness() {
+  const talk = useHoldToTalk({ target: { botId: "bot-1" } });
   return (
     <div>
       <HoldToTalkStrip talk={talk} />
@@ -63,126 +41,78 @@ function Harness({ onText }: { onText: (text: string) => void }) {
   );
 }
 
-describe("hold to talk", () => {
+describe("voice note button", () => {
   let root: Root | undefined;
   let container: HTMLDivElement | undefined;
-  const onText = vi.fn();
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.clearAllMocks();
-    transcript = "";
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    act(() => root?.render(<Harness onText={onText} />));
+    act(() => root?.render(<Harness />));
   });
 
   afterEach(() => {
     act(() => root?.unmount());
     container?.remove();
-    watchers.clear();
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
-  function button(name: string) {
-    const found = container?.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`);
-    if (!found) throw new Error(`Missing button: ${name}`);
-    return found;
-  }
+  const mic = () =>
+    container!.querySelector<HTMLButtonElement>('[aria-label="Record voice note"]')!;
+  const pointer = (type: string, clientY = 100) =>
+    new PointerEvent(type, { bubbles: true, button: 0, clientY, pointerId: 1 });
 
-  function pointer(target: Element, type: string, clientY = 400) {
+  it("records while held and sends on release", () => {
     act(() => {
-      target.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientY }));
+      mic().dispatchEvent(pointer("pointerdown"));
     });
-  }
-
-  function heard(text: string) {
-    transcript = text;
-    act(() => emit({ status: "listening", transcript: text }));
-  }
-
-  it("sends what was said when the hold is released", () => {
-    const mic = button("Hold to talk");
-    pointer(mic, "pointerdown");
-    expect(dictation.listen).toHaveBeenCalledWith(expect.objectContaining({ mode: "hold" }));
-    heard("buy milk tomorrow");
-    expect(container?.textContent).toContain("buy milk tomorrow");
-
-    act(() => vi.advanceTimersByTime(TAP_MS + 100));
-    pointer(mic, "pointerup");
-
-    expect(dictation.submitHold).toHaveBeenCalledOnce();
-    expect(onText).toHaveBeenCalledWith("buy milk tomorrow");
-    expect(container?.querySelector('[data-testid="hold-to-talk-strip"]')).toBeNull();
-  });
-
-  it("treats a quick tap as a tap: nothing is sent and the hint shows", () => {
-    const mic = button("Hold to talk");
-    pointer(mic, "pointerdown");
-    pointer(mic, "pointerup");
-
-    expect(dictation.submitHold).not.toHaveBeenCalled();
-    expect(dictation.stop).toHaveBeenCalledWith("cancel");
-    expect(onText).not.toHaveBeenCalled();
-    expect(container?.textContent).toContain("Hold to talk, release to send");
-  });
-
-  it("locks when the hold slides up, then sends only on Send", () => {
-    const mic = button("Hold to talk");
-    pointer(mic, "pointerdown", 400);
-    pointer(mic, "pointermove", 400 - LOCK_DISTANCE_PX - 1);
-    heard("call the plumber");
-    act(() => vi.advanceTimersByTime(TAP_MS + 100));
-    pointer(mic, "pointerup", 400 - LOCK_DISTANCE_PX - 1);
-
-    expect(dictation.submitHold).not.toHaveBeenCalled();
-    expect(container?.textContent).toContain("call the plumber");
-
-    act(() => button("Send recording").click());
-    expect(onText).toHaveBeenCalledWith("call the plumber");
-  });
-
-  it("discards a locked recording", () => {
-    const mic = button("Hold to talk");
-    pointer(mic, "pointerdown", 400);
-    pointer(mic, "pointermove", 400 - LOCK_DISTANCE_PX - 1);
-    heard("never mind");
-
-    act(() => button("Discard recording").click());
-
-    expect(dictation.stop).toHaveBeenCalledWith("cancel");
-    expect(onText).not.toHaveBeenCalled();
-    expect(container?.querySelector('[data-testid="hold-to-talk-strip"]')).toBeNull();
-  });
-
-  it("starts locked from the keyboard, since a key cannot be held and slid", () => {
+    expect(voiceNotes.record).toHaveBeenCalledWith({
+      spaceId: "space-1",
+      target: { botId: "bot-1" },
+    });
+    expect(container!.querySelector('[data-testid="hold-to-talk-strip"]')).not.toBeNull();
+    act(() => vi.advanceTimersByTime(TAP_MS + 50));
     act(() => {
-      button("Hold to talk").dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+      mic().dispatchEvent(pointer("pointerup"));
     });
-
-    expect(dictation.listen).toHaveBeenCalledOnce();
-    expect(button("Send recording")).toBeTruthy();
+    expect(voiceNotes.stop).toHaveBeenCalledWith(true);
+    expect(container!.querySelector('[data-testid="hold-to-talk-strip"]')).toBeNull();
   });
 
-  it("keeps the solid red under the held pointer in both themes", () => {
-    const mic = button("Hold to talk");
-    pointer(mic, "pointerdown");
-    const classes = mic.className.split(" ");
+  it("keeps recording hands-free after a tap, then sends or discards by hand", () => {
+    act(() => {
+      mic().dispatchEvent(pointer("pointerdown"));
+      mic().dispatchEvent(pointer("pointerup"));
+    });
+    expect(voiceNotes.stop).not.toHaveBeenCalled();
+    const send = container!.querySelector<HTMLButtonElement>('[aria-label="Send recording"]');
+    expect(send).not.toBeNull();
+    act(() => send!.click());
+    expect(voiceNotes.stop).toHaveBeenCalledWith(true);
 
-    // The pointer hovers the button for the whole hold, so the outline hover colours
-    // (a grey fill in dark, dark text) must give way to the recording colours.
-    expect(classes).toEqual(
-      expect.arrayContaining([
-        "bg-destructive-fill",
-        "hover:bg-destructive-fill",
-        "dark:hover:bg-destructive-fill",
-        "text-destructive-foreground",
-        "hover:text-destructive-foreground",
-      ]),
+    act(() => {
+      mic().dispatchEvent(pointer("pointerdown"));
+      mic().dispatchEvent(pointer("pointerup"));
+    });
+    act(() =>
+      container!.querySelector<HTMLButtonElement>('[aria-label="Discard recording"]')!.click(),
     );
-    expect(classes).not.toContain("dark:hover:bg-input/50");
-    expect(classes).not.toContain("hover:text-foreground");
+    expect(voiceNotes.stop).toHaveBeenLastCalledWith(false);
+  });
+
+  it("locks when slid up while held", () => {
+    act(() => {
+      mic().dispatchEvent(pointer("pointerdown", 200));
+    });
+    act(() => {
+      mic().dispatchEvent(pointer("pointermove", 200 - LOCK_DISTANCE_PX));
+    });
+    expect(container!.querySelector('[aria-label="Send recording"]')).not.toBeNull();
+    expect(voiceNotes.stop).not.toHaveBeenCalled();
   });
 });

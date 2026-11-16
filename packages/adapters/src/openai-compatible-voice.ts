@@ -559,7 +559,10 @@ export class OpenAiCompatibleVoiceProvider implements VoiceProvider {
       method: "POST",
       headers: bearer(apiKey),
       body: form,
-      signal: deadlineSignal(TRANSCRIBE_DEADLINE_MS, request.signal ?? context.signal),
+      signal: deadlineSignal(
+        request.timeoutMs ?? TRANSCRIBE_DEADLINE_MS,
+        request.signal ?? context.signal,
+      ),
     });
     const raw = await readVoiceText(res);
     const type = mediaType(res);
