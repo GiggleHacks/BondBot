@@ -169,9 +169,12 @@ export class VoiceNoteRecorder {
 export async function recoverInterruptedNotes(
   store: VoiceNoteStore,
   activeClientId: string | null,
+  now: number = Date.now(),
 ): Promise<void> {
   for (const note of await store.listNotes()) {
     if (note.state !== "recording" || note.clientId === activeClientId) continue;
+    // Another tab still recording writes a slice every few seconds; leave its note alone.
+    if (now - (note.startedAt + note.durationMs) < SLICE_MS * 6) continue;
     const chunks = await store.listChunks(note.clientId);
     if (chunks.length === 0) {
       await store.deleteNote(note.clientId);

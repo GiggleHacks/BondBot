@@ -110,6 +110,10 @@ export class VoiceNotes {
       });
   }
 
+  private recordingClientId(): string | null {
+    return this.snapshot.recording?.clientId ?? null;
+  }
+
   /** Starting: the microphone prompt may still be open. */
   get busy(): boolean {
     return this.starting !== null;
@@ -218,6 +222,8 @@ export class VoiceNotes {
     this.draining = (async () => {
       do {
         this.again = false;
+        // Picks up a note another tab was recording when it closed.
+        await recoverInterruptedNotes(this.store, this.recordingClientId());
         await this.withLock(() =>
           drainQueue(this.store, send, {
             onChange: () => void this.refresh(),

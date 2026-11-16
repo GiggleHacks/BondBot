@@ -351,7 +351,11 @@ const ComposerBody = memo(function Composer({
       if (isEditableTarget(event.target) || hasOpenDialog(document)) return;
       event.preventDefault();
       talk.submit();
-    } else if (available && document.activeElement === textareaRef.current) {
+    } else if (
+      available &&
+      (document.activeElement === textareaRef.current ||
+        (!isEditableTarget(event.target) && !hasOpenDialog(document)))
+    ) {
       event.preventDefault();
       dictateKey.current.downAt = Date.now();
       talk.startHeld();
