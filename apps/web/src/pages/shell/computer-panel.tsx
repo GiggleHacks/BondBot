@@ -6,12 +6,18 @@ import { HardDrive, Maximize2, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { ComputersUnavailableHint } from "../../components/ComputersUnavailableHint";
 import { runsOnUserMachine } from "../../lib/computer-sandbox";
+import { screenFrames, screenIframeSandbox } from "../../lib/computer-screen";
 import { computerLabel, computerPlaceholder, DesktopKindEmptyState } from "./computer-view";
 
 type ComputerPanelProps = {
   bot: Bot;
   computer: ComputerStatus | null;
   computerOpen: boolean;
+  embeddedScreenUrl: string | null;
+  /** Changes to load the screen again in a new frame. */
+  screenFrameKey?: string;
+  heldScreen?: { url: string; key: string } | null;
+  screenFrameRef: (frame: HTMLIFrameElement | null) => void;
   computerScreenError: ReactNode;
   computerBooting: ReactNode;
   booting: boolean;
@@ -69,6 +75,10 @@ function ComputerPreview({
   bot,
   computer,
   computerOpen,
+  embeddedScreenUrl,
+  screenFrameKey,
+  heldScreen,
+  screenFrameRef,
   computerScreenError,
   computerBooting,
   booting,
@@ -120,10 +130,12 @@ function ComputerPreview({
       </div>
     );
   }
-  // A running computer is a row too; its screen is one click away.
+  // BondBot keeps the live screen preview here; the compact row is only the fallback
+  // for a running computer whose screen address is not available.
   if (
     !runsOnUserMachine(computer) &&
     computer?.state === "running" &&
+    !embeddedScreenUrl &&
     !booting &&
     !computerBooting &&
     !computerScreenError &&
@@ -157,8 +169,8 @@ function ComputerPreview({
     <div>
       <div
         data-testid="computer-preview"
-        className={`group relative rounded-xl bg-muted/50 ${
-          showingRecoveryHint ? "" : "overflow-hidden py-6"
+        className={`group relative rounded-[14px] bg-background ${
+          showingRecoveryHint ? "" : "aspect-[16/10] overflow-hidden"
         }`}
       >
         {computerOpen ? (
@@ -171,6 +183,21 @@ function ComputerPreview({
           <DesktopKindEmptyState
             className={`grid h-full place-items-center px-6 text-center text-body text-muted-foreground/80 ${hideOnHover}`}
           />
+        ) : computer?.state === "running" && embeddedScreenUrl && !computerScreenError ? (
+          screenFrames(screenFrameKey, embeddedScreenUrl, heldScreen).map((frame) => (
+            <iframe
+              key={frame.key}
+              title={frame.held ? undefined : t`Bot screen preview`}
+              aria-hidden={frame.held || undefined}
+              tabIndex={frame.held ? -1 : undefined}
+              ref={frame.held ? undefined : screenFrameRef}
+              src={frame.url}
+              sandbox={screenIframeSandbox(frame.url)}
+              className={`h-full w-full border-0 bg-black${frame.held ? " absolute inset-0" : ""}`}
+              allow="clipboard-read; clipboard-write"
+              style={{ pointerEvents: "none" }}
+            />
+          ))
         ) : (
           <div
             className={`grid h-full place-items-center px-6 text-center text-body text-muted-foreground/80 ${hideOnHover}`}
