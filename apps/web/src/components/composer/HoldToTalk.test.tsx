@@ -9,7 +9,7 @@ import { voiceNotes } from "../../lib/voice-notes/voice-notes";
 import {
   HoldToTalkControls,
   HoldToTalkStrip,
-  LOCK_DISTANCE_PX,
+  STRAY_TAP_MS,
   TAP_MS,
   useHoldToTalk,
 } from "./HoldToTalk";
@@ -31,8 +31,11 @@ vi.mock("../../lib/voice-notes/voice-notes", () => ({
   },
 }));
 
+let talkRef: ReturnType<typeof useHoldToTalk> | null = null;
+
 function Harness() {
   const talk = useHoldToTalk({ target: { botId: "bot-1" } });
+  talkRef = talk;
   return (
     <div>
       <HoldToTalkStrip talk={talk} />
@@ -62,71 +65,53 @@ describe("voice note button", () => {
     vi.unstubAllGlobals();
   });
 
-  const mic = () =>
-    container!.querySelector<HTMLButtonElement>('[aria-label="Record voice note"]')!;
-  const pointer = (type: string, clientY = 100) =>
-    new PointerEvent(type, { bubbles: true, button: 0, clientY, pointerId: 1 });
+  const button = (label: string) =>
+    container!.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
 
-  it("records while held and sends on release", () => {
-    act(() => {
-      mic().dispatchEvent(pointer("pointerdown"));
-    });
+  it("starts recording on one tap and keeps recording without holding", () => {
+    act(() => button("Record voice note")!.click());
     expect(voiceNotes.record).toHaveBeenCalledWith({
       spaceId: "space-1",
       target: { botId: "bot-1" },
     });
     expect(container!.querySelector('[data-testid="hold-to-talk-strip"]')).not.toBeNull();
-    act(() => vi.advanceTimersByTime(TAP_MS + 50));
-    act(() => {
-      mic().dispatchEvent(pointer("pointerup"));
-    });
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(voiceNotes.stop).not.toHaveBeenCalled();
+    expect(button("Stop and send recording")).not.toBeNull();
+  });
+
+  it("stops and sends when the red button is tapped", () => {
+    act(() => button("Record voice note")!.click());
+    act(() => vi.advanceTimersByTime(STRAY_TAP_MS + 100));
+    act(() => button("Stop and send recording")!.click());
     expect(voiceNotes.stop).toHaveBeenCalledWith(true);
     expect(container!.querySelector('[data-testid="hold-to-talk-strip"]')).toBeNull();
   });
 
-  it("keeps recording hands-free after a tap, then sends or discards by hand", () => {
-    act(() => {
-      mic().dispatchEvent(pointer("pointerdown"));
-      mic().dispatchEvent(pointer("pointerup"));
-    });
+  it("ignores the second half of a double tap", () => {
+    act(() => button("Record voice note")!.click());
+    act(() => button("Stop and send recording")!.click());
     expect(voiceNotes.stop).not.toHaveBeenCalled();
-    const send = container!.querySelector<HTMLButtonElement>('[aria-label="Send recording"]');
-    expect(send).not.toBeNull();
-    act(() => send!.click());
-    expect(voiceNotes.stop).toHaveBeenCalledWith(true);
-
-    act(() => {
-      mic().dispatchEvent(pointer("pointerdown"));
-      mic().dispatchEvent(pointer("pointerup"));
-    });
-    act(() =>
-      container!.querySelector<HTMLButtonElement>('[aria-label="Discard recording"]')!.click(),
-    );
-    expect(voiceNotes.stop).toHaveBeenLastCalledWith(false);
+    expect(button("Stop and send recording")).not.toBeNull();
   });
 
-  it("stops and sends when the red mic is tapped again", () => {
-    act(() => {
-      mic().dispatchEvent(pointer("pointerdown"));
-      mic().dispatchEvent(pointer("pointerup"));
-    });
-    const stop = container!.querySelector<HTMLButtonElement>(
-      '[aria-label="Stop and send recording"]',
-    );
-    expect(stop).not.toBeNull();
-    act(() => stop!.click());
-    expect(voiceNotes.stop).toHaveBeenCalledWith(true);
-    expect(container!.querySelector('[aria-label="Stop and send recording"]')).toBeNull();
+  it("discards with the trash button", () => {
+    act(() => button("Record voice note")!.click());
+    act(() => button("Discard recording")!.click());
+    expect(voiceNotes.stop).toHaveBeenCalledWith(false);
   });
 
-  it("locks when slid up while held", () => {
-    act(() => {
-      mic().dispatchEvent(pointer("pointerdown", 200));
-    });
-    act(() => {
-      mic().dispatchEvent(pointer("pointermove", 200 - LOCK_DISTANCE_PX));
-    });
-    expect(container!.querySelector('[aria-label="Send recording"]')).not.toBeNull();
-    expect(voiceNotes.stop).not.toHaveBeenCalled();
+  it("supports keyboard push-to-talk: a short press locks, a long press sends", () => {
+    act(() => talkRef!.startHeld());
+    act(() => talkRef!.release(TAP_MS - 50));
+    expect(button("Stop and send recording")).not.toBeNull();
+    act(() => vi.advanceTimersByTime(STRAY_TAP_MS + 100));
+    act(() => talkRef!.submit());
+    expect(voiceNotes.stop).toHaveBeenCalledWith(true);
+
+    act(() => talkRef!.startHeld());
+    act(() => vi.advanceTimersByTime(STRAY_TAP_MS + 100));
+    act(() => talkRef!.release(TAP_MS + 500));
+    expect(voiceNotes.stop).toHaveBeenCalledTimes(2);
   });
 });

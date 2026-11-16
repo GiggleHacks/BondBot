@@ -1,25 +1,24 @@
 import { useLingui } from "@lingui/react/macro";
 import { useNow } from "@rakazo/chat-ui/hooks";
 import { Button, cn } from "@rakazo/ui-web";
-import { ArrowUp, ChevronUp, Lock, Mic, Square, Trash2 } from "lucide-react";
-import type { PointerEvent } from "react";
+import { ArrowUp, Mic, Square, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { selectedSpaceId } from "../../lib/rpc";
 import { voiceNotes } from "../../lib/voice-notes/voice-notes";
 import { IconTooltip } from "../IconTooltip";
 
-/** How far the finger travels up before the recording locks hands-free. */
-export const LOCK_DISTANCE_PX = 64;
-/** A press shorter than this is a tap: nothing was said, so it only shows the hint. */
+/** A Ctrl/Cmd+D press shorter than this is a tap: it keeps recording hands-free. */
 export const TAP_MS = 350;
+/** Taps on stop this soon after starting are the tail of a double tap and are ignored. */
+export const STRAY_TAP_MS = 500;
 const HINT_MS = 2_500;
 
 type Recording = { locked: boolean; startedAt: number } | null;
 
 /**
- * Telegram-style voice notes: hold to talk and release to send, or tap to record
- * hands-free and send by hand; slide up while holding to lock. Nothing is transcribed
+ * Voice notes: tap the mic to start recording, tap the red button in its place to stop and
+ * send (Ctrl/Cmd+D also supports hold-to-talk). Nothing is transcribed
  * while recording: the note is stored on the device, uploaded when there is a
  * connection, and transcribed by the server after it arrives.
  */
@@ -32,12 +31,10 @@ export function useHoldToTalk({
 }) {
   const { t } = useLingui();
   const [recording, setRecording] = useState<Recording>(null);
-  const [lift, setLift] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const recordingRef = useRef(recording);
   const targetRef = useRef(target);
   targetRef.current = target;
-  const gesture = useRef<{ startY: number; startedAt: number } | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showNotice = useCallback((text: string) => {
@@ -47,10 +44,8 @@ export function useHoldToTalk({
   }, []);
 
   const clear = useCallback(() => {
-    gesture.current = null;
     recordingRef.current = null;
     setRecording(null);
-    setLift(0);
   }, []);
 
   // The hour limit (or another tab) can end the recording without this composer.
@@ -93,6 +88,8 @@ export function useHoldToTalk({
 
   const submit = useCallback(() => {
     if (!recordingRef.current) return;
+    // A double tap's second half lands on the stop button; that is not "stop".
+    if (Date.now() - recordingRef.current.startedAt < STRAY_TAP_MS) return;
     clear();
     void voiceNotes.stop(true);
   }, [clear]);
@@ -104,8 +101,6 @@ export function useHoldToTalk({
   }, [clear]);
 
   const lock = useCallback(() => {
-    gesture.current = null;
-    setLift(0);
     const current = recordingRef.current;
     if (!current) return;
     const next = { ...current, locked: true };
@@ -139,7 +134,6 @@ export function useHoldToTalk({
     /** Transcription happens on the server after sending, never while recording. */
     transcribing: false,
     transcript: "",
-    lift,
     notice,
     submit,
     cancel,
@@ -147,40 +141,9 @@ export function useHoldToTalk({
     startHeld,
     release,
     buttonProps: {
-      onPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
-        if (disabled || event.button !== 0 || recordingRef.current) return;
-        event.preventDefault();
-        event.currentTarget.setPointerCapture?.(event.pointerId);
-        gesture.current = { startY: event.clientY, startedAt: Date.now() };
-        start(false);
-      },
-      onPointerMove: (event: PointerEvent<HTMLButtonElement>) => {
-        const hold = gesture.current;
-        if (!hold || !recordingRef.current || recordingRef.current.locked) return;
-        const travel = Math.max(0, hold.startY - event.clientY);
-        if (travel >= LOCK_DISTANCE_PX) {
-          lock();
-          return;
-        }
-        setLift(travel);
-      },
-      onPointerUp: () => {
-        const hold = gesture.current;
-        gesture.current = null;
-        setLift(0);
-        if (!hold) return;
-        release(Date.now() - hold.startedAt);
-      },
-      onPointerCancel: () => {
-        if (!gesture.current) return;
-        gesture.current = null;
-        // The system took the pointer (a scroll, a call): keep recording hands-free.
-        lock();
-      },
-      onClick: (event: { detail: number }) => {
-        // detail 0 is a keyboard press; pointer presses are handled above.
-        if (event.detail === 0) startHandsFree();
-      },
+      // A tap starts recording hands-free. It acts on click (after the finger lifts), so the
+      // red stop button that takes the mic's place never receives this same tap.
+      onClick: () => startHandsFree(),
       onContextMenu: (event: { preventDefault: () => void }) => event.preventDefault(),
     },
   };
@@ -197,7 +160,9 @@ export function HoldToTalkStrip({ talk }: { talk: ReturnType<typeof useHoldToTal
   const startedAt = talk.recording?.startedAt ?? Date.now();
   const seconds = useSeconds(startedAt);
   if (!talk.recording) return null;
-  const hint = talk.recording.locked ? t`Recording…` : t`Slide up to lock`;
+  const hint = talk.recording.locked
+    ? t`Recording… tap the red button to send`
+    : t`Release to send`;
   return (
     <div
       data-testid="hold-to-talk-strip"
@@ -265,16 +230,6 @@ export function HoldToTalkControls({
   }
   return (
     <span className="relative inline-flex">
-      {recording ? (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute bottom-full start-1/2 mb-3 flex flex-col items-center gap-0.5 rounded-full border border-border bg-card px-2 py-2 text-muted-foreground shadow-md transition-transform"
-          style={{ transform: `translate(-50%, ${-talk.lift}px)` }}
-        >
-          <Lock size={14} strokeWidth={1.8} />
-          <ChevronUp size={14} strokeWidth={1.8} className="animate-bounce" />
-        </span>
-      ) : null}
       {talk.notice && !recording ? (
         <span
           role="status"
@@ -283,7 +238,7 @@ export function HoldToTalkControls({
           {talk.notice}
         </span>
       ) : null}
-      <IconTooltip label={t`Tap to record, hold to talk`}>
+      <IconTooltip label={t`Tap to record`}>
         <Button
           variant="outline"
           size="icon"
