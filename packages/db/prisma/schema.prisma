@@ -1192,6 +1192,8 @@ model VoiceNote {
   segmentsTotal Int         @default(0)
   /// Transcripts of finished segments, so a restart resumes where it stopped.
   segmentTexts  Json?
+  /// Seconds of the recording the segments cover; pieces transcribed while recording count.
+  transcribedUntil Float    @default(0)
   artifactId    String?
   transcript    String?
   error         String?

@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
-import { readdir } from "node:fs/promises";
-import path from "node:path";
+import { stat } from "node:fs/promises";
 
 /** Transcription pieces aim for this length, cut at the nearest pause before it. */
 export const SEGMENT_TARGET_SECONDS = 300;
@@ -95,22 +94,16 @@ export function cutPoints(
   return cuts;
 }
 
-/**
- * Splits the recording into speech-ready pieces (16 kHz mono Opus, about 3 KB a second),
- * cut at pauses. Returns the piece files in order.
- */
-export async function splitForTranscription(source: string, dir: string): Promise<string[]> {
-  const log = await ffmpeg([
-    "-i",
-    source,
-    "-af",
-    "silencedetect=noise=-35dB:d=0.4",
-    "-f",
-    "null",
-    "-",
-  ]);
-  const duration = parseDurationSeconds(log) ?? 0;
-  const cuts = cutPoints(duration, parseSilences(log));
+/** 16 kHz mono 16-bit PCM: what speech models want, and its length is exact from its size. */
+const SPEECH_BYTES_PER_SECOND = 32_000;
+const WAV_HEADER_BYTES = 44;
+/** While recording, the newest audio waits this long so a cut never splits a word in progress. */
+export const LIVE_MARGIN_SECONDS = 20;
+/** While recording, a piece is transcribed once at least this much new audio is ready. */
+export const LIVE_MIN_SECONDS = 90;
+
+/** Decodes any recording (or a prefix of one still being uploaded) to speech WAV; returns seconds. */
+export async function decodeForSpeech(source: string, wav: string): Promise<number> {
   await ffmpeg([
     "-i",
     source,
@@ -120,16 +113,83 @@ export async function splitForTranscription(source: string, dir: string): Promis
     "-ar",
     "16000",
     "-c:a",
+    "pcm_s16le",
+    "-f",
+    "wav",
+    wav,
+  ]);
+  const { size } = await stat(wav);
+  return Math.max(0, (size - WAV_HEADER_BYTES) / SPEECH_BYTES_PER_SECOND);
+}
+
+/** Pauses in the speech WAV after `from` seconds, as absolute times. */
+export async function pausesAfter(wav: string, from: number): Promise<number[]> {
+  const log = await ffmpeg([
+    "-ss",
+    String(from),
+    "-i",
+    wav,
+    "-af",
+    "silencedetect=noise=-35dB:d=0.4",
+    "-f",
+    "null",
+    "-",
+  ]);
+  return parseSilences(log).map((pause) => pause + from);
+}
+
+/** Cuts [from, to) out of the speech WAV as a small Opus file for a transcription request. */
+export async function cutPiece(wav: string, from: number, to: number, target: string) {
+  await ffmpeg([
+    "-ss",
+    String(from),
+    "-t",
+    String(Math.max(0.1, to - from)),
+    "-i",
+    wav,
+    "-ac",
+    "1",
+    "-c:a",
     "libopus",
     "-b:a",
     "24k",
-    "-f",
-    "segment",
-    ...(cuts.length ? ["-segment_times", cuts.join(",")] : ["-segment_time", "100000"]),
-    "-reset_timestamps",
-    "1",
-    path.join(dir, "seg-%03d.ogg"),
+    target,
   ]);
-  const files = (await readdir(dir)).filter((name) => /^seg-\d{3}\.ogg$/.test(name)).sort();
-  return files.map((name) => path.join(dir, name));
+}
+
+/**
+ * Where the next pieces end, starting at `from` (what is already transcribed). A finished
+ * note is planned to its end; a note still recording stops short of its newest audio and
+ * waits until enough new speech has arrived to be worth a request.
+ */
+export function planPieces(input: {
+  from: number;
+  duration: number;
+  pauses: readonly number[];
+  final: boolean;
+  target?: number;
+  search?: number;
+}): number[] {
+  const { from, duration, pauses, final } = input;
+  const target = input.target ?? SEGMENT_TARGET_SECONDS;
+  const search = input.search ?? SEGMENT_SEARCH_SECONDS;
+  if (final) {
+    if (duration - from < 0.5) return [];
+    const relative = pauses.filter((p) => p > from).map((p) => p - from);
+    const cuts = cutPoints(duration - from, relative, target, search).map((c) =>
+      Number((c + from).toFixed(2)),
+    );
+    return [...cuts, Number(duration.toFixed(2))];
+  }
+  const frontier = duration - LIVE_MARGIN_SECONDS;
+  const ends: number[] = [];
+  let last = from;
+  while (frontier - last >= LIVE_MIN_SECONDS) {
+    const mark = Math.min(last + target, frontier);
+    const pause = pauses.filter((p) => p > mark - search && p <= mark && p > last + 10).at(-1);
+    const cut = Number((pause ?? mark).toFixed(2));
+    ends.push(cut);
+    last = cut;
+  }
+  return ends;
 }

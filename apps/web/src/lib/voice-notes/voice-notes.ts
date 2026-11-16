@@ -3,7 +3,7 @@ import { recoverInterruptedNotes, VoiceNoteRecorder, voiceNotesSupported } from 
 import type { LocalVoiceNote, VoiceNoteStore, VoiceNoteTarget } from "./store";
 import { indexedDbVoiceNoteStore, memoryVoiceNoteStore } from "./store";
 import type { VoiceNoteFetch } from "./uploader";
-import { drainQueue } from "./uploader";
+import { drainQueue, SLICES_PER_PART, uploadFinishedParts } from "./uploader";
 
 /** Queued notes are tried again this often while the app is open, on top of `online`. */
 const SWEEP_MS = 30_000;
@@ -28,8 +28,13 @@ export type ServerVoiceNote = {
   error: string | null;
 };
 
-const send: VoiceNoteFetch = (path, { spaceId, headers, ...init }) =>
+const send_: VoiceNoteFetch = (path, { spaceId, headers, ...init }) =>
   fetch(path, { ...init, credentials: "include", headers: withSpaceHeaders(headers, spaceId) });
+
+/** Uploads while recording give up on a dead connection (an elevator) instead of hanging. */
+const LIVE_REQUEST_TIMEOUT_MS = 90_000;
+const liveSend: VoiceNoteFetch = (path, init) =>
+  send_(path, { ...init, signal: AbortSignal.timeout(LIVE_REQUEST_TIMEOUT_MS) });
 
 function newClientId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -60,7 +65,11 @@ export class VoiceNotes {
   private serverAgain = false;
 
   constructor(private readonly store: VoiceNoteStore) {
-    this.recorder = new VoiceNoteRecorder(store, () => void this.stop(true));
+    this.recorder = new VoiceNoteRecorder(
+      store,
+      () => void this.stop(true),
+      (note) => this.liveSlice(note),
+    );
   }
 
   get state(): VoiceNotesSnapshot {
@@ -91,6 +100,8 @@ export class VoiceNotes {
     window.addEventListener("online", () => {
       this.set({ online: true });
       this.kick(true);
+      // Back from an elevator mid-recording: catch up on the parts that waited.
+      this.liveUpload();
     });
     window.addEventListener("offline", () => this.set({ online: false }));
     document.addEventListener("visibilitychange", () => {
@@ -138,8 +149,20 @@ export class VoiceNotes {
       return;
     }
     if (!this.recorder.active) return;
+    const clientId = this.snapshot.recording?.clientId ?? null;
     this.set({ recording: null });
     await this.recorder.finish(send);
+    // The queue takes over from here; let a part already on its way land first.
+    await this.live;
+    this.liveParts = 0;
+    if (!send && clientId && this.liveDeclared.has(clientId)) {
+      // Parts went up while recording; the server drops its copy too.
+      this.liveDeclared.delete(clientId);
+      await send_(`/api/voice-notes/${encodeURIComponent(clientId)}`, {
+        method: "DELETE",
+        spaceId: selectedSpaceId(),
+      }).catch(() => undefined);
+    }
     await this.refresh();
     if (send) this.kick(true);
   }
@@ -157,6 +180,43 @@ export class VoiceNotes {
     this.kick(true);
   }
 
+  private live: Promise<void> = Promise.resolve();
+  private liveParts = 0;
+  private liveBusy = false;
+  private liveAgain = false;
+  private readonly liveDeclared = new Set<string>();
+
+  /** A slice of the current recording was stored; upload any part it just completed. */
+  private liveSlice(note: LocalVoiceNote) {
+    if (Math.floor(note.chunkCount / SLICES_PER_PART) > this.liveParts) this.liveUpload();
+  }
+
+  /** Uploads the current recording's finished parts. Offline or failing, it simply waits. */
+  private liveUpload() {
+    const clientId = this.snapshot.recording?.clientId;
+    if (!clientId || typeof navigator === "undefined" || !navigator.onLine) return;
+    if (this.liveBusy) {
+      this.liveAgain = true;
+      return;
+    }
+    this.liveBusy = true;
+    this.live = (async () => {
+      try {
+        do {
+          this.liveAgain = false;
+          const note = await this.store.getNote(clientId);
+          if (!note || note.state !== "recording") break;
+          this.liveParts = await uploadFinishedParts(this.store, note, liveSend);
+          if (this.liveParts > 0) this.liveDeclared.add(clientId);
+        } while (this.liveAgain && this.snapshot.recording?.clientId === clientId);
+      } catch {
+        // No signal or a server hiccup: the parts stay on the device and go up later.
+      } finally {
+        this.liveBusy = false;
+      }
+    })();
+  }
+
   /** Re-reads the server's notes; called when the live stream says they changed. */
   serverChanged() {
     if (typeof window === "undefined" || this.serverReading) {
@@ -168,7 +228,7 @@ export class VoiceNotes {
       try {
         do {
           this.serverAgain = false;
-          const res = await send("/api/voice-notes", { method: "GET", spaceId: selectedSpaceId() });
+          const res = await send_("/api/voice-notes", { method: "GET", spaceId: selectedSpaceId() });
           if (!res.ok) break;
           const body = (await res.json()) as { notes?: ServerVoiceNote[] };
           this.set({ server: Array.isArray(body.notes) ? body.notes : [] });
@@ -182,7 +242,7 @@ export class VoiceNotes {
   }
 
   async retryOnServer(clientId: string) {
-    await send(`/api/voice-notes/${encodeURIComponent(clientId)}/retry`, {
+    await send_(`/api/voice-notes/${encodeURIComponent(clientId)}/retry`, {
       method: "POST",
       spaceId: selectedSpaceId(),
     });
@@ -190,7 +250,7 @@ export class VoiceNotes {
   }
 
   async deleteOnServer(clientId: string) {
-    await send(`/api/voice-notes/${encodeURIComponent(clientId)}`, {
+    await send_(`/api/voice-notes/${encodeURIComponent(clientId)}`, {
       method: "DELETE",
       spaceId: selectedSpaceId(),
     });
@@ -222,7 +282,7 @@ export class VoiceNotes {
         // Picks up a note another tab was recording when it closed.
         await recoverInterruptedNotes(this.store, this.recordingClientId());
         await this.withLock(() =>
-          drainQueue(this.store, send, {
+          drainQueue(this.store, send_, {
             onChange: () => void this.refresh(),
             onProgress: (clientId, fraction) =>
               this.set({ progress: { ...this.snapshot.progress, [clientId]: fraction } }),

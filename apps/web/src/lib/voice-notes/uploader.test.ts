@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { LocalVoiceNote } from "./store";
 import { memoryVoiceNoteStore } from "./store";
 import type { VoiceNoteFetch } from "./uploader";
-import { drainQueue, partCount, retryDelayMs, SLICES_PER_PART } from "./uploader";
+import {
+  drainQueue,
+  partCount,
+  retryDelayMs,
+  SLICES_PER_PART,
+  uploadFinishedParts,
+} from "./uploader";
 
 function note(overrides: Partial<LocalVoiceNote> = {}): LocalVoiceNote {
   return {
@@ -112,5 +118,41 @@ describe("voice note uploads", () => {
     const server = fakeServer();
     await drainQueue(store, server.send);
     expect(server.calls).toEqual([]);
+  });
+
+  it("uploads only full parts while recording, and leaves the note recording", async () => {
+    const store = await seed(SLICES_PER_PART * 2 + 5, { state: "recording" });
+    const server = fakeServer();
+    const sent = await uploadFinishedParts(store, (await store.getNote("n1"))!, server.send);
+    expect(sent).toBe(2);
+    expect(server.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      "PUT /api/voice-notes/n1",
+      "PUT /api/voice-notes/n1/parts/0",
+      "PUT /api/voice-notes/n1/parts/1",
+    ]);
+    expect(JSON.parse(String(server.calls[0]?.body)).parts).toBe(2);
+    expect((await store.getNote("n1"))?.state).toBe("recording");
+  });
+
+  it("keeps everything on the device when the connection drops mid-recording", async () => {
+    const store = await seed(SLICES_PER_PART * 2, { state: "recording" });
+    const dead: VoiceNoteFetch = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    await expect(
+      uploadFinishedParts(store, (await store.getNote("n1"))!, dead),
+    ).rejects.toThrow();
+    expect(await store.listChunks("n1")).toHaveLength(SLICES_PER_PART * 2);
+    expect((await store.getNote("n1"))?.state).toBe("recording");
+  });
+
+  it("sends only what the server lacks once the finished note is queued", async () => {
+    const store = await seed(SLICES_PER_PART * 2 + 3);
+    // Part 0 went up while recording; part 1 was lost in an elevator.
+    const server = fakeServer({ received: [0] });
+    await drainQueue(store, server.send);
+    const parts = server.calls.filter((c) => c.path.includes("/parts/")).map((c) => c.path);
+    expect(parts).toEqual(["/api/voice-notes/n1/parts/1", "/api/voice-notes/n1/parts/2"]);
+    expect(await store.listNotes()).toEqual([]);
   });
 });

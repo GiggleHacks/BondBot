@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
   ArtifactStore,
@@ -29,7 +29,13 @@ import { readBoundedBody, readBoundedBytes } from "./http-body.js";
 import type { ThreadTarget } from "./thread-target.js";
 import { resolveThreadTarget, sendThreadMessage } from "./thread-target.js";
 import { loadVoiceCredential, voiceContext, voiceProviderFor } from "./voice.js";
-import { splitForTranscription, toPlayableAudio } from "./voice-note-audio.js";
+import {
+  cutPiece,
+  decodeForSpeech,
+  pausesAfter,
+  planPieces,
+  toPlayableAudio,
+} from "./voice-note-audio.js";
 
 /** An hour, plus slack for the recorder's last slice. */
 export const MAX_NOTE_MS = 61 * 60_000;
@@ -41,6 +47,8 @@ const LEASE_TTL_MS = 2 * 60_000;
 /** Notes left mid-way by a restart are picked up again after this long without progress. */
 const STALE_MS = 3 * 60_000;
 const SWEEP_MS = 60_000;
+/** An upload untouched this long (a phone that never came back online) is dropped. */
+const ABANDONED_MS = 7 * 24 * 60 * 60_000;
 /** A provider that keeps failing stops the note here; the person can retry it. */
 const MAX_TRIES = 4;
 const MAX_TRANSCRIPT_CHARS = 90_000;
@@ -219,15 +227,125 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
     throw lastError;
   }
 
-  async function assemble(id: string, parts: number): Promise<string> {
+  async function assemble(id: string, parts: number, name = "source"): Promise<string> {
     const dir = noteDir(deps, id);
-    const source = path.join(dir, "source");
+    const source = path.join(dir, name);
     const chunks: Buffer[] = [];
     for (let part = 0; part < parts; part += 1) {
       chunks.push(await readFile(path.join(dir, `${part}.part`)));
     }
     await writeFile(source, Buffer.concat(chunks));
     return source;
+  }
+
+  type Update = (data: Parameters<PrismaClient["voiceNote"]["update"]>[0]["data"]) => Promise<void>;
+
+  /**
+   * Transcribes what is not transcribed yet. `final` runs to the end of the finished note; a
+   * note still recording (or uploading) goes only as far as its parts arrived in order, and
+   * stops short of the newest audio. Returns every piece's text so far.
+   */
+  async function transcribeRange(
+    actor: Actor,
+    id: string,
+    options: { final: boolean; signal: AbortSignal; update: Update },
+  ): Promise<string[]> {
+    const row = await deps.prisma.voiceNote.findUniqueOrThrow({ where: { id } });
+    const texts = readJsonColumn(
+      SegmentTexts,
+      row.segmentTexts ?? [],
+      { table: "voice_notes", column: "segmentTexts", id },
+      { fallback: [] },
+    );
+    let from = texts.length === 0 ? 0 : row.transcribedUntil;
+    const have = new Set(row.receivedParts);
+    let parts = 0;
+    while (have.has(parts) && (options.final ? parts < row.parts : true)) parts += 1;
+    if (options.final && parts < row.parts) throw new Error("Parts are missing from this note.");
+    if (parts === 0) return texts;
+    const dir = noteDir(deps, id);
+    const source = await assemble(id, parts, "speech-source");
+    const wav = path.join(dir, "speech.wav");
+    const duration = await decodeForSpeech(source, wav);
+    const ends = planPieces({
+      from,
+      duration,
+      pauses: await pausesAfter(wav, from),
+      final: options.final,
+    });
+    if (ends.length === 0) return texts;
+    const engines = await transcribers(actor);
+    if (engines.length === 0) {
+      if (options.final) throw new NoTranscriberError();
+      return texts;
+    }
+    if (options.final) await options.update({ segmentsTotal: texts.length + ends.length });
+    const piece = path.join(dir, "piece.ogg");
+    for (const end of ends) {
+      options.signal.throwIfAborted();
+      await cutPiece(wav, from, end, piece);
+      texts.push(await transcribePiece(actor, engines, piece, options.signal));
+      from = end;
+      await options.update({
+        transcribedUntil: from,
+        segmentTexts: texts,
+        segmentsDone: texts.length,
+        ...(options.final ? {} : { segmentsTotal: texts.length }),
+      });
+    }
+    return texts;
+  }
+
+  const advancing = new Set<string>();
+  const advanceAgain = new Set<string>();
+
+  /**
+   * Transcribes a note while it is still being recorded, piece by piece as its parts arrive,
+   * so little is left to do once it is sent. Best effort: anything missed here is done by the
+   * final pass.
+   */
+  async function advance(id: string): Promise<void> {
+    if (advancing.has(id)) {
+      advanceAgain.add(id);
+      return;
+    }
+    advancing.add(id);
+    try {
+      do {
+        advanceAgain.delete(id);
+        const row = await runAsSystem("voice note: transcribe while recording", () =>
+          deps.prisma.voiceNote.findUnique({ where: { id } }),
+        );
+        if (!row || row.status !== "uploading") break;
+        const actor = await actorFor(row);
+        await withLease(deps.prisma, `voice-note:${id}`, { ttlMs: LEASE_TTL_MS }, (lease) =>
+          runAsTenant(actor, () =>
+            transcribeRange(actor, id, {
+              final: false,
+              signal: lease.signal,
+              update: async (data) => {
+                await deps.prisma.voiceNote.update({ where: { id }, data });
+              },
+            }),
+          ),
+        );
+      } while (advanceAgain.has(id));
+    } catch (error) {
+      if (!(error instanceof LeaseHeldError || error instanceof LeaseLostError)) {
+        log.warn("voice note live transcription paused", {
+          voiceNoteId: id,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+    } finally {
+      advancing.delete(id);
+      advanceAgain.delete(id);
+    }
+    // Sent while this pass held the note: finish it now rather than at the next sweep.
+    const after = await runAsSystem("voice note: check after live transcription", () =>
+      deps.prisma.voiceNote.findUnique({ where: { id }, select: { status: true } }),
+    ).catch(() => null);
+    if (after?.status === "queued") void processNote(id);
   }
 
   async function work(id: string, signal: AbortSignal) {
@@ -267,32 +385,8 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
       let transcript = row.transcript;
       if (row.status !== "sending" || transcript === null) {
         await update({ status: "transcribing" });
-        const piecesDir = path.join(dir, "pieces");
-        let pieces = (await readdir(piecesDir).catch(() => [] as string[]))
-          .filter((name) => name.endsWith(".ogg"))
-          .sort()
-          .map((name) => path.join(piecesDir, name));
-        if (pieces.length === 0 || pieces.length !== row.segmentsTotal) {
-          await rm(piecesDir, { recursive: true, force: true });
-          await mkdir(piecesDir, { recursive: true });
-          const audioFile = (await stat(playable).catch(() => null))
-            ? playable
-            : await assemble(id, row.parts);
-          pieces = await splitForTranscription(audioFile, piecesDir);
-        }
-        const texts = readJsonColumn(
-          SegmentTexts,
-          row.segmentTexts ?? [],
-          { table: "voice_notes", column: "segmentTexts", id },
-          { fallback: [] },
-        ).slice(0, row.segmentsTotal === pieces.length ? undefined : 0);
-        await update({ segmentsTotal: pieces.length, segmentsDone: texts.length });
-        const engines = await transcribers(actor);
-        if (engines.length === 0) throw new NoTranscriberError();
-        for (let i = texts.length; i < pieces.length; i += 1) {
-          texts.push(await transcribePiece(actor, engines, pieces[i]!, signal));
-          await update({ segmentsDone: texts.length, segmentTexts: texts });
-        }
+        // Pieces already transcribed while the note was still recording are kept.
+        const texts = await transcribeRange(actor, id, { final: true, signal, update });
         transcript = texts.filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
         if (transcript.length > MAX_TRANSCRIPT_CHARS) {
           transcript = `${transcript.slice(0, MAX_TRANSCRIPT_CHARS)}…`;
@@ -366,12 +460,27 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
       }),
     );
     for (const row of rows) void processNote(row.id);
+    // Recordings discarded while offline, or never finished, leave an upload behind.
+    const abandoned = await runAsSystem("voice note: drop abandoned uploads", () =>
+      deps.prisma.voiceNote.findMany({
+        where: { status: "uploading", updatedAt: { lt: new Date(Date.now() - ABANDONED_MS) } },
+        select: { id: true },
+        take: 20,
+      }),
+    );
+    for (const row of abandoned) {
+      await runAsSystem("voice note: drop an abandoned upload", () =>
+        deps.prisma.voiceNote.delete({ where: { id: row.id } }),
+      );
+      await rm(noteDir(deps, row.id), { recursive: true, force: true });
+    }
   }
 
   let timer: ReturnType<typeof setInterval> | null = null;
 
   return {
     process: processNote,
+    advance,
     start() {
       if (timer) return;
       timer = setInterval(() => {
@@ -462,6 +571,13 @@ export function mountVoiceNoteRoutes(
         if (existing.spaceId !== actor.spaceId) {
           throw new VoiceNoteRequestError(409, "That voice note belongs to another Space.");
         }
+        // A note declared while still recording grows: the final declare names every part.
+        if (existing.status === "uploading" && input.parts >= existing.parts) {
+          await deps.prisma.voiceNote.update({
+            where: { id: existing.id },
+            data: { parts: input.parts, durationMs: input.durationMs, bytes: input.bytes },
+          });
+        }
         const received =
           existing.status === "uploading"
             ? [...new Set(existing.receivedParts)]
@@ -516,6 +632,7 @@ export function mountVoiceNoteRoutes(
         where: { id: row.id },
         data: { receivedParts: { push: part } },
       });
+      void notes.advance(row.id);
       return c.body(null, 204);
     }),
   );

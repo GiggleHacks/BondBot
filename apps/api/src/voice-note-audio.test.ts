@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { cutPoints, parseDurationSeconds, parseSilences } from "./voice-note-audio.js";
+import {
+  cutPoints,
+  LIVE_MARGIN_SECONDS,
+  parseDurationSeconds,
+  parseSilences,
+  planPieces,
+} from "./voice-note-audio.js";
 
 describe("voice note pieces", () => {
   it("reads pauses and duration from ffmpeg's log", () => {
@@ -27,5 +33,31 @@ describe("voice note pieces", () => {
 
   it("splits an hour into about twelve pieces", () => {
     expect(cutPoints(3600, []).length).toBe(11);
+  });
+
+  it("waits while recording until enough new speech is in", () => {
+    expect(planPieces({ from: 0, duration: 100, pauses: [], final: false })).toEqual([]);
+  });
+
+  it("transcribes while recording up to a pause short of the newest audio", () => {
+    const ends = planPieces({ from: 0, duration: 240, pauses: [50, 180, 215], final: false });
+    expect(ends).toEqual([215]);
+    expect(ends.every((end) => end <= 240 - LIVE_MARGIN_SECONDS)).toBe(true);
+  });
+
+  it("continues from where live transcription stopped", () => {
+    expect(planPieces({ from: 180, duration: 260, pauses: [], final: false })).toEqual([]);
+    expect(planPieces({ from: 180, duration: 400, pauses: [370], final: false })).toEqual([370]);
+  });
+
+  it("finishes a sent note to its very end", () => {
+    expect(planPieces({ from: 180, duration: 260.5, pauses: [], final: true })).toEqual([260.5]);
+    expect(planPieces({ from: 260.5, duration: 260.6, pauses: [], final: true })).toEqual([]);
+  });
+
+  it("splits a long untranscribed tail into pieces at pauses", () => {
+    expect(planPieces({ from: 0, duration: 1000, pauses: [290, 590], final: true })).toEqual([
+      290, 590, 1000,
+    ]);
   });
 });

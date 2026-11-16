@@ -48,6 +48,8 @@ export class VoiceNoteRecorder {
   constructor(
     private readonly store: VoiceNoteStore,
     private readonly onLimit: () => void,
+    /** Each slice once it is stored: lets finished parts upload while still recording. */
+    private readonly onSlice?: (note: LocalVoiceNote) => void,
   ) {}
 
   get active(): boolean {
@@ -103,7 +105,8 @@ export class VoiceNoteRecorder {
       // Serialized, so the note row never claims a slice that is not stored yet.
       this.writes = this.writes
         .then(() => this.store.putChunk({ clientId: note.clientId, index, blob }))
-        .then(() => this.store.putNote({ ...note }));
+        .then(() => this.store.putNote({ ...note }))
+        .then(() => this.onSlice?.({ ...note }));
     };
     media.start(SLICE_MS);
     this.limitTimer = setTimeout(() => this.onLimit(), MAX_NOTE_MS);

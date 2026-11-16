@@ -35,17 +35,17 @@ async function check(res: Response): Promise<Response> {
 }
 
 /**
- * Sends one note: declares it, uploads only the parts the server lacks, then asks the
- * server to finish. Every step is idempotent, so a note interrupted anywhere resumes.
+ * Declares the note and uploads the first `parts` parts the server lacks. Every step is
+ * idempotent, so an upload cut off anywhere resumes where it stopped.
  */
-export async function uploadNote(
+async function uploadParts(
   store: VoiceNoteStore,
   note: LocalVoiceNote,
   send: VoiceNoteFetch,
-  onProgress?: (fraction: number) => void,
+  parts: number,
+  onSent?: (sent: number) => void | Promise<void>,
 ): Promise<void> {
   const base = `/api/voice-notes/${encodeURIComponent(note.clientId)}`;
-  const parts = partCount(note.chunkCount);
   const declared = await check(
     await send(base, {
       method: "PUT",
@@ -64,8 +64,8 @@ export async function uploadNote(
   const { received } = (await declared.json()) as { received?: number[] };
   const have = new Set(Array.isArray(received) ? received : []);
   const chunks = await store.listChunks(note.clientId);
-  let sent = have.size;
-  onProgress?.(sent / parts);
+  let sent = [...have].filter((part) => part < parts).length;
+  await onSent?.(sent);
   for (let part = 0; part < parts; part += 1) {
     if (have.has(part)) continue;
     const slice = chunks.slice(part * SLICES_PER_PART, (part + 1) * SLICES_PER_PART);
@@ -82,10 +82,44 @@ export async function uploadNote(
       }),
     );
     sent += 1;
-    await store.putNote({ ...note, state: "uploading", uploadedParts: sent });
-    onProgress?.(sent / parts);
+    await onSent?.(sent);
   }
-  await check(await send(`${base}/complete`, { method: "POST", spaceId: note.spaceId }));
+}
+
+/** Sends a finished note: every remaining part, then asks the server to finish it. */
+export async function uploadNote(
+  store: VoiceNoteStore,
+  note: LocalVoiceNote,
+  send: VoiceNoteFetch,
+  onProgress?: (fraction: number) => void,
+): Promise<void> {
+  const parts = partCount(note.chunkCount);
+  await uploadParts(store, note, send, parts, async (sent) => {
+    if (sent > 0) await store.putNote({ ...note, state: "uploading", uploadedParts: sent });
+    onProgress?.(sent / parts);
+  });
+  await check(
+    await send(`/api/voice-notes/${encodeURIComponent(note.clientId)}/complete`, {
+      method: "POST",
+      spaceId: note.spaceId,
+    }),
+  );
+}
+
+/**
+ * While recording: uploads every part that is already full, so the server can transcribe
+ * as the note grows. Best effort only; the device copy stays the source of truth, and
+ * whatever this misses (no signal in an elevator) is sent when the note is finished.
+ */
+export async function uploadFinishedParts(
+  store: VoiceNoteStore,
+  note: LocalVoiceNote,
+  send: VoiceNoteFetch,
+): Promise<number> {
+  const parts = Math.floor(note.chunkCount / SLICES_PER_PART);
+  if (parts === 0) return 0;
+  await uploadParts(store, note, send, parts);
+  return parts;
 }
 
 export type DrainResult = { sent: string[]; failed: string[] };
