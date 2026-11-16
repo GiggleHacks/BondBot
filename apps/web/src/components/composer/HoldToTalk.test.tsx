@@ -105,6 +105,20 @@ describe("voice note button", () => {
     expect(voiceNotes.stop).toHaveBeenLastCalledWith(false);
   });
 
+  it("stops and sends when the red mic is tapped again", () => {
+    act(() => {
+      mic().dispatchEvent(pointer("pointerdown"));
+      mic().dispatchEvent(pointer("pointerup"));
+    });
+    const stop = container!.querySelector<HTMLButtonElement>(
+      '[aria-label="Stop and send recording"]',
+    );
+    expect(stop).not.toBeNull();
+    act(() => stop!.click());
+    expect(voiceNotes.stop).toHaveBeenCalledWith(true);
+    expect(container!.querySelector('[aria-label="Stop and send recording"]')).toBeNull();
+  });
+
   it("locks when slid up while held", () => {
     act(() => {
       mic().dispatchEvent(pointer("pointerdown", 200));

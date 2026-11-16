@@ -1,7 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import { useNow } from "@rakazo/chat-ui/hooks";
 import { Button, cn } from "@rakazo/ui-web";
-import { ArrowUp, ChevronUp, Lock, Mic, Trash2 } from "lucide-react";
+import { ArrowUp, ChevronUp, Lock, Mic, Square, Trash2 } from "lucide-react";
 import type { PointerEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ArtifactTarget } from "../../lib/artifact-open";
@@ -242,6 +242,15 @@ export function HoldToTalkControls({
           className="size-8 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
         >
           <Trash2 size={16} strokeWidth={1.8} />
+        </Button>
+        {/* The mic stays where it was, now red: tapping it again stops and sends. */}
+        <Button
+          size="icon"
+          aria-label={t`Stop and send recording`}
+          onClick={talk.submit}
+          className="size-8 shrink-0 animate-pulse rounded-full bg-destructive-fill text-destructive-foreground shadow-sm hover:bg-destructive-fill/90"
+        >
+          <Square size={11} strokeWidth={0} fill="currentColor" />
         </Button>
         <Button
           size="icon"

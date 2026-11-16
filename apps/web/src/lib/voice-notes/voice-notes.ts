@@ -6,7 +6,7 @@ import type { VoiceNoteFetch } from "./uploader";
 import { drainQueue } from "./uploader";
 
 /** Shown next to Voice settings so the build on a device is easy to confirm. */
-export const VOICE_NOTES_VERSION = "1.1";
+export const VOICE_NOTES_VERSION = "1.2";
 
 /** Queued notes are tried again this often while the app is open, on top of `online`. */
 const SWEEP_MS = 30_000;
