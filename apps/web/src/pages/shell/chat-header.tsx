@@ -8,6 +8,8 @@ import { InviteDialog } from "../../components/InviteDialog";
 import { useBilling } from "../../components/SubscriptionGate";
 import { desktopBridge, windowChromeKind } from "../../lib/desktop";
 import { WindowChrome } from "../WindowChrome";
+import { ComputerVpnFlagChip, ComputerVpnPopover } from "./computer-vpn-control";
+import type { ComputerVpnController } from "./use-computer-vpn";
 
 /** The floating header over the transcript: navigation, the chat's name, call and invite. */
 export function ChatHeader({
@@ -22,6 +24,7 @@ export function ChatHeader({
   onOpenNavigation,
   onTogglePanel,
   onCall,
+  vpn,
 }: {
   inGroup: boolean;
   active: Bot | undefined;
@@ -35,6 +38,7 @@ export function ChatHeader({
   onOpenNavigation: () => void;
   onTogglePanel: () => void;
   onCall: (bot: Bot) => void;
+  vpn?: ComputerVpnController;
 }) {
   const { t } = useLingui();
   const referral = useBilling().status?.referral;
@@ -54,32 +58,56 @@ export function ChatHeader({
           <Menu strokeWidth={1.7} className="size-[19px]" />
         </Button>
       </div>
-      <Button
-        variant="floating"
-        data-testid="bot-settings-trigger"
-        aria-expanded={panelOpen}
-        onClick={onTogglePanel}
-        className="app-no-drag h-auto min-w-0 gap-2 py-1 ps-1 pe-3.5"
-      >
-        {inGroup ? (
-          <GroupAvatar members={activeSnapshot?.members ?? activeGroup?.members ?? []} size={26} />
-        ) : active ? (
-          <BotAvatar
-            avatarSet={active.avatarSet}
-            color={active.color}
-            identity={active.id}
-            size={26}
-            status={active.status}
+      <div className="flex min-w-0 items-center justify-self-center gap-1.5">
+        {!inGroup && active && vpn?.overview?.supported && vpn.overview.bots[active.id] ? (
+          <ComputerVpnPopover
+            botId={active.id}
+            botName={active.name}
+            vpn={vpn}
+            side="bottom"
+            align="center"
+            trigger={
+              <Button
+                variant="floating"
+                size="sm"
+                aria-label={t`VPN settings for ${active.name}`}
+                className="app-no-drag h-[34px] rounded-full px-1.5"
+              >
+                <ComputerVpnFlagChip
+                  botVpn={vpn.overview.bots[active.id]}
+                  overview={vpn.overview}
+                />
+              </Button>
+            }
           />
         ) : null}
-        <span className="min-w-0">
-          <span className="block truncate text-body-lg font-medium text-foreground" dir="auto">
-            {inGroup
-              ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
-              : (active?.name ?? t`Select a bot`)}
+        <Button
+          variant="floating"
+          data-testid="bot-settings-trigger"
+          aria-expanded={panelOpen}
+          onClick={onTogglePanel}
+          className="app-no-drag h-auto min-w-0 gap-2 py-1 ps-1 pe-3.5"
+        >
+          {inGroup ? (
+            <GroupAvatar members={activeSnapshot?.members ?? activeGroup?.members ?? []} size={26} />
+          ) : active ? (
+            <BotAvatar
+              avatarSet={active.avatarSet}
+              color={active.color}
+              identity={active.id}
+              size={26}
+              status={active.status}
+            />
+          ) : null}
+          <span className="min-w-0">
+            <span className="block truncate text-body-lg font-medium text-foreground" dir="auto">
+              {inGroup
+                ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
+                : (active?.name ?? t`Select a bot`)}
+            </span>
           </span>
-        </span>
-      </Button>
+        </Button>
+      </div>
       <div className="flex items-center justify-self-end gap-2">
         {phoneCallsEnabled && !inGroup && active ? (
           <IconTooltip label={inCall ? t`Open call` : t`Call`}>

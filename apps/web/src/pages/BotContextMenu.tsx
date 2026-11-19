@@ -20,10 +20,14 @@ import {
   Eraser,
   Folder,
   FolderPlus,
+  Globe,
+  Lock,
   Pencil,
   Pin,
   Trash2,
 } from "lucide-react";
+import type { ReactNode } from "react";
+import { CountryFlag } from "../components/CountryFlag";
 
 type ChatMenuTarget = Pick<Bot, "name" | "pinned" | "sectionId" | "unread">;
 
@@ -45,6 +49,7 @@ export function BotContextMenu({
   onClear,
   onArchive,
   onDelete,
+  vpnMenu,
 }: {
   bot: ChatMenuTarget;
   onClose: () => void;
@@ -63,6 +68,15 @@ export function BotContextMenu({
   onClear: () => void;
   onArchive: () => void;
   onDelete: () => void;
+  vpnMenu?: {
+    currentCode: string;
+    currentProfile: string | null;
+    locked: boolean;
+    hostCountry: string | null;
+    profiles: Array<{ id: string; countryCode: string; countryName: string; serverLabel: string; up: boolean }>;
+    onSelectProfile: (profile: string | null, label: string) => void;
+    onToggleLock: (locked: boolean) => void;
+  };
 }) {
   const { t, i18n } = useLingui();
   const presetLabels: Record<SnoozePreset, string> = {
@@ -150,6 +164,55 @@ export function BotContextMenu({
         </ContextMenuSub>
       )}
       <ContextMenuSeparator />
+      {vpnMenu ? (
+        <>
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              <Globe />
+              <span>{t`VPN`}</span>
+              <span className="ms-auto flex items-center gap-1">
+                <CountryFlag code={vpnMenu.currentCode} className="h-2.5 w-3.5 rounded-[2px] ring-1 ring-white/15" />
+                {vpnMenu.locked ? <Lock className="size-3 text-emerald-400" /> : null}
+              </span>
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent className="min-w-[220px]">
+              <ContextMenuItem
+                disabled={vpnMenu.locked}
+                onClick={() => vpnMenu.onSelectProfile(null, t`Direct`)}
+              >
+                <CountryFlag code={vpnMenu.hostCountry ?? "TH"} className="h-2.5 w-3.5 rounded-[2px] ring-1 ring-white/15" />
+                <span>{t`Direct (Thailand)`}</span>
+                {vpnMenu.currentProfile === null ? <Check className="ms-auto" /> : null}
+              </ContextMenuItem>
+              {vpnMenu.profiles.map((prof) => (
+                <ContextMenuItem
+                  key={prof.id}
+                  onClick={() =>
+                    vpnMenu.onSelectProfile(prof.id, `${prof.countryName} (${prof.serverLabel})`)
+                  }
+                >
+                  <CountryFlag code={prof.countryCode} className="h-2.5 w-3.5 rounded-[2px] ring-1 ring-white/15" />
+                  <span>{prof.countryName}</span>
+                  <span className="text-label text-muted-foreground">{prof.serverLabel}</span>
+                  {vpnMenu.currentProfile === prof.id ? <Check className="ms-auto" /> : null}
+                </ContextMenuItem>
+              ))}
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                disabled={!vpnMenu.currentProfile}
+                onClick={() => vpnMenu.onToggleLock(!vpnMenu.locked)}
+              >
+                <Lock />
+                <span>
+                  {vpnMenu.locked ? t`Unlock Kill Switch` : t`Lock to VPN (Kill Switch)`}
+                </span>
+                {vpnMenu.locked ? <Check className="ms-auto" /> : null}
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+          <ContextMenuSeparator />
+        </>
+      ) : null}
       <ContextMenuItem onClick={onEdit}>
         <Pencil />
         {t`Edit Profile`}

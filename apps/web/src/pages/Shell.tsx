@@ -75,6 +75,7 @@ import { FALLBACK_BOT_COLOR } from "./shell/chat-shared";
 import { Composer } from "./shell/composer";
 import { ComputerOverlay } from "./shell/computer-overlay";
 import { ComputerPanel } from "./shell/computer-panel";
+import { type PendingVpnChoice, TeamComputerVpnDialog } from "./shell/computer-vpn-control";
 import type { CreateBotDialogInput } from "./shell/create-bot-dialog";
 import type { ImportSetupTarget } from "./shell/import-setup-card";
 import { KeyboardShortcutsDialog } from "./shell/keyboard-shortcuts-dialog";
@@ -95,6 +96,7 @@ import { useChatSnooze } from "./shell/use-chat-snooze";
 import { useComposerActions } from "./shell/use-composer-actions";
 import { useComposerMentions } from "./shell/use-composer-mentions";
 import { useComputerControls, useComputerState } from "./shell/use-computer";
+import { useComputerVpn } from "./shell/use-computer-vpn";
 import { useMessageJump } from "./shell/use-message-jump";
 import { useMobileSidebar } from "./shell/use-mobile-sidebar";
 import { usePaletteActions } from "./shell/use-palette-actions";
@@ -248,6 +250,12 @@ function SpaceShell() {
   const [botMenu, setBotMenu] = useState<ChatMenuTarget | null>(null);
   const closeBotMenu = useCallback(() => setBotMenu(null), []);
   const currentSpaceId = selectedSpaceId() ?? bootstrapMe?.spaceId ?? null;
+  const vpn = useComputerVpn({
+    rpc,
+    spaceId: bootstrapMe?.spaceId ?? currentSpaceId ?? undefined,
+    refreshBots,
+  });
+  const [teamVpnChoice, setTeamVpnChoice] = useState<PendingVpnChoice | null>(null);
   // null: settings follow the space the app is showing.
   const settingsSpaceId = overlay?.kind === "settings" ? overlay.spaceId : null;
   const settingsSpace =
@@ -938,6 +946,8 @@ function SpaceShell() {
         dialogs={dialogs}
         openChatSettings={openChatSettings}
         navigate={navigate}
+        vpn={vpn}
+        onTeamVpnConfirm={setTeamVpnChoice}
       />
     ) : null;
   const chatMenu: ChatMenuState = {
@@ -1019,6 +1029,7 @@ function SpaceShell() {
             chatMenu={chatMenu}
             reorderRosterBot={roster.reorderRosterBot}
             activeSnapshot={activeSnapshot}
+            vpn={vpn}
           />
         }
         archived={
@@ -1101,6 +1112,7 @@ function SpaceShell() {
             panelOpen={chatPanelOpen}
             onOpenNavigation={() => setMobileSidebarOpen(true)}
             onTogglePanel={toggleChatPanel}
+            vpn={vpn}
             onCall={(bot) => {
               if (call?.botId === bot.id) {
                 setCallMinimized(false);
@@ -1249,6 +1261,23 @@ function SpaceShell() {
         onAnswered={(botId) => navigate(`/app/${botId}`)}
       />
 
+      <TeamComputerVpnDialog
+        choice={teamVpnChoice}
+        busy={Boolean(teamVpnChoice && vpn.pendingBotId === teamVpnChoice.botId)}
+        onClose={() => setTeamVpnChoice(null)}
+        onConfirm={(switchToDedicated) => {
+          if (!teamVpnChoice) return;
+          const choice = teamVpnChoice;
+          setTeamVpnChoice(null);
+          void vpn.setBotVpn({
+            botId: choice.botId,
+            profile: choice.profile,
+            locked: choice.locked,
+            switchToDedicated,
+          });
+        }}
+      />
+
       <ShellSidePanel
         rpc={rpc}
         panel={panel}
@@ -1264,6 +1293,7 @@ function SpaceShell() {
         refreshGroupThread={refreshGroupThread}
         discardChatAttachments={composer.discardThreadAttachments}
         computerOpen={computerOpen}
+        vpn={vpn}
         computerPanel={
           active ? (
             <ComputerPanel

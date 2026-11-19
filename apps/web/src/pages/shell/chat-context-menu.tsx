@@ -5,7 +5,12 @@ import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { Suspense, useEffect } from "react";
 import { lazyOverlay } from "../../components/ErrorBoundary";
 import type { createSpaceRpc } from "../../lib/rpc";
+import {
+  type PendingVpnChoice,
+  resolveBotVpnDisplay,
+} from "./computer-vpn-control";
 import type { ShellDialogsState } from "./shell-dialogs";
+import type { ComputerVpnController } from "./use-computer-vpn";
 import type { useChatRead } from "./use-chat-read";
 import type { SnoozeChat } from "./use-chat-snooze";
 
@@ -79,6 +84,8 @@ export function ChatContextMenu({
   dialogs,
   openChatSettings,
   navigate,
+  vpn,
+  onTeamVpnConfirm,
 }: {
   rpc: ReturnType<typeof createSpaceRpc>;
   bot: Bot | undefined;
@@ -92,17 +99,70 @@ export function ChatContextMenu({
   dialogs: ShellDialogsState;
   openChatSettings: (kind: "bot" | "group", id: string) => void;
   navigate: (path: string) => void;
+  vpn?: ComputerVpnController;
+  onTeamVpnConfirm?: (choice: PendingVpnChoice) => void;
 }) {
   const chat = bot ?? group;
   if (!chat) return null;
   const target = bot
     ? { kind: "bot" as const, chat: bot }
     : { kind: "group" as const, chat: group! };
+  const botVpn = bot && vpn?.overview?.supported ? vpn.overview.bots[bot.id] : undefined;
+  const vpnDisplay = botVpn ? resolveBotVpnDisplay(botVpn, vpn?.overview ?? null) : null;
+  const vpnMenu =
+    bot && botVpn && vpnDisplay && vpn?.overview
+      ? {
+          currentCode: vpnDisplay.countryCode,
+          currentProfile: botVpn.vpnProfile,
+          locked: botVpn.vpnLocked,
+          hostCountry: vpn.overview.hostCountry,
+          profiles: vpn.overview.profiles,
+          onSelectProfile: (profile: string | null, label: string) => {
+            onClose();
+            if (botVpn.computerMode === "team" && profile !== null && onTeamVpnConfirm) {
+              onTeamVpnConfirm({
+                botId: bot.id,
+                botName: bot.name,
+                profile,
+                locked: botVpn.vpnLocked,
+                label,
+              });
+              return;
+            }
+            void vpn.setBotVpn({
+              botId: bot.id,
+              profile,
+              locked: profile ? botVpn.vpnLocked : false,
+            });
+          },
+          onToggleLock: (locked: boolean) => {
+            onClose();
+            if (!botVpn.vpnProfile) return;
+            if (botVpn.computerMode === "team" && locked && onTeamVpnConfirm) {
+              const prof = vpn.overview?.profiles.find((p) => p.id === botVpn.vpnProfile);
+              onTeamVpnConfirm({
+                botId: bot.id,
+                botName: bot.name,
+                profile: botVpn.vpnProfile,
+                locked: true,
+                label: prof ? `${prof.countryName} (${prof.serverLabel})` : botVpn.vpnProfile,
+              });
+              return;
+            }
+            void vpn.setBotVpn({
+              botId: bot.id,
+              profile: botVpn.vpnProfile,
+              locked,
+            });
+          },
+        }
+      : undefined;
   return (
     <BotContextMenu
       bot={chat}
       onClose={onClose}
       sections={sections}
+      vpnMenu={vpnMenu}
       onTogglePinned={() => {
         onClose();
         const request = bot

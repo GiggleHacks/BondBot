@@ -101,3 +101,51 @@ export const COMPUTER_SIZE_SPECS: Record<ComputerSize, { vcpus: number; memoryGb
   large: { vcpus: 8, memoryGb: 16 },
   xlarge: { vcpus: 16, memoryGb: 32 },
 };
+
+export const ComputerVpnRuntimeStateSchema = z.enum([
+  "direct",
+  "vpn",
+  "fallback",
+  "blocked",
+  "stopped",
+]);
+export type ComputerVpnRuntimeState = z.infer<typeof ComputerVpnRuntimeStateSchema>;
+
+export const VpnProfileInfoSchema = z.object({
+  id: z.string(),
+  countryCode: z.string(),
+  countryName: z.string(),
+  serverLabel: z.string(),
+  up: z.boolean(),
+  handshakeAgeSec: z.number().int().nonnegative().nullable(),
+});
+export type VpnProfileInfo = z.infer<typeof VpnProfileInfoSchema>;
+
+export const BotVpnStatusSchema = z.object({
+  botId: Id,
+  computerId: Id,
+  computerMode: ComputerModeSchema,
+  vpnProfile: z.string().nullable(),
+  vpnLocked: z.boolean(),
+  state: ComputerVpnRuntimeStateSchema,
+  exitIp: z.string().nullable(),
+  exitCountry: z.string().nullable(),
+});
+export type BotVpnStatus = z.infer<typeof BotVpnStatusSchema>;
+
+export const ComputerVpnOverviewSchema = z.object({
+  supported: z.boolean(),
+  hostIp: z.string().nullable(),
+  hostCountry: z.string().nullable(),
+  profiles: z.array(VpnProfileInfoSchema),
+  bots: z.record(z.string(), BotVpnStatusSchema),
+});
+export type ComputerVpnOverview = z.infer<typeof ComputerVpnOverviewSchema>;
+
+export const SetComputerVpnInputSchema = z.object({
+  botId: Id,
+  profile: z.string().trim().min(1).max(64).nullable(),
+  locked: z.boolean(),
+  switchToDedicated: z.boolean().optional(),
+});
+export type SetComputerVpnInput = z.infer<typeof SetComputerVpnInputSchema>;

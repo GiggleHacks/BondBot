@@ -112,6 +112,12 @@ import {
   toSandboxInput,
   workspaceTarget,
 } from "./supervisor-logic.js";
+import {
+  fetchHostVpnStatus,
+  reconcileHomeVpnPolicies,
+  setHomeVpnPolicy,
+  vpnSocketPath,
+} from "./vpn-manager.js";
 
 const app = new Hono();
 
@@ -143,6 +149,61 @@ app.use("*", async (c, next) => {
 });
 
 app.get("/health", (c) => c.json({ ok: true, image: COMPUTER_IMAGE }));
+
+app.get("/vpn/status", async (c) => {
+  try {
+    return c.json(await fetchHostVpnStatus());
+  } catch (error) {
+    getLogger().error("vpn status lookup failed", error);
+    return c.json({ error: error instanceof Error ? error.message : "vpn status failed" }, 502);
+  }
+});
+
+app.put("/vpn/homes/:homeKey", async (c) => {
+  const homeKey = c.req.param("homeKey");
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(homeKey)) {
+    return c.json({ error: "invalid homeKey" }, 400);
+  }
+  const body = z
+    .object({
+      profile: z.string().trim().min(1).max(64).nullable(),
+      locked: z.boolean(),
+    })
+    .safeParse(await c.req.json().catch(() => undefined));
+  if (!body.success) {
+    return c.json({ error: "invalid VPN policy payload" }, 400);
+  }
+  try {
+    const result = await setHomeVpnPolicy(homeKey, body.data);
+    return c.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "vpn update failed";
+    return c.json({ error: message }, /invalid|unknown|cannot lock/i.test(message) ? 400 : 502);
+  }
+});
+
+app.post("/vpn/reconcile", async (c) => {
+  const body = z
+    .object({
+      homes: z.array(
+        z.object({
+          homeKey: z.string().min(1).max(64),
+          profile: z.string().trim().min(1).max(64).nullable(),
+          locked: z.boolean(),
+        }),
+      ),
+    })
+    .safeParse(await c.req.json().catch(() => undefined));
+  if (!body.success) {
+    return c.json({ error: "invalid reconcile payload" }, 400);
+  }
+  try {
+    return c.json(await reconcileHomeVpnPolicies(body.data.homes));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "vpn reconcile failed";
+    return c.json({ error: message }, 502);
+  }
+});
 
 app.use("/computers", limitSupervisorRequestBody);
 app.use("/computers/*", limitSupervisorRequestBody);
@@ -1215,6 +1276,11 @@ app.delete("/computers/:id", async (c) => {
       });
       if (screenNetworkMode !== "internal") {
         await removeBotNetwork(botId);
+      }
+      if (vpnSocketPath()) {
+        await setHomeVpnPolicy(botId, { profile: null, locked: false }).catch((error) => {
+          getLogger().warn("vpn cleanup on computer delete failed", { botId, error: String(error) });
+        });
       }
       return c.json({ ok: true });
     });

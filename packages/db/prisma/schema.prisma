@@ -1923,6 +1923,8 @@ model Computer {
   diskFreeBytes           BigInt?
   /// How full the disk was when the user hid its warning; the warning returns once it is fuller.
   diskDismissedPercent    Int?
+  vpnProfile              String?
+  vpnLocked               Boolean                  @default(false)
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
   bots                    Bot[]

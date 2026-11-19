@@ -139,6 +139,7 @@ import { mountAuditExportRoute } from "./audit-export.js";
 import { createBillingService } from "./billing.js";
 import { mountBillingRoutes } from "./billing-webhook.js";
 import { clientBuildMiddleware, readDeployedWebBuild } from "./client-build.js";
+import { reconcileAllComputerVpns } from "./computer-vpn.js";
 import {
   clientIpMiddleware,
   createClientIpResolver,
@@ -739,6 +740,8 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     (error) => getLogger().error("stalled organization deletion failed", error),
   );
 
+  void reconcileAllComputerVpns(prisma, env);
+
   const router = createRouter({
     speechSummary:
       env.voiceSummaryMinChars === undefined
@@ -819,6 +822,8 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
       privacyPolicyUrl: env.privacyPolicyUrl,
       screenProxySecret: env.screenProxySecret,
       sandboxProvider: env.sandboxProvider,
+      sandboxSupervisorUrl: env.sandboxSupervisorUrl,
+      sandboxSupervisorToken: env.sandboxSupervisorToken,
       gitSha: env.gitSha,
       integrationsCatalogUrl: env.integrationsCatalogUrl,
       mcpAllowPrivateEndpoint: env.mcpAllowPrivateEndpoint,

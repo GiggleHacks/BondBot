@@ -12,6 +12,7 @@ import { RoutineEditor } from "../RoutineEditor";
 import type { RoutineList } from "../RoutineList";
 import { AgentImportForm } from "./agent-import";
 import { BotSettings } from "./bot-panel";
+import type { ComputerVpnController } from "./use-computer-vpn";
 import { firstThreadRoute } from "./use-shell-navigation";
 
 /** The panel beside the chat: a bot, a routine, a group, or an import. */
@@ -30,6 +31,7 @@ export function ShellSidePanel({
   refreshGroupThread,
   computerOpen,
   computerPanel,
+  vpn,
   routineList,
   routineEditorProps,
   openBot,
@@ -52,6 +54,7 @@ export function ShellSidePanel({
   refreshGroupThread: (groupId: string) => Promise<ThreadSnapshot>;
   computerOpen: boolean;
   computerPanel: ReactNode;
+  vpn?: ComputerVpnController;
   routineList: Omit<ComponentProps<typeof RoutineList>, "preview">;
   routineEditorProps: ComponentProps<typeof RoutineEditor> | null;
   openBot: (botId: string) => void;
@@ -159,6 +162,7 @@ export function ShellSidePanel({
               onViewChange={setPanel}
               onClose={() => setPanel(null)}
               computer={computerPanel}
+              vpn={vpn}
               routines={routineList}
               focusModel={modelFocusRequest}
               onSave={async ({ computerMode, ...patch }) => {

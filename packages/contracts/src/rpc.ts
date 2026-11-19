@@ -60,6 +60,7 @@ import {
   CreateBotFromTemplateOutput,
 } from "./bot-template.js";
 import {
+  BotVpnStatusSchema,
   ComputerModeSchema,
   ComputerProviderSettingsSchema,
   ComputerProviderUpdateSchema,
@@ -67,6 +68,8 @@ import {
   ComputerScreenSchema,
   ComputerStatusSchema,
   ComputerUpdateSchema,
+  ComputerVpnOverviewSchema,
+  SetComputerVpnInputSchema,
 } from "./computer.js";
 import {
   AccessGrantInputSchema,
@@ -838,6 +841,8 @@ export const appContract = {
   },
   computer: {
     status: oc.input(botId).output(ComputerStatusSchema),
+    vpnState: oc.output(ComputerVpnOverviewSchema),
+    setVpn: oc.input(SetComputerVpnInputSchema).output(BotVpnStatusSchema),
     boot: oc.input(botId).output(ComputerStatusSchema),
     stop: oc.input(botId).output(ComputerStatusSchema),
     recover: oc.input(botId).output(ComputerUpdateSchema),

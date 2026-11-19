@@ -33,8 +33,10 @@ import {
 } from "../../lib/roster-status";
 import type { ChatMenuState } from "./chat-context-menu";
 import { ChatMenu } from "./chat-context-menu";
+import { ComputerVpnFlagChip, ComputerVpnPopover } from "./computer-vpn-control";
 import type { RosterDropAction, RosterDropTarget } from "./roster-drop";
 import type { sidebarGroupsForSpaces } from "./space-sidebar";
+import type { ComputerVpnController } from "./use-computer-vpn";
 import { useRedrawAtMidnight } from "./use-redraw-at-midnight";
 
 export function SidebarRoster({
@@ -64,6 +66,7 @@ export function SidebarRoster({
   chatMenu,
   reorderRosterBot,
   activeSnapshot,
+  vpn,
   mini = false,
 }: {
   sidebarGroups: ReturnType<
@@ -94,6 +97,7 @@ export function SidebarRoster({
   chatMenu: ChatMenuState;
   reorderRosterBot: (sourceId: string, targetId: string, groupBotIds: string[]) => void;
   activeSnapshot: ThreadSnapshot | null;
+  vpn?: ComputerVpnController;
   mini?: boolean;
 }) {
   useRedrawAtMidnight();
@@ -308,6 +312,9 @@ export function SidebarRoster({
                 const rowSameList =
                   Boolean(draggedBotId) && groupBotIds.includes(draggedBotId ?? "");
                 const rowDropKey = `row:${item.kind}:${item.chat.id}`;
+                const hasVpn =
+                  item.kind === "bot" &&
+                  Boolean(vpn?.overview?.supported && vpn.overview.bots[item.chat.id]);
                 const avatar =
                   item.kind === "bot" ? (
                     <BotAvatar
@@ -402,8 +409,8 @@ export function SidebarRoster({
                       mini
                         ? "mx-auto size-12 justify-center rounded-xl"
                         : compact
-                          ? "w-full min-h-11 gap-2 rounded-xl px-2.5 py-1.5"
-                          : "w-full gap-3 rounded-xl px-2.5 py-[10px]"
+                          ? `w-full min-h-11 gap-2 rounded-xl py-1.5 pe-2.5 ${hasVpn ? "ps-[58px]" : "ps-2.5"}`
+                          : `w-full gap-3 rounded-xl py-[10px] pe-2.5 ${hasVpn ? "ps-[62px]" : "ps-2.5"}`
                     } text-start ${
                       item.kind === "bot" ? "cursor-grab active:cursor-grabbing" : ""
                     } ${
@@ -562,6 +569,33 @@ export function SidebarRoster({
                         chatTrigger
                       )}
                     </ChatMenu>
+                    {hasVpn ? (
+                      <ComputerVpnPopover
+                        botId={item.chat.id}
+                        botName={item.chat.name}
+                        vpn={vpn!}
+                        side="right"
+                        align="start"
+                        trigger={
+                          <button
+                            type="button"
+                            aria-label={t`VPN for ${item.chat.name}`}
+                            onClick={(event) => event.stopPropagation()}
+                            className={`absolute z-10 transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-ring ${
+                              mini
+                                ? "bottom-0.5 start-0.5 rounded-md bg-sidebar"
+                                : "start-1.5 top-1/2 -translate-y-1/2 rounded-md"
+                            }`}
+                          >
+                            <ComputerVpnFlagChip
+                              botVpn={vpn!.overview!.bots[item.chat.id]}
+                              overview={vpn!.overview}
+                              compact
+                            />
+                          </button>
+                        }
+                      />
+                    ) : null}
                   </div>
                 );
               })}

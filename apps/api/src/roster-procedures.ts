@@ -31,6 +31,7 @@ export const ROSTER_PROCEDURES: Record<string, RosterScope> = {
   "bots.update": actorSpace,
   "bots.restoreInstructions": actorSpace,
   "bots.setComputer": actorSpace,
+  "computer.setVpn": actorSpace,
   "bots.archive": actorSpace,
   "bots.restore": actorSpace,
   "bots.remove": actorSpace,

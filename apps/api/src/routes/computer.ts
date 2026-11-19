@@ -69,6 +69,13 @@ import {
   withViewOnly,
 } from "../computer-control.js";
 import { scrollPoint } from "../computer-input.js";
+import { switchBotComputerMode } from "../computer-mode-switch.js";
+import {
+  assembleVpnOverview,
+  buildBotVpnStatus,
+  fetchSupervisorVpnStatus,
+  setSupervisorHomeVpn,
+} from "../computer-vpn.js";
 import type { RouterContext } from "./context.js";
 import { computerContext } from "./shared.js";
 
@@ -84,6 +91,79 @@ export function computerRoutes(ctx: RouterContext) {
       status: authed.computer.status.handler(async ({ context, input }) =>
         computerStatus(deps, context.actor, input.botId),
       ),
+      vpnState: authed.computer.vpnState.handler(async ({ context }) => {
+        const [bots, supervisorStatus] = await Promise.all([
+          deps.prisma.bot.findMany({
+            where: { spaceId: context.actor.spaceId, archivedAt: null },
+            select: {
+              id: true,
+              computer: {
+                select: {
+                  id: true,
+                  scope: true,
+                  homeKey: true,
+                  state: true,
+                  vpnProfile: true,
+                  vpnLocked: true,
+                },
+              },
+            },
+          }),
+          fetchSupervisorVpnStatus(deps.env),
+        ]);
+        return assembleVpnOverview(bots, supervisorStatus);
+      }),
+      setVpn: authed.computer.setVpn.handler(async ({ context, input }) => {
+        let bot = await repos.getBot(context.actor, input.botId);
+        if (!bot.computer) throw new IsolationError();
+
+        if (input.locked && !input.profile) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "Select a VPN country before enabling Kill Switch lock",
+          });
+        }
+
+        if (input.switchToDedicated && bot.computer.scope === "team") {
+          await switchBotComputerMode(deps, repos, context.actor, bot.id, "dedicated");
+          bot = await repos.getBot(context.actor, input.botId);
+          if (!bot.computer) throw new IsolationError();
+        }
+
+        if (bot.computer.vpnLocked && input.profile === null) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "Unlock Kill Switch before switching to Direct",
+          });
+        }
+
+        const bridgeState = await setSupervisorHomeVpn(deps.env, bot.computer.homeKey, {
+          profile: input.profile,
+          locked: input.locked,
+        });
+
+        const updatedComputer = await deps.prisma.computer.update({
+          where: { id: bot.computer.id },
+          data: {
+            vpnProfile: input.profile,
+            vpnLocked: input.locked,
+          },
+          select: {
+            id: true,
+            scope: true,
+            homeKey: true,
+            state: true,
+            vpnProfile: true,
+            vpnLocked: true,
+          },
+        });
+
+        return buildBotVpnStatus(
+          bot.id,
+          updatedComputer,
+          bridgeState,
+          null,
+          null,
+        );
+      }),
       boot: authed.computer.boot.handler(async ({ context, input }) => {
         const bot = await repos.getBot(context.actor, input.botId);
         if (!bot.computer) throw new IsolationError();

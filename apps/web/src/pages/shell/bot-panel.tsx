@@ -38,6 +38,8 @@ import { useSpaceQueries } from "../../lib/query";
 import { errorText } from "../../lib/user-error";
 import { ROUTINE_PREVIEW_COUNT, RoutineList } from "../RoutineList";
 import { AvatarStudioPopover } from "./avatar-studio-popover";
+import { ComputerVpnFlagChip, ComputerVpnPopover, resolveBotVpnDisplay } from "./computer-vpn-control";
+import type { ComputerVpnController } from "./use-computer-vpn";
 import {
   DescriptionGroup,
   ModelRow,
@@ -80,6 +82,7 @@ export function BotSettings({
   onViewChange,
   onClose,
   computer,
+  vpn,
   routines,
   onSave,
   onExport,
@@ -91,6 +94,7 @@ export function BotSettings({
   onViewChange?: (view: BotPanelView) => void;
   onClose?: () => void;
   computer?: ReactNode;
+  vpn?: ComputerVpnController;
   routines?: Omit<ComponentProps<typeof RoutineList>, "preview">;
   focusModel?: number;
   onSave: (patch: {
@@ -729,6 +733,31 @@ export function BotSettings({
                 disabled={saving}
                 onChange={(checked) => setComputerMode(checked ? "dedicated" : "team")}
               />
+              {vpn?.overview?.supported && vpn.overview.bots[bot.id] ? (
+                <div className="flex items-center justify-between gap-3 py-1">
+                  <span className="text-body-sm text-foreground">
+                    <Trans>Computer VPN</Trans>
+                  </span>
+                  <ComputerVpnPopover
+                    botId={bot.id}
+                    botName={bot.name}
+                    vpn={vpn}
+                    side="left"
+                    align="end"
+                    trigger={
+                      <Button variant="outline" size="sm" className="h-7 gap-2 px-2.5">
+                        <ComputerVpnFlagChip
+                          botVpn={vpn.overview.bots[bot.id]}
+                          overview={vpn.overview}
+                        />
+                        <span className="text-label">
+                          {resolveBotVpnDisplay(vpn.overview.bots[bot.id], vpn.overview)?.countryName}
+                        </span>
+                      </Button>
+                    }
+                  />
+                </div>
+              ) : null}
               {changed.readAloud ? (
                 <SwitchRow
                   id={`${ids}-auto-speak`}

@@ -155,6 +155,8 @@ export interface RouterDeps {
     privacyPolicyUrl?: string;
     screenProxySecret: string;
     sandboxProvider: string;
+    sandboxSupervisorUrl?: string;
+    sandboxSupervisorToken?: string;
     gitSha?: string;
     integrationsCatalogUrl?: string;
     mcpAllowPrivateEndpoint?: boolean;
