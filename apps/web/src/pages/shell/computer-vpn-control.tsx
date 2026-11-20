@@ -18,7 +18,16 @@ import {
   Switch,
   cn,
 } from "@rakazo/ui-web";
-import { AlertTriangle, Check, Globe, Lock, ShieldAlert, ShieldCheck, Unlock } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Globe,
+  Lock,
+  Monitor,
+  ShieldAlert,
+  ShieldCheck,
+  Unlock,
+} from "lucide-react";
 import { useState } from "react";
 import { CountryFlag } from "../../components/CountryFlag";
 import type { ComputerVpnController } from "./use-computer-vpn";
@@ -213,6 +222,33 @@ export function ComputerVpnFlagChip({
           {shortStatus}
         </span>
       ) : null}
+    </span>
+  );
+}
+
+/** Bare monitor icon indicating a bot has its own dedicated computer (lit when running, muted when asleep). */
+export function DedicatedComputerBadge({
+  botVpn,
+  className,
+}: {
+  botVpn: BotVpnStatus | undefined;
+  className?: string;
+}) {
+  if (botVpn?.computerMode !== "dedicated") return null;
+  const running = botVpn.state !== "stopped";
+  const label = running ? "Dedicated computer · Running" : "Dedicated computer · Asleep";
+  return (
+    <span
+      title={label}
+      aria-label={label}
+      data-roster-dedicated-computer={running ? "running" : "stopped"}
+      className={cn(
+        "inline-flex items-center justify-center",
+        running ? "text-sky-400" : "text-muted-foreground/45",
+        className,
+      )}
+    >
+      <Monitor className="size-3 shrink-0" aria-hidden="true" />
     </span>
   );
 }

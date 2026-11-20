@@ -34,7 +34,11 @@ import {
 } from "../../lib/roster-status";
 import type { ChatMenuState } from "./chat-context-menu";
 import { ChatMenu } from "./chat-context-menu";
-import { ComputerVpnFlagChip, ComputerVpnPopover } from "./computer-vpn-control";
+import {
+  ComputerVpnFlagChip,
+  ComputerVpnPopover,
+  DedicatedComputerBadge,
+} from "./computer-vpn-control";
 import type { RosterDropAction, RosterDropTarget } from "./roster-drop";
 import type { sidebarGroupsForSpaces } from "./space-sidebar";
 import type { ComputerVpnController } from "./use-computer-vpn";
@@ -313,9 +317,12 @@ export function SidebarRoster({
                 const rowSameList =
                   Boolean(draggedBotId) && groupBotIds.includes(draggedBotId ?? "");
                 const rowDropKey = `row:${item.kind}:${item.chat.id}`;
-                const hasVpn =
-                  item.kind === "bot" &&
-                  Boolean(vpn?.overview?.supported && vpn.overview.bots[item.chat.id]);
+                const botVpn =
+                  item.kind === "bot" && vpn?.overview?.supported
+                    ? vpn.overview.bots[item.chat.id]
+                    : undefined;
+                const hasVpn = Boolean(botVpn);
+                const hasDedicatedComputer = botVpn?.computerMode === "dedicated";
                 const avatar =
                   item.kind === "bot" ? (
                     <BotAvatar
@@ -406,7 +413,7 @@ export function SidebarRoster({
                     }}
                     // Focus the row so closing the menu returns focus here.
                     onContextMenu={(event) => event.currentTarget.focus()}
-                    className={`flex items-center ${
+                    className={`relative flex items-center ${
                       mini
                         ? "mx-auto size-12 justify-center rounded-xl"
                         : compact
@@ -420,9 +427,19 @@ export function SidebarRoster({
                         : "group-hover/row:bg-accent"
                     }`}
                   >
+                    {!mini && hasDedicatedComputer ? (
+                      <DedicatedComputerBadge
+                        botVpn={botVpn}
+                        className="absolute start-1.5 top-1/2 w-10 -translate-y-[calc(50%+8px)]"
+                      />
+                    ) : null}
                     {mini ? (
                       <span className="relative shrink-0">
                         {avatar}
+                        <DedicatedComputerBadge
+                          botVpn={botVpn}
+                          className="absolute -start-0.5 top-0 rounded bg-sidebar/90 p-px"
+                        />
                         {rowError ? (
                           <span
                             aria-hidden="true"
@@ -591,11 +608,13 @@ export function SidebarRoster({
                             className={`absolute z-10 transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-ring ${
                               mini
                                 ? "bottom-0.5 start-0.5 rounded-md bg-sidebar"
-                                : "start-1.5 top-1/2 -translate-y-1/2 rounded-md"
+                                : hasDedicatedComputer
+                                  ? "start-1.5 top-1/2 -translate-y-[calc(50%-7px)] rounded-md"
+                                  : "start-1.5 top-1/2 -translate-y-1/2 rounded-md"
                             }`}
                           >
                             <ComputerVpnFlagChip
-                              botVpn={vpn!.overview!.bots[item.chat.id]}
+                              botVpn={botVpn}
                               overview={vpn!.overview}
                               compact
                             />
