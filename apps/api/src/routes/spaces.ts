@@ -429,6 +429,8 @@ async function memberSpaceNavigation(
           status: bot.status,
           threadStatus: bot.threadStatus,
           runErrorId: bot.runErrorId,
+          modelProvider: bot.modelProvider ?? null,
+          modelId: bot.modelId ?? null,
           updatedAt: bot.updatedAt,
         })),
         groups: spaceGroups.map((group) => ({

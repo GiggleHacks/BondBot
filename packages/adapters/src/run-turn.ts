@@ -135,6 +135,7 @@ import {
   STEERING_RESETS_MAX_PER_RUN,
   USER_PROGRESS_MESSAGE_MAX_LENGTH,
 } from "./user-progress.js";
+import { appendReasoningBlock } from "./reasoning-capture.js";
 import { wakeRun } from "./wake-run.js";
 
 type RuntimeEvent<T extends AgentRuntimeEvent["type"]> = Extract<AgentRuntimeEvent, { type: T }>;
@@ -990,7 +991,7 @@ export async function completeRun(ctx: RunContext) {
     leaseOwner: ctx.workerId,
     leaseFence: ctx.fence,
     outcome: "completed",
-    blocks,
+    blocks: appendReasoningBlock(blocks, runId, bot.id, (value) => redactSecrets(value, ctx.secrets)),
     markUnread: !groupSilentEnd && marksUnread,
   });
   if (!completed) return;

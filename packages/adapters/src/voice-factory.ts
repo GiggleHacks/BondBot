@@ -20,13 +20,6 @@ import { XAI_VOICE_PROVIDER_ID, XaiVoiceProvider } from "./xai-voice.js";
 
 export const VOICE_CATALOG = [
   {
-    id: "elevenlabs",
-    name: "ElevenLabs",
-    description: "Highest quality and cloning. Flash v2.5 for conversational calls.",
-    transcribe: true,
-    speechModel: true,
-  },
-  {
     id: "openai",
     name: "OpenAI",
     description: "Simple TTS plus Whisper-class transcription. Reuse an OpenAI key.",

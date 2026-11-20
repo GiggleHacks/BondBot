@@ -2,6 +2,7 @@ import { useLingui } from "@lingui/react/macro";
 import type { Bot } from "@rakazo/contracts";
 import { Button, Popover, PopoverContent, PopoverTrigger } from "@rakazo/ui-web";
 import { Bell, PanelLeftClose, PanelLeftOpen, Plus, Search } from "lucide-react";
+import { BondBotMark } from "../../components/BondBotMark";
 import { IconTooltip } from "../../components/IconTooltip";
 import { desktopBridge } from "../../lib/desktop";
 import type { Panel } from "../../lib/right-panel-state";
@@ -46,7 +47,8 @@ export function SidebarHeader({
     <div
       className={`app-drag flex items-center ${mini ? `flex-col gap-2 px-0 pb-2 ${hasWindowChrome ? "pt-4" : "pt-2"}` : "justify-between px-[18px] pb-3 pt-4"}`}
     >
-      {!mini || hasWindowChrome ? <WindowChrome /> : null}
+      {hasWindowChrome ? <WindowChrome /> : null}
+      <BondBotMark mini={mini} />
       <div className={`relative flex items-center ${mini ? "flex-col gap-0.5" : "gap-1"}`}>
         {onSearch ? (
           <IconTooltip label={t`Search`}>

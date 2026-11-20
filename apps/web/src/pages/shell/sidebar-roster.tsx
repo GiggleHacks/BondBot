@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import type { RefObject } from "react";
 import { IconTooltip } from "../../components/IconTooltip";
+import { ModelBrandIcon } from "../../components/ModelBrandIcon";
 import type { BotsSidebarDensity } from "../../lib/bots-sidebar-density-pref";
 import {
   compactRosterStatusLabel,
@@ -409,8 +410,8 @@ export function SidebarRoster({
                       mini
                         ? "mx-auto size-12 justify-center rounded-xl"
                         : compact
-                          ? `w-full min-h-11 gap-2 rounded-xl py-1.5 pe-2.5 ${hasVpn ? "ps-[58px]" : "ps-2.5"}`
-                          : `w-full gap-3 rounded-xl py-[10px] pe-2.5 ${hasVpn ? "ps-[62px]" : "ps-2.5"}`
+                          ? `w-full min-h-11 gap-2 rounded-xl py-1.5 pe-2.5 ${hasVpn ? "ps-[48px]" : "ps-2.5"}`
+                          : `w-full gap-3 rounded-xl py-[10px] pe-2.5 ${hasVpn ? "ps-[52px]" : "ps-2.5"}`
                     } text-start ${
                       item.kind === "bot" ? "cursor-grab active:cursor-grabbing" : ""
                     } ${
@@ -459,6 +460,12 @@ export function SidebarRoster({
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1.5">
                           <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                            {item.kind === "bot" ? (
+                              <ModelBrandIcon
+                                modelProvider={item.chat.modelProvider}
+                                modelId={item.chat.modelId}
+                              />
+                            ) : null}
                             <span
                               dir="auto"
                               data-roster-bot-name={item.kind === "bot" ? "" : undefined}

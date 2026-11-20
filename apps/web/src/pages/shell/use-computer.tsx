@@ -29,8 +29,10 @@ const COMPUTER_CACHE_LIMIT = 20;
 const OWN_CONTROL_EVENT_MS = 10_000;
 
 type CachedComputer = { computer: ComputerStatus | null; screenUrl: string | null };
-/** A screen URL beside what the server said of its sign-in, so the two never drift apart. */
-type Screen = Pick<ComputerScreenResult, "url" | "singleUseSignIn">;
+/** A screen URL beside its sign-in policy and owning bot, so neither drifts across switches. */
+type Screen = Pick<ComputerScreenResult, "url" | "singleUseSignIn"> & {
+  botId?: string;
+};
 
 /** The computer shown beside the chat or full screen, and its screen. */
 export function useComputerState({
@@ -74,10 +76,16 @@ export function useComputerState({
   const ownAnswers = useRef(new Map<string, number>());
   const [screen, setScreen] = useState<Screen>({ url: null });
   const screenUrl = screen.url;
+  const screenBotId = screen.botId;
   const screenRef = useRef(screen);
   // A caller holding only a URL shows a cached screen or none; the shown URL keeps its sign-in.
   const setScreenUrl = useCallback(
-    (url: string | null) => setScreen((current) => (current.url === url ? current : { url })),
+    (url: string | null, botId?: string) =>
+      setScreen((current) =>
+        current.url === url && current.botId === botId
+          ? current
+          : { url, ...(botId !== undefined ? { botId } : {}) },
+      ),
     [],
   );
   const [screenUrlLoadedBotId, setScreenUrlLoadedBotId] = useState<string | null>(null);
@@ -124,7 +132,14 @@ export function useComputerState({
   const [shownScreen, setShownScreen] = useState<{ botId?: string; url: string | null }>({
     url: null,
   });
-  const frameBotId = computerBotId ?? activeId;
+  const frameBotId =
+    activeId && (!computerOpen || computerBotId === activeId)
+      ? activeId
+      : (computerBotId ?? activeId);
+  const screenBotKey = screen.botId ?? frameBotId ?? "";
+  const activeFrameKey = screen.singleUseSignIn
+    ? `${screenBotKey}:${screenFrameKey}:${screenUrl}`
+    : `${screenBotKey}:${screenFrameKey}:${screenGeneration}`;
   if (shownScreen.url !== screenUrl || shownScreen.botId !== frameBotId) {
     const before = embeddableScreenUrl(shownScreen.url);
     const after = embeddableScreenUrl(screenUrl);
@@ -135,11 +150,7 @@ export function useComputerState({
       proxiedScreenCapability(before) !== null &&
       proxiedScreenCapability(after) !== null;
     // A frame that never connected shows nothing, so an earlier held frame stays instead.
-    setHeldScreen(
-      replaced
-        ? (heldScreen ?? { url: before!, key: `${screenFrameKey}:${screenGeneration}` })
-        : null,
-    );
+    setHeldScreen(replaced ? (heldScreen ?? { url: before!, key: activeFrameKey }) : null);
     if (replaced) setScreenGeneration((generation) => generation + 1);
     setShownScreen({ botId: frameBotId, url: screenUrl });
   }
@@ -336,21 +347,21 @@ export function useComputerState({
   }, [screenFrame, screenUrl]);
   useEffect(() => {
     // Each single-use frame is keyed by its URL, so it loads exactly one sign-in.
-    const { url: frameUrl, singleUseSignIn } = screenRef.current;
+    const { url: frameUrl, singleUseSignIn, botId: frameBot } = screenRef.current;
     if (!screenFrame || !frameUrl || !singleUseSignIn) return;
     liveSingleUseUrl.current = frameUrl;
     return () => {
       if (liveSingleUseUrl.current === frameUrl) liveSingleUseUrl.current = null;
-      // A frame replaced by a fresh sign-in leaves that one alone.
-      if (screenRef.current.url !== frameUrl) return;
-      setScreenUrl(null);
+      // A frame replaced by a fresh sign-in or another bot switch leaves that one alone.
+      if (screenRef.current.url !== frameUrl || screenRef.current.botId !== frameBot) return;
+      setScreenUrl(null, frameBot);
       if (screenErrorShown.current) {
         screenAwaitsRetry.current = true;
         return;
       }
       // Another frame may still show this computer, such as the panel once the overlay closes.
       const botId = computerBotIdRef.current;
-      if (botId && computerVisible.current) {
+      if (botId && (!frameBot || botId === frameBot) && computerVisible.current) {
         setScreenUrlLoadedBotId(null);
         void refreshComputerScreen(botId);
       }
@@ -368,11 +379,20 @@ export function useComputerState({
   useEventListener(viewport, "scroll", syncViewport);
   const screenRequest = useRef(0);
   const computerVisible = useRef(false);
-  computerVisible.current = computerOpen;
+  computerVisible.current = computerOpen || Boolean(activeId && panel === "settings");
   computerOpenRef.current = computerOpen;
-  computerBotIdRef.current = computerBotId ?? activeId;
+  computerBotIdRef.current = frameBotId;
+  useEffect(() => {
+    if (computerOpen || panel !== "settings" || !activeId) return;
+    if (computerRef.current?.botId !== activeId || computerRef.current.state !== "running") return;
+    if (screenUrlLoadedBotId === activeId || screenAwaitsRetry.current || screenErrorShown.current)
+      return;
+    if (screenRef.current.botId === activeId && screenRef.current.url) return;
+    void refreshComputerScreen(activeId).catch(() => undefined);
+  }, [panel, activeId, computerOpen, computer?.botId, computer?.state, screenUrlLoadedBotId]);
 
   function cacheComputerFor(botId: string, patch: Partial<CachedComputer>) {
+    if (patch.computer?.botId && patch.computer.botId !== botId) return;
     const cache = computerCacheRef.current;
     const prev = cache.get(botId) ?? { computer: null, screenUrl: null };
     // Re-inserting on every update keeps Map iteration order as least-recently-used first,
@@ -397,15 +417,13 @@ export function useComputerState({
     screenRequest.current += 1;
     screenAwaitsRetry.current = false;
     setScreenUrlLoadedBotId(null);
+    setHeldScreen(null);
     setComputerError(null);
     setComputerErrorFromScreen(false);
     const cached = computerCacheRef.current.get(botId);
-    if (cached) {
-      setScreenUrl(cached.screenUrl);
-      commitComputer(cached.computer);
-    } else {
-      setScreenUrl(null);
-    }
+    const cachedComputer = cached?.computer?.botId === botId ? cached.computer : null;
+    commitComputer(cachedComputer);
+    setScreenUrl(cachedComputer ? (cached?.screenUrl ?? null) : null, botId);
   }
 
   async function refreshComputerScreen(id: string, request?: number) {
@@ -429,14 +447,15 @@ export function useComputerState({
           // A failed single-use screen waits for Retry, and a connected one keeps the sign-in it
           // holds while the server still names the same screen.
           if (
+            current.botId === id &&
             answer.singleUseSignIn &&
             (screenAwaitsRetry.current ||
               (current.url === liveSingleUseUrl.current &&
                 current.singleUseSignIn?.screen === answer.singleUseSignIn.screen))
           )
             return current;
-          if (current.url === answer.url) return current;
-          return { url: answer.url, singleUseSignIn: answer.singleUseSignIn };
+          if (current.botId === id && current.url === answer.url) return current;
+          return { botId: id, url: answer.url, singleUseSignIn: answer.singleUseSignIn };
         });
         // A screen read replaces only its own error; a failed boot keeps its error and Retry.
         if (answer.error || computerErrorFromScreenRef.current) {
@@ -544,6 +563,7 @@ export function useComputerState({
     booting,
     bootsInFlight,
     screenUrl,
+    screenBotId,
     setScreenUrl,
     screenUrlLoadedBotId,
     setScreenUrlLoadedBotId,
@@ -559,10 +579,9 @@ export function useComputerState({
     computerErrorFromScreen,
     setComputerErrorFromScreen,
     setScreenFrame,
-    // A fresh single-use sign-in may change only the URL fragment, which would not reload the frame.
-    screenFrameKey: screen.singleUseSignIn
-      ? `${screenFrameKey}:${screenUrl}`
-      : `${screenFrameKey}:${screenGeneration}`,
+    // Keying by owning bot guarantees React destroys and remounts the iframe on bot switches,
+    // and a fresh single-use sign-in may change only the URL fragment.
+    screenFrameKey: activeFrameKey,
     heldScreen,
     screenLoadError,
     setScreenLoadError,

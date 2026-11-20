@@ -15,7 +15,11 @@ import {
   windowChromeKind,
 } from "../../lib/desktop";
 import { ComputerReleaseActions } from "./computer-release-actions";
-import { computerLabel, DesktopKindEmptyState } from "./computer-view";
+import {
+  computerLabel,
+  DesktopKindEmptyState,
+  resolveOwnedComputerScreen,
+} from "./computer-view";
 
 type ComputerOverlayProps = {
   bot: Bot;
@@ -29,6 +33,8 @@ type ComputerOverlayProps = {
   booting: boolean;
   sendError: string | null;
   embeddedScreenUrl: string | null;
+  /** Bot that owns `embeddedScreenUrl`; mismatches stay hidden across bot switches. */
+  screenBotId?: string | null;
   /** Changes to load the screen again in a new frame. */
   screenFrameKey?: string;
   heldScreen?: { url: string; key: string } | null;
@@ -56,6 +62,7 @@ export function ComputerOverlay({
   booting,
   sendError,
   embeddedScreenUrl,
+  screenBotId,
   screenFrameKey,
   heldScreen,
   screenFrameRef,
@@ -69,6 +76,16 @@ export function ComputerOverlay({
   onRefreshTeaching,
   onClose,
 }: ComputerOverlayProps) {
+  const owned = resolveOwnedComputerScreen(
+    bot.id,
+    computer,
+    embeddedScreenUrl,
+    screenBotId,
+    heldScreen,
+  );
+  computer = owned.computer;
+  embeddedScreenUrl = owned.embeddedScreenUrl;
+  heldScreen = owned.heldScreen;
   return (
     <div className="fixed inset-0 z-30 bg-background">
       <div

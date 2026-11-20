@@ -59,6 +59,7 @@ import { localTimezone, sameTimeZone, timezoneOptions } from "../lib/local-timez
 import { usePasskeysSupported } from "../lib/passkeys";
 import { remoteImagesPreference } from "../lib/remote-images-preference";
 import { responseStreamingPreference } from "../lib/response-streaming";
+import { reasoningPreference } from "../lib/reasoning-preference";
 import { toolActivityPreference } from "../lib/tool-activity-preference";
 import type { AppearancePreference } from "../lib/ui-appearance";
 import { getUiAppearancePreference, setUiAppearance } from "../lib/ui-appearance";
@@ -145,6 +146,8 @@ export function GeneralSettingsPanels({
   const streamRepliesId = useId();
   const showToolActivity = toolActivityPreference.use();
   const showToolActivityId = useId();
+  const showReasoning = reasoningPreference.use();
+  const showReasoningId = useId();
   const enterToSend = composerEnterToSendPreference.use();
   const enterToSendId = useId();
   const loadRemoteImages = remoteImagesPreference.use();
@@ -472,6 +475,21 @@ export function GeneralSettingsPanels({
               data-testid="tool-activity-toggle"
               checked={showToolActivity}
               onCheckedChange={(checked) => toolActivityPreference.set(checked)}
+            />
+          }
+        />
+        <SettingsRow
+          label={
+            <Label htmlFor={showReasoningId} className="text-body font-normal text-foreground">
+              <Trans>Show reasoning</Trans>
+            </Label>
+          }
+          control={
+            <Switch
+              id={showReasoningId}
+              data-testid="reasoning-toggle"
+              checked={showReasoning}
+              onCheckedChange={(checked) => reasoningPreference.set(checked)}
             />
           }
         />

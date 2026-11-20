@@ -13,7 +13,6 @@ import { VaultSettings } from "../components/VaultSettings";
 import { useSave, useSpaceQueries } from "../lib/query";
 import { errorText } from "../lib/user-error";
 import { ModelSettingsOverlay } from "./ModelSettingsOverlay";
-import { VoiceSettingsOverlay } from "./VoiceSettingsOverlay";
 
 /**
  * Account settings the bound Space follows until the member customizes them here. A customized
@@ -61,18 +60,6 @@ export function SpaceSettingOverrides({
       id: "models",
       label: t`Models`,
       panel: () => <ModelSettingsOverlay embedded scope="space" onClose={onClose} />,
-    },
-    {
-      id: "voice",
-      label: t`Voice`,
-      panel: () => (
-        <VoiceSettingsOverlay
-          embedded
-          scope="space"
-          onClose={onClose}
-          onBusyChange={onBusyChange}
-        />
-      ),
     },
     {
       id: "confirmations",

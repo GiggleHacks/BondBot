@@ -758,22 +758,6 @@ export function BotSettings({
                   />
                 </div>
               ) : null}
-              {changed.readAloud ? (
-                <SwitchRow
-                  id={`${ids}-auto-speak`}
-                  label={<Trans>Read replies aloud</Trans>}
-                  checked={autoSpeak}
-                  onChange={setAutoSpeak}
-                />
-              ) : null}
-              {changed.readAloud && voices?.length ? (
-                <VoiceRow
-                  ids={ids}
-                  voices={voices}
-                  voiceId={voiceId}
-                  onVoiceIdChange={setVoiceId}
-                />
-              ) : null}
               {changed.dailyCheckIns ? (
                 <SwitchRow
                   id={`${ids}-daily-check-ins`}

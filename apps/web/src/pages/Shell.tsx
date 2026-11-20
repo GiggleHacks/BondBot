@@ -4,7 +4,6 @@ import type {
   Bot,
   SpaceMemoryConfig,
   ThreadMessage,
-  VoiceStatus,
 } from "@rakazo/contracts";
 import { DEFAULT_NEW_BOT_AVATAR_SET, hasLab } from "@rakazo/contracts";
 import {
@@ -39,7 +38,7 @@ import {
 } from "react";
 import { useParams } from "react-router-dom";
 import { ComputerUpdateProgress } from "../components/ComputerUpdateProgress";
-import { CallCard, CallReturnBar } from "../components/call/CallCard";
+import { CallReturnBar } from "../components/call/CallCard";
 import { IncomingCall } from "../components/call/IncomingCall";
 import { PageLoading } from "../components/PageLoading";
 import { PageViewHost } from "../components/pages/PageViewHost";
@@ -226,23 +225,7 @@ function SpaceShell() {
         ? null
         : undefined;
   const call = useCallSession();
-  /** Calls a bot, or opens voice settings first when no voice is connected. */
-  const callBot = (bot: Bot) => {
-    if (!bootstrapMe?.phoneCallsEnabled) return;
-    if (!voiceStatus?.ready) {
-      openSettings("voice");
-      return;
-    }
-    startCall({
-      botId: bot.id,
-      botName: bot.name,
-      botColor: bot.color,
-      botAvatarSet: bot.avatarSet,
-      transcribe: voiceStatus ? Boolean(voiceStatus.transcribe) : undefined,
-    });
-  };
-  const voiceStatus: VoiceStatus | null =
-    useQuery(queries.voice.status.queryOptions()).data ?? null;
+  const callBot = (_bot: Bot) => {};
   const { mobileSidebarOpen, setMobileSidebarOpen, swipeHandlers } = useMobileSidebar();
   const isMobileSidebar = useIsMobile();
   const pages = usePagesForChat();
@@ -1106,8 +1089,8 @@ function SpaceShell() {
             active={active}
             activeGroup={activeGroup}
             activeSnapshot={activeSnapshot}
-            phoneCallsEnabled={Boolean(bootstrapMe?.phoneCallsEnabled)}
-            voiceReady={Boolean(voiceStatus?.ready)}
+            phoneCallsEnabled={false}
+            voiceReady={false}
             inCall={Boolean(active) && call?.botId === active?.id}
             panelOpen={chatPanelOpen}
             onOpenNavigation={() => setMobileSidebarOpen(true)}
@@ -1149,11 +1132,7 @@ function SpaceShell() {
               workingBots={workingBots}
               workingRoutine={workingRoutineName(workingRuns)}
               userBubble={userBubble}
-              onCallBack={
-                bootstrapMe?.phoneCallsEnabled && !inGroup && active
-                  ? () => callBot(active)
-                  : undefined
-              }
+              onCallBack={undefined}
               onLoadOlder={loadOlder}
               onOpenBot={openBot}
               onAnswer={composer.answerMessage}
@@ -1169,7 +1148,7 @@ function SpaceShell() {
               onRefresh={refreshActiveThread}
               onBotChanged={refreshBots}
               onAddRoutine={addSkillRoutine}
-              voiceReady={Boolean(voiceStatus?.ready)}
+              voiceReady={false}
               speakingMessageId={speakingMessageId}
               callHoldsSpeaker={callHoldsSpeaker}
               onSpeak={speakMessage}
@@ -1225,8 +1204,8 @@ function SpaceShell() {
               onRemoveAttachment={composer.removeAttachment}
               onSend={composer.sendMessage}
               onStop={stopRun}
-              phoneCallsEnabled={bootstrapMe?.phoneCallsEnabled === true}
-              dictationTranscribe={voiceStatus ? Boolean(voiceStatus.transcribe) : undefined}
+              phoneCallsEnabled={false}
+              dictationTranscribe={false}
               artifactTarget={transcriptArtifactTarget}
               replyTarget={composer.replyTarget}
               replyQuote={composer.replyQuote}
@@ -1254,10 +1233,9 @@ function SpaceShell() {
       </main>
 
       <PageViewHost />
-      <CallCard onSettings={() => openSettings("voice")} />
       <IncomingCall
-        bots={bootstrapMe?.phoneCallsEnabled ? bots : []}
-        transcribe={voiceStatus ? Boolean(voiceStatus.transcribe) : undefined}
+        bots={[]}
+        transcribe={false}
         onAnswered={(botId) => navigate(`/app/${botId}`)}
       />
 
@@ -1301,6 +1279,7 @@ function SpaceShell() {
               computer={computer}
               computerOpen={computerOpen}
               embeddedScreenUrl={computerControls.embeddedScreenUrl}
+              screenBotId={computerState.screenBotId ?? null}
               screenFrameKey={computerState.screenFrameKey}
               heldScreen={computerState.heldScreen}
               screenFrameRef={computerState.setScreenFrame}
@@ -1460,7 +1439,7 @@ function SpaceShell() {
         open={shortcutsOpen}
         onOpenChange={setShortcutsOpen}
         host={{ desktop: Boolean(desktopBridge()), apple: isApplePlatform() }}
-        dictation={Boolean(bootstrapMe?.phoneCallsEnabled)}
+        dictation={false}
       />
 
       {computerOpen && computerBot ? (
@@ -1476,6 +1455,7 @@ function SpaceShell() {
           booting={booting}
           sendError={sendError}
           embeddedScreenUrl={computerControls.embeddedScreenUrl}
+          screenBotId={computerState.screenBotId ?? null}
           screenFrameKey={computerState.screenFrameKey}
           heldScreen={computerState.heldScreen}
           screenFrameRef={computerState.setScreenFrame}

@@ -27,3 +27,28 @@ export function computerPlaceholder(
 export function computerLabel(mode: ComputerStatus["mode"] | undefined, botName: string) {
   return mode === "dedicated" ? t`${botName}’s computer` : t`Team Computer`;
 }
+
+/**
+ * Gates computer status, screen URL, and held frame on matching the target bot so
+ * bot switches or stale state can never paint another bot's screen or status.
+ */
+export function resolveOwnedComputerScreen(
+  botId: string,
+  computer: ComputerStatus | null,
+  embeddedScreenUrl: string | null,
+  screenBotId?: string | null,
+  heldScreen?: { url: string; key: string } | null,
+): {
+  computer: ComputerStatus | null;
+  embeddedScreenUrl: string | null;
+  heldScreen: { url: string; key: string } | null;
+} {
+  const ownedComputer = computer && (!computer.botId || computer.botId === botId) ? computer : null;
+  const matchesScreenBot = screenBotId === undefined || screenBotId === botId;
+  const active = Boolean(ownedComputer && matchesScreenBot);
+  return {
+    computer: ownedComputer,
+    embeddedScreenUrl: active ? embeddedScreenUrl : null,
+    heldScreen: active ? (heldScreen ?? null) : null,
+  };
+}

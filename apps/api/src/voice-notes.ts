@@ -201,7 +201,7 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
     // A slow self-hosted server is still progressing; allow several times real time.
     const seconds = Math.max(30, audio.byteLength / 3_000);
     let lastError: unknown = new Error(
-      "No voice connection can transcribe. Connect one in Voice settings.",
+      "Voice transcription is unavailable. Check the local speech server.",
     );
     for (const engine of engines) {
       try {
@@ -499,7 +499,7 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
 /** Nothing can transcribe: retrying will not help until a connection is added. */
 class NoTranscriberError extends Error {
   constructor() {
-    super("No voice connection can transcribe. Connect one in Voice settings, then retry.");
+    super("Voice transcription is unavailable. Check the local speech server, then retry.");
   }
 }
 

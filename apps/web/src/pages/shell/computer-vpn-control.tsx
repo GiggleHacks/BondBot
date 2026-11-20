@@ -116,7 +116,8 @@ export function ComputerVpnFlagChip({
   const isBlocked = display.state === "blocked";
   const isVpn = display.state === "vpn";
   const isStopped = display.state === "stopped";
-  const isDirect = display.state === "direct";
+  const isArmedStopped = isStopped && Boolean(botVpn?.vpnProfile);
+  const isDirect = display.state === "direct" || (isStopped && !botVpn?.vpnProfile);
 
   const ledClass = isBlocked
     ? "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.95)]"
@@ -124,15 +125,17 @@ export function ComputerVpnFlagChip({
       ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.95)] animate-pulse"
       : isVpn
         ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.95)]"
-        : isStopped
-          ? "border border-zinc-500 bg-transparent"
-          : "bg-zinc-500/75";
+        : isArmedStopped
+          ? "bg-emerald-400/70 shadow-[0_0_4px_rgba(52,211,153,0.6)]"
+          : isStopped
+            ? "border border-zinc-500 bg-transparent"
+            : "bg-zinc-500/75";
 
   const NetworkIcon = isBlocked
     ? ShieldAlert
     : isWarning
       ? AlertTriangle
-      : display.locked && isVpn
+      : display.locked && (isVpn || isArmedStopped)
         ? ShieldCheck
         : Globe;
 
@@ -140,7 +143,7 @@ export function ComputerVpnFlagChip({
     ? "text-red-400"
     : isWarning
       ? "text-amber-400"
-      : isVpn
+      : isVpn || isArmedStopped
         ? "text-emerald-400"
         : "text-muted-foreground";
 
@@ -150,8 +153,8 @@ export function ComputerVpnFlagChip({
       ? `FALLBACK · ${display.countryCode}`
       : isVpn
         ? `${display.locked ? "VPN LOCKED" : "VPN ON"} · ${display.countryCode}`
-        : isStopped
-          ? `VPN OFF · ${display.countryCode}`
+        : isArmedStopped
+          ? `${display.locked ? "VPN LOCKED" : "VPN READY"} · ${display.countryCode}`
           : `VPN OFF · ${display.countryCode}`;
 
   const tooltip = isBlocked
@@ -160,35 +163,37 @@ export function ComputerVpnFlagChip({
       ? `VPN tunnel down — fell back to ${display.countryName}${display.exitIp ? ` (${display.exitIp})` : ""}`
       : isVpn
         ? `VPN ON${display.locked ? " (Locked)" : ""} · ${display.countryName}${display.exitIp ? ` (${display.exitIp})` : ""}`
-        : `VPN OFF · Direct (${display.countryName}${display.exitIp ? ` · ${display.exitIp}` : ""})`;
+        : isArmedStopped
+          ? `VPN ${display.locked ? "Locked" : "Ready"} · ${display.countryName} (computer asleep — boots on VPN when woken)`
+          : `VPN OFF · Direct (${display.countryName}${display.exitIp ? ` · ${display.exitIp}` : ""})`;
 
   return (
     <span
       title={tooltip}
       className={cn(
         "relative inline-flex items-center rounded-md border transition-colors",
-        compact ? "gap-1 px-1.5 py-0.5" : "gap-1.5 rounded-full px-2 py-0.5",
+        compact ? "gap-0.5 px-1 py-px" : "gap-1.5 rounded-full px-2 py-0.5",
         isBlocked
           ? "border-red-500/60 bg-red-500/15"
           : isWarning
             ? "border-amber-500/60 bg-amber-500/15"
-            : isVpn
+            : isVpn || isArmedStopped
               ? "border-emerald-500/50 bg-emerald-500/12"
               : "border-border/70 bg-muted/50",
-        isStopped && "opacity-70",
+        isStopped && !isArmedStopped && "opacity-75",
       )}
     >
       <span
         aria-hidden="true"
-        className={cn("inline-block size-1.5 shrink-0 rounded-full", ledClass)}
+        className={cn(compact ? "size-1" : "size-1.5", "inline-block shrink-0 rounded-full", ledClass)}
       />
-      <NetworkIcon className={cn("size-3 shrink-0", iconTone)} aria-hidden="true" />
+      <NetworkIcon className={cn(compact ? "size-2.5" : "size-3", "shrink-0", iconTone)} aria-hidden="true" />
       <CountryFlag
         code={display.countryCode}
         className={cn(
-          compact ? "h-2.5 w-3.5 rounded-[2px]" : "h-3 w-4 rounded-[2px]",
+          compact ? "h-2 w-3 rounded-[2px]" : "h-3 w-4 rounded-[2px]",
           "shrink-0 ring-1 ring-white/20",
-          (isBlocked || isDirect) && !isVpn && "opacity-90",
+          (isBlocked || isDirect) && !isVpn && !isArmedStopped && "opacity-90",
           isBlocked && "grayscale opacity-60",
         )}
       />
@@ -200,7 +205,7 @@ export function ComputerVpnFlagChip({
               ? "text-red-300"
               : isWarning
                 ? "text-amber-300"
-                : isVpn
+                : isVpn || isArmedStopped
                   ? "text-emerald-300"
                   : "text-muted-foreground",
           )}
@@ -470,6 +475,7 @@ export function ComputerVpnPopover({
                 aria-label={t`Lock to VPN (Kill Switch)`}
                 checked={locked}
                 disabled={busy || !selectedProfile}
+                className="data-checked:bg-emerald-500"
                 onCheckedChange={(checked) => void toggleLock(checked)}
               />
             </div>

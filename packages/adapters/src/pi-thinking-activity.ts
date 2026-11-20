@@ -8,13 +8,18 @@ import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-s
 export function withPiThinkingActivity(
   stream: AssistantMessageEventStream,
   setThinking: (active: boolean) => void,
+  reasoning?: { start: () => void; delta: (text: string) => void },
 ): AssistantMessageEventStream {
   class ThinkingStream extends AssistantMessageEventStream {
     override async *[Symbol.asyncIterator](): AsyncGenerator<AssistantMessageEvent> {
       try {
         for await (const event of stream) {
-          if (event.type === "thinking_start") setThinking(true);
-          else if (event.type !== "thinking_delta") setThinking(false);
+          if (event.type === "thinking_start") {
+            setThinking(true);
+            reasoning?.start();
+          } else if (event.type === "thinking_delta") {
+            reasoning?.delta(event.delta);
+          } else setThinking(false);
           yield event;
         }
       } finally {

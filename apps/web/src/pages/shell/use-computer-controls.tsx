@@ -1,5 +1,12 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Bot, ComputerReleaseReason, Me, Run, ThreadSnapshot } from "@rakazo/contracts";
+import type {
+  Bot,
+  ComputerReleaseReason,
+  ComputerStatus,
+  Me,
+  Run,
+  ThreadSnapshot,
+} from "@rakazo/contracts";
 import { isComputerAllowanceUsed } from "@rakazo/contracts";
 import {
   COMPUTER_CONTROL_HEARTBEAT_MS,
@@ -22,7 +29,26 @@ import {
 } from "../../lib/thread-events";
 import { useEventListener } from "../../lib/use-event-listener";
 import { errorText } from "../../lib/user-error";
+import { resolveOwnedComputerScreen } from "./computer-view";
 import type { ComputerState } from "./use-computer";
+
+function cachedComputerTarget(
+  botId: string,
+  live: { computer: ComputerStatus | null; screenUrl: string | null; screenBotId?: string },
+  cached: { computer: ComputerStatus | null; screenUrl: string | null } | undefined,
+) {
+  if (live.computer?.botId === botId) {
+    return {
+      computer: live.computer,
+      screenUrl:
+        live.screenBotId === undefined || live.screenBotId === botId ? live.screenUrl : null,
+    };
+  }
+  return {
+    computer: cached?.computer?.botId === botId ? cached.computer : null,
+    screenUrl: cached?.computer?.botId === botId ? (cached.screenUrl ?? null) : null,
+  };
+}
 
 /** Booting, opening, taking over and releasing the computer, and what its views show. */
 export function useComputerControls({
@@ -68,6 +94,7 @@ export function useComputerControls({
     booting,
     bootsInFlight,
     screenUrl,
+    screenBotId,
     setScreenUrl,
     screenUrlLoadedBotId,
     setScreenUrlLoadedBotId,
@@ -115,8 +142,11 @@ export function useComputerControls({
     if (panel !== "settings") releaseComputerRecovery();
   }, [panel, releaseComputerRecovery]);
   useEffect(() => () => window.clearTimeout(recoveryHoldTimer.current), []);
+  const effectiveOverlayBotId =
+    active?.id && (!computerOpen || computerBotId === active.id) ? active.id : computerBotId;
   const computerBot =
-    (computerBotId ? bots.find((bot) => bot.id === computerBotId) : undefined) ?? active;
+    (effectiveOverlayBotId ? bots.find((bot) => bot.id === effectiveOverlayBotId) : undefined) ??
+    active;
   useEffect(() => {
     setScreenLoadError(null);
   }, [computerBot?.id, screenUrl]);
@@ -142,9 +172,11 @@ export function useComputerControls({
     const stillThisBoot = () => computerBootEpoch.current === epoch;
     const stillThisBot = () =>
       computerBotIdRef.current === targetBotId || activeBotId.current === targetBotId;
-    const cached = computerCacheRef.current.get(targetBotId);
-    const targetComputer = computer?.botId === targetBotId ? computer : (cached?.computer ?? null);
-    const targetScreen = computer?.botId === targetBotId ? screenUrl : (cached?.screenUrl ?? null);
+    const { computer: targetComputer, screenUrl: targetScreen } = cachedComputerTarget(
+      targetBotId,
+      { computer, screenUrl, screenBotId },
+      computerCacheRef.current.get(targetBotId),
+    );
     const needsBoot = force || targetComputer?.state !== "running" || !targetScreen;
     if (showProgress && needsBoot) setBootingBotId(targetBotId);
     setComputerError(null);
@@ -309,13 +341,15 @@ export function useComputerControls({
     if (!bot) return false;
     computerBotIdRef.current = id;
     setComputerBotId(id);
-    const cached = computerCacheRef.current.get(id);
-    const targetComputer = computer?.botId === id ? computer : (cached?.computer ?? null);
-    const targetScreen = computer?.botId === id ? screenUrl : (cached?.screenUrl ?? null);
+    const { computer: targetComputer, screenUrl: targetScreen } = cachedComputerTarget(
+      id,
+      { computer, screenUrl, screenBotId },
+      computerCacheRef.current.get(id),
+    );
     if (computer?.botId !== id) {
       setScreenUrlLoadedBotId(null);
       commitComputer(targetComputer);
-      setScreenUrl(targetScreen);
+      setScreenUrl(targetScreen, id);
     }
     // Reopening during a boot shows it; a second boot would be refused as busy.
     const bootInFlight = bootsInFlight.current.has(id) || targetComputer?.state === "booting";
@@ -405,14 +439,19 @@ export function useComputerControls({
     [],
   );
 
-  const embeddedScreenUrl = embeddableScreenUrl(screenUrl);
+  const rawEmbeddedScreenUrl = embeddableScreenUrl(screenUrl);
+  const owned = computerBot?.id
+    ? resolveOwnedComputerScreen(computerBot.id, computer, rawEmbeddedScreenUrl, screenBotId)
+    : { computer, embeddedScreenUrl: rawEmbeddedScreenUrl };
+  const ownedComputer = owned.computer;
+  const embeddedScreenUrl = owned.embeddedScreenUrl;
   const hideScreenLoadError = computerErrorFromScreen && Boolean(embeddedScreenUrl);
   const screenFailure =
     Boolean(screenLoadError) ||
     Boolean(computerError && !hideScreenLoadError && computerErrorFromScreen) ||
     screenMissing({
-      state: computer?.state,
-      runsOnUserMachine: runsOnUserMachine(computer),
+      state: ownedComputer?.state,
+      runsOnUserMachine: runsOnUserMachine(ownedComputer),
       booting,
       screenUrlLoaded: Boolean(computerBot?.id && screenUrlLoadedBotId === computerBot.id),
       embeddedUrl: embeddedScreenUrl,
@@ -423,11 +462,12 @@ export function useComputerControls({
       : (screenLoadError ??
         (screenFailure
           ? t`Could not connect to the computer screen`
-          : !booting && computer?.state === "error"
+          : !booting && ownedComputer?.state === "error"
             ? t`Computer failed to boot`
             : null));
   // Retrying cannot help once the hours are spent; only a plan change can.
-  const allowanceUsed = computer?.state !== "running" && isComputerAllowanceUsed(computerFailure);
+  const allowanceUsed =
+    ownedComputer?.state !== "running" && isComputerAllowanceUsed(computerFailure);
   const computerScreenError = computerFailure ? (
     <div role="alert" className="flex flex-col items-center gap-3 px-6 text-center text-body">
       {screenFailure ? (
@@ -452,7 +492,7 @@ export function useComputerControls({
             // background screen reads clear only their own error.
             screenAwaitsRetry.current = false;
             resetScreenReconnect();
-            if (computer?.state === "running") {
+            if (ownedComputer?.state === "running") {
               setComputerError(null);
               setComputerErrorFromScreen(false);
               // The screen is read only while its window is open, so a retry from the panel opens it.
@@ -474,11 +514,11 @@ export function useComputerControls({
       {computerBot &&
       // A screen that will not load on a running computer offers Recover, never a Reset that
       // wipes unsaved work; a failed computer offers whichever repair it has.
-      ((screenFailure && computer?.state === "running" && computer.canUpdate) ||
-        (computer?.state === "error" && !allowanceUsed)) ? (
+      ((screenFailure && ownedComputer?.state === "running" && ownedComputer.canUpdate) ||
+        (ownedComputer?.state === "error" && !allowanceUsed)) ? (
         <ComputerMaintenanceActions
           botId={computerBot.id}
-          computer={computer}
+          computer={ownedComputer}
           onChanged={async () => {
             await refreshComputerFor(computerBot.id);
           }}
@@ -488,7 +528,7 @@ export function useComputerControls({
   ) : null;
   // Booting shows inline with the screen's own Close; leaving it lets the boot finish.
   const computerBooting =
-    booting || computer?.state === "booting" ? (
+    booting || ownedComputer?.state === "booting" ? (
       <span className="flex flex-col items-center gap-3">
         <Spinner aria-hidden className="size-5 motion-reduce:animate-none" />
         {t`Booting live desktop…`}
@@ -496,8 +536,8 @@ export function useComputerControls({
     ) : null;
   const computerPreviewScreen =
     !computerOpen &&
-    !runsOnUserMachine(computer) &&
-    computer?.state === "running" &&
+    !runsOnUserMachine(ownedComputer) &&
+    ownedComputer?.state === "running" &&
     Boolean(embeddedScreenUrl) &&
     !computerScreenError;
   const showingRecoveryHint =

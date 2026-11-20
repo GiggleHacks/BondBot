@@ -278,10 +278,14 @@ export function useThreadSync({
       computerRef.current,
       expandedHistoryThread.current === snap.threadId,
     );
+    const nextComputer =
+      reconciled.computer && reconciled.computer.botId && reconciled.computer.botId !== id
+        ? null
+        : reconciled.computer;
     webLogoAvatarActivity.reconcile(snap);
     commitSnapshot(reconciled.snapshot);
-    commitComputer(reconciled.computer);
-    cacheComputerFor(id, { computer: reconciled.computer });
+    commitComputer(nextComputer);
+    cacheComputerFor(id, { computer: nextComputer });
     if (
       stickToEnd &&
       readerEpoch === readerScrollEpoch.current &&

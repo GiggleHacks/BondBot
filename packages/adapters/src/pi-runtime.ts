@@ -100,6 +100,7 @@ import type { PiSessionHandle, PiSessionRecorder } from "./pi-session.js";
 import { PiJsonlSessionRecorder } from "./pi-session.js";
 import { withPiTelemetry } from "./pi-telemetry.js";
 import { withPiThinkingActivity } from "./pi-thinking-activity.js";
+import { reasoningCapture, reasoningEnabledFor } from "./reasoning-capture.js";
 import { observedPiStream } from "./pi-usage.js";
 import type { RejectedProviderRequest } from "./provider-request-shape.js";
 import { attachRejectedRequests, rejectedRequestsOf } from "./provider-request-shape.js";
@@ -490,6 +491,7 @@ export class PiAgentRuntime implements AgentRuntime {
                 target.config.cacheCapabilities?.retentionMode,
               ),
               setThinking,
+              reasoningEnabledFor(request.botId) ? reasoningCapture(request.runId) : undefined,
             );
           },
           onContextLimit: (contextWindow) => {

@@ -281,6 +281,11 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     result: z.string().optional(),
   }),
   z.object({
+    /** The model's visible reasoning for the turn, shown collapsed (local addition: bots listed in /data/reasoning-bots.txt). */
+    kind: z.literal("reasoning"),
+    reasoning: z.string(),
+  }),
+  z.object({
     kind: z.literal("child_bot"),
     botId: z.string(),
     name: z.string(),

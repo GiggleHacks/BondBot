@@ -7,13 +7,20 @@ import type { ReactNode } from "react";
 import { ComputersUnavailableHint } from "../../components/ComputersUnavailableHint";
 import { runsOnUserMachine } from "../../lib/computer-sandbox";
 import { screenFrames, screenIframeSandbox } from "../../lib/computer-screen";
-import { computerLabel, computerPlaceholder, DesktopKindEmptyState } from "./computer-view";
+import {
+  computerLabel,
+  computerPlaceholder,
+  DesktopKindEmptyState,
+  resolveOwnedComputerScreen,
+} from "./computer-view";
 
 type ComputerPanelProps = {
   bot: Bot;
   computer: ComputerStatus | null;
   computerOpen: boolean;
   embeddedScreenUrl: string | null;
+  /** Bot that owns `embeddedScreenUrl`; mismatches stay hidden across bot switches. */
+  screenBotId?: string | null;
   /** Changes to load the screen again in a new frame. */
   screenFrameKey?: string;
   heldScreen?: { url: string; key: string } | null;
@@ -39,12 +46,24 @@ export function ComputerPanel({
   onDismissDiskWarning,
   ...props
 }: ComputerPanelProps) {
-  const percent = props.computer?.diskFullPercent;
+  const owned = resolveOwnedComputerScreen(
+    props.bot.id,
+    props.computer,
+    props.embeddedScreenUrl,
+    props.screenBotId,
+    props.heldScreen,
+  );
+  const percent = owned.computer?.diskFullPercent;
   const warn = percent !== undefined && onCleanUpDisk && onDismissDiskWarning;
   // The preview keeps its place either way, so the warning never remounts the live screen.
   return (
     <>
-      <ComputerPreview {...props} />
+      <ComputerPreview
+        {...props}
+        computer={owned.computer}
+        embeddedScreenUrl={owned.embeddedScreenUrl}
+        heldScreen={owned.heldScreen}
+      />
       {warn && (
         <div
           data-testid="computer-disk-warning"

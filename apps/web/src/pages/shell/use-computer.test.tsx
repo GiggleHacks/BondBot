@@ -948,3 +948,96 @@ it("offers Recover for a computer that failed to boot", async () => {
   const buttons = [...container.querySelectorAll("button")].map((button) => button.textContent);
   expect(buttons).toEqual(["Retry screen", "Recover computer"]);
 });
+
+it("scopes cached computer state, screen URL, and iframe keys to the selected bot in the side panel", async () => {
+  const botScreenRequests: string[] = [];
+  const bot1ScreenFirst = deferred<{ url: string }>();
+  const bot1ScreenSecond = deferred<{ url: string }>();
+  let bot1Calls = 0;
+  const botRpc = {
+    computer: {
+      screenUrl: vi.fn(({ botId }: { botId: string }) => {
+        botScreenRequests.push(botId);
+        if (botId === "bot-1") {
+          bot1Calls += 1;
+          return (bot1Calls === 1 ? bot1ScreenFirst : bot1ScreenSecond).promise;
+        }
+        return Promise.resolve({ url: `https://screen.test/${botId}` });
+      }),
+    },
+  };
+  let activeId = "bot-1";
+  const activeBotIdRef = { current: "bot-1" };
+  function PanelSwitchHarness({ currentBotId }: { currentBotId: string }) {
+    activeBotIdRef.current = currentBotId;
+    state = useComputerState({
+      rpc: botRpc as never,
+      panel: "settings",
+      activeId: currentBotId,
+      activeBotId: activeBotIdRef,
+    });
+    return null;
+  }
+
+  await act(async () => root.render(<PanelSwitchHarness currentBotId={activeId} />));
+  // With the side panel open, switching to bot-1 reads its screen even without opening the overlay.
+  await act(async () => {
+    state.commitComputer({ botId: "bot-1", state: "running", kind: "browser" } as never);
+    state.cacheComputerFor("bot-1", {
+      computer: { botId: "bot-1", state: "running", kind: "browser" } as never,
+    });
+  });
+  expect(botScreenRequests).toContain("bot-1");
+
+  // Switch to uncached bot-2 before bot-1's screen response resolves: bot-1 state is cleared and rejected.
+  activeId = "bot-2";
+  await act(async () => {
+    state.showCachedComputer("bot-2");
+    root.render(<PanelSwitchHarness currentBotId={activeId} />);
+  });
+  expect(state.computer).toBeNull();
+  expect(state.screenUrl).toBeNull();
+  expect(state.screenBotId).toBe("bot-2");
+
+  await act(async () => {
+    bot1ScreenFirst.resolve({ url: "https://screen.test/bot-1-late" });
+    await Promise.resolve();
+  });
+  // Late response for bot-1 must not overwrite bot-2's screen.
+  expect(state.screenUrl).toBeNull();
+  expect(state.screenBotId).toBe("bot-2");
+
+  // Running bot-2 in the side panel loads its own screen and gets a bot-scoped frame key.
+  await act(async () => {
+    state.commitComputer({ botId: "bot-2", state: "running", kind: "browser" } as never);
+    state.cacheComputerFor("bot-2", {
+      computer: { botId: "bot-2", state: "running", kind: "browser" } as never,
+    });
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(state.screenUrl).toBe("https://screen.test/bot-2");
+  expect(state.screenBotId).toBe("bot-2");
+  const bot2Key = state.screenFrameKey;
+  expect(bot2Key.startsWith("bot-2:")).toBe(true);
+
+  // Switch back to bot-1: bot-2's frame key and URL do not linger, and fresh key differs.
+  activeId = "bot-1";
+  await act(async () => {
+    state.showCachedComputer("bot-1");
+    root.render(<PanelSwitchHarness currentBotId={activeId} />);
+  });
+  expect(state.computer?.botId).toBe("bot-1");
+  expect(state.screenBotId).toBe("bot-1");
+  expect(state.screenUrl).toBeNull();
+  expect(state.screenFrameKey.startsWith("bot-1:")).toBe(true);
+  expect(state.screenFrameKey).not.toBe(bot2Key);
+
+  await act(async () => {
+    bot1ScreenSecond.resolve({ url: "https://screen.test/bot-1-fresh" });
+    await Promise.resolve();
+  });
+  expect(state.screenUrl).toBe("https://screen.test/bot-1-fresh");
+  expect(state.screenBotId).toBe("bot-1");
+});

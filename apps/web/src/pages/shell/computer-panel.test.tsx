@@ -187,3 +187,36 @@ it("shows no disk warning while the disk has room", async () => {
   });
   expect(container.querySelector('[data-testid="computer-disk-warning"]')).toBeNull();
 });
+
+it("never shows another bot's computer status or screen iframe across a bot switch", async () => {
+  const otherComputer = { ...computer("running"), botId: "bot-2", diskFullPercent: 95 };
+  await render(otherComputer, vi.fn(), undefined, "https://example.test/bot-2/screen");
+  expect(container.querySelector("iframe")).toBeNull();
+  expect(container.querySelector('[data-state="idle"]')?.textContent).toContain("Asleep");
+  expect(container.querySelector('[data-testid="computer-disk-warning"]')).toBeNull();
+
+  // Even when computer.botId matches, a screen URL owned by another bot is suppressed.
+  await act(async () => {
+    root.render(
+      <ComputerPanel
+        bot={bot}
+        computer={computer("running")}
+        computerOpen={false}
+        embeddedScreenUrl="https://example.test/bot-2/screen"
+        screenBotId="bot-2"
+        heldScreen={{ url: "https://example.test/bot-2/held", key: "held-2" }}
+        screenFrameRef={() => undefined}
+        computerScreenError={null}
+        computerBooting={null}
+        booting={false}
+        showingRecoveryHint={false}
+        showComputerRecoveryHint={false}
+        onRecovered={() => undefined}
+        onRecoveryDismissed={() => undefined}
+        onOpen={vi.fn()}
+      />,
+    );
+  });
+  expect(container.querySelector("iframe")).toBeNull();
+  expect(container.querySelector('[data-state="running"]')?.textContent).toContain("Awake");
+});

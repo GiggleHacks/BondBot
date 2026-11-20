@@ -200,6 +200,8 @@ export function createRepos(
         sectionId: true,
         updatedAt: true,
         parentBotId: true,
+        modelProvider: true,
+        modelId: true,
         thread: { select: { id: true, reads: readStateFor(userId) } },
         runs: activeRunSelection,
       },
@@ -226,6 +228,9 @@ export function createRepos(
         status: activeRun?.status ?? "idle",
         threadStatus: threadRunStatus(bot.runs, bot.thread.id),
         runErrorId: rosterRunErrorId(bot.thread.runs[0], activeRun),
+        // The model it is running right now; the bot's own setting while idle.
+        modelProvider: activeRun?.modelProvider ?? bot.modelProvider ?? null,
+        modelId: activeRun?.modelId ?? bot.modelId ?? null,
         updatedAt: rosterUpdatedAt(bot.thread.messages[0], bot.updatedAt).toISOString(),
       };
     });

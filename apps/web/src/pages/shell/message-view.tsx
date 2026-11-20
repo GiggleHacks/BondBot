@@ -12,8 +12,8 @@ import type {
 import type { ChildBotBlock, PeerExchange } from "@rakazo/core";
 import { isPeerReceiptBlocks, isToolActivityBlock, otherAuthor } from "@rakazo/core";
 import { BotAvatar, Button, cn, resolvePersonaColorDef } from "@rakazo/ui-web";
-import { UserRound } from "lucide-react";
-import { memo, useCallback, useMemo } from "react";
+import { ChevronRight, UserRound } from "lucide-react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { ArtifactFileCard } from "../../components/ArtifactFileCard";
 import { AskCard } from "../../components/AskCard";
 import { CollaborationMarker } from "../../components/ai/CollaborationMarker";
@@ -32,6 +32,7 @@ import {
 import { SkillDraftCard } from "../../components/teach/SkillDraftCard";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { messageProviderLabel } from "../../lib/messaging";
+import { reasoningPreference } from "../../lib/reasoning-preference";
 import type { PageBlock } from "../../lib/page-cards";
 import { useOpenPage } from "../../lib/pages";
 import type { createSpaceRpc } from "../../lib/rpc";
@@ -149,7 +150,11 @@ export const MessageView = memo(function MessageView({
     message.role === "bot" &&
     message.blocks.length > 0 &&
     message.blocks.every(
-      (block) => block.kind === "text" || block.kind === "progress" || block.kind === "steps",
+      (block) =>
+        block.kind === "text" ||
+        block.kind === "progress" ||
+        block.kind === "steps" ||
+        block.kind === "reasoning",
     );
   const isLive = message.id.startsWith("progress:");
   const quoteMessageId = message.id.includes(":") ? undefined : message.id;
@@ -448,6 +453,9 @@ export const MessageView = memo(function MessageView({
               </div>
             );
           }
+          if (block.kind === "reasoning") {
+            return <ReasoningBlock key={i} reasoning={block.reasoning} />;
+          }
           if (block.kind === "subagent") {
             const { botId } = message;
             // A saved running card is a background helper's; a live one belongs to this turn.
@@ -731,5 +739,33 @@ function BotMention({
       </span>
       {name}
     </button>
+  );
+}
+
+/** The model's reasoning for a turn: small grey text, open by default, tap the heading to fold it (local addition). */
+function ReasoningBlock({ reasoning }: { reasoning: string }) {
+  const show = reasoningPreference.use();
+  const [open, setOpen] = useState(true);
+  if (!show) return null;
+  return (
+    <div className="w-full max-w-full">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex items-center gap-1 rounded-md py-0.5 text-body-sm font-medium text-muted-foreground hover:text-foreground"
+      >
+        <ChevronRight className={`size-3.5 transition-transform ${open ? "rotate-90" : ""}`} />
+        <span>Reasoning</span>
+      </button>
+      {open ? (
+        <div
+          dir="auto"
+          className="mt-0.5 max-h-[50vh] overflow-y-auto whitespace-pre-wrap border-s-2 border-border ps-3 text-body-sm leading-relaxed text-muted-foreground"
+        >
+          {reasoning}
+        </div>
+      ) : null}
+    </div>
   );
 }

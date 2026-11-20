@@ -7,6 +7,7 @@ import type {
 import { toast } from "@rakazo/ui-web";
 import { useCallback, useEffect, useState } from "react";
 import type { createSpaceRpc } from "../../lib/rpc";
+import { playVpnSound, primeVpnAudio } from "../../lib/vpn-sounds";
 
 export interface ComputerVpnController {
   overview: ComputerVpnOverview | null;
@@ -46,15 +47,29 @@ export function useComputerVpn({
 
   const setBotVpn = useCallback(
     async (input: SetComputerVpnInput): Promise<BotVpnStatus | null> => {
+      primeVpnAudio();
+      const previous = overview?.bots[input.botId];
       setPendingBotId(input.botId);
       try {
         const updated = await rpc.computer.setVpn(input);
+        if (input.profile === null) {
+          playVpnSound("vpn-off");
+        } else if (
+          previous &&
+          previous.vpnProfile === input.profile &&
+          previous.vpnLocked !== input.locked
+        ) {
+          playVpnSound(input.locked ? "lock-on" : "lock-off");
+        } else {
+          playVpnSound("vpn-on");
+        }
         if (input.switchToDedicated) {
           await refreshBots().catch(() => undefined);
         }
         await refreshVpn();
         return updated;
       } catch (error) {
+        playVpnSound("error");
         const message =
           error instanceof Error ? error.message : "Failed to update VPN settings";
         toast.error(message);
@@ -63,7 +78,7 @@ export function useComputerVpn({
         setPendingBotId((current) => (current === input.botId ? null : current));
       }
     },
-    [refreshBots, refreshVpn, rpc],
+    [overview, refreshBots, refreshVpn, rpc],
   );
 
   return { overview, pendingBotId, refreshVpn, setBotVpn };

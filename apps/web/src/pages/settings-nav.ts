@@ -12,7 +12,6 @@ import {
   Monitor,
   Settings,
   ShieldCheck,
-  Volume2,
   Wallet,
 } from "lucide-react";
 import type { ComponentType } from "react";
@@ -68,12 +67,6 @@ export function useSettingsNavItems(available: {
       label: t`Memory`,
       icon: Brain,
       description: t`What your bots remember between chats.`,
-    },
-    {
-      id: "voice",
-      label: t`Voice`,
-      icon: Volume2,
-      description: t`Calls, dictation, and replies read aloud.`,
     },
     ...(available.messaging
       ? [
