@@ -1,4 +1,13 @@
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import type {
   ArtifactStore,
@@ -14,6 +23,7 @@ import {
 import type { Actor } from "@rakazo/contracts";
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import {
+  isUniqueViolation,
   LeaseHeldError,
   LeaseLostError,
   readJsonColumn,
@@ -24,18 +34,29 @@ import {
 import { getLogger } from "@rakazo/logging";
 import type { Context, Hono } from "hono";
 import * as z from "zod";
-import { storeOwnedArtifact } from "./artifacts.js";
+import { deleteArtifactFamily, storeOwnedArtifact } from "./artifacts.js";
 import { readBoundedBody, readBoundedBytes } from "./http-body.js";
 import type { ThreadTarget } from "./thread-target.js";
 import { resolveThreadTarget, sendThreadMessage } from "./thread-target.js";
 import { loadVoiceCredential, voiceContext, voiceProviderFor } from "./voice.js";
 import {
+  AudioConversionError,
   cutPiece,
   decodeForSpeech,
+  liveHasNoPieceYet,
   pausesAfter,
   planPieces,
   toPlayableAudio,
 } from "./voice-note-audio.js";
+import {
+  createSemaphore,
+  declareProblem,
+  exceedsDeclaredDuration,
+  MAX_CONCURRENT_JOBS,
+  MAX_OPEN_NOTES,
+  partProblem,
+  selectOrphanDirs,
+} from "./voice-note-guards.js";
 
 /** An hour, plus slack for the recorder's last slice. */
 export const MAX_NOTE_MS = 61 * 60_000;
@@ -49,6 +70,11 @@ const STALE_MS = 3 * 60_000;
 const SWEEP_MS = 60_000;
 /** An upload untouched this long (a phone that never came back online) is dropped. */
 const ABANDONED_MS = 7 * 24 * 60 * 60_000;
+/** A note that failed and was never retried is dropped this long after. */
+const FAILED_KEEP_MS = 14 * 24 * 60 * 60_000;
+/** Folders no note owns are looked for this often, and only once they are this old. */
+const ORPHAN_SWEEP_MS = 10 * 60_000;
+const ORPHAN_GRACE_MS = 10 * 60_000;
 /** A provider that keeps failing stops the note here; the person can retry it. */
 const MAX_TRIES = 4;
 const MAX_TRANSCRIPT_CHARS = 90_000;
@@ -102,6 +128,20 @@ function noteDir(deps: VoiceNoteDeps, id: string) {
   return path.join(deps.env.dataDir, "voice-notes", id);
 }
 
+/** Bytes the given parts take on disk; a part not there (yet) counts as nothing. */
+async function storedBytes(deps: VoiceNoteDeps, id: string, parts: Iterable<number>) {
+  const dir = noteDir(deps, id);
+  const sizes = await Promise.all(
+    [...new Set(parts)].map((part) =>
+      stat(path.join(dir, `${part}.part`)).then(
+        (info) => info.size,
+        () => 0,
+      ),
+    ),
+  );
+  return sizes.reduce((sum, size) => sum + size, 0);
+}
+
 function targetOf(row: { botId: string | null; groupId: string | null }) {
   return row.groupId ? { groupId: row.groupId } : { botId: row.botId ?? "" };
 }
@@ -140,6 +180,11 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
   const log = getLogger();
   const tries = new Map<string, number>();
   const running = new Set<string>();
+  // Decoding and transcribing are heavy; the rest of the notes wait their turn.
+  const limited = createSemaphore(MAX_CONCURRENT_JOBS);
+  // Aborts running conversions when the server stops.
+  let shutdown = new AbortController();
+  let lastOrphanSweep = 0;
 
   const changed = (spaceId: string) => deps.events.publishSpaceChange?.(spaceId, "voiceNotes");
 
@@ -227,14 +272,25 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
     throw lastError;
   }
 
-  async function assemble(id: string, parts: number, name = "source"): Promise<string> {
+  /** Joins the first `parts` parts into one file, one part in memory at a time. */
+  async function assemble(
+    id: string,
+    parts: number,
+    maxBytes: number,
+    name = "source",
+  ): Promise<string> {
     const dir = noteDir(deps, id);
     const source = path.join(dir, name);
-    const chunks: Buffer[] = [];
+    await writeFile(source, "");
+    let total = 0;
     for (let part = 0; part < parts; part += 1) {
-      chunks.push(await readFile(path.join(dir, `${part}.part`)));
+      const chunk = await readFile(path.join(dir, `${part}.part`));
+      total += chunk.byteLength;
+      if (total > maxBytes) {
+        throw new NoteRejectedError("This voice note is larger than it was declared to be.");
+      }
+      await appendFile(source, chunk);
     }
-    await writeFile(source, Buffer.concat(chunks));
     return source;
   }
 
@@ -261,16 +317,39 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
     const have = new Set(row.receivedParts);
     let parts = 0;
     while (have.has(parts) && (options.final ? parts < row.parts : true)) parts += 1;
-    if (options.final && parts < row.parts) throw new Error("Parts are missing from this note.");
+    if (options.final && parts < row.parts) {
+      throw new VoiceNoteUserError("Parts are missing from this note.");
+    }
     if (parts === 0) return texts;
+    if (!options.final) {
+      // Not enough new audio can have arrived for a piece: skip assembling and decoding it all.
+      const received = await storedBytes(
+        deps,
+        id,
+        Array.from({ length: parts }, (_, part) => part),
+      );
+      if (
+        liveHasNoPieceYet({
+          from,
+          receivedBytes: received,
+          declaredBytes: row.bytes,
+          declaredSeconds: row.durationMs / 1000,
+        })
+      ) {
+        return texts;
+      }
+    }
     const dir = noteDir(deps, id);
-    const source = await assemble(id, parts, "speech-source");
+    const source = await assemble(id, parts, row.bytes, "speech-source");
     const wav = path.join(dir, "speech.wav");
-    const duration = await decodeForSpeech(source, wav);
+    const duration = await decodeForSpeech(source, wav, options.signal);
+    if (options.final && exceedsDeclaredDuration(duration, row.durationMs)) {
+      throw new NoteRejectedError("This voice note is longer than it was said to be.");
+    }
     const ends = planPieces({
       from,
       duration,
-      pauses: await pausesAfter(wav, from),
+      pauses: await pausesAfter(wav, from, options.signal),
       final: options.final,
     });
     if (ends.length === 0) return texts;
@@ -283,7 +362,7 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
     const piece = path.join(dir, "piece.ogg");
     for (const end of ends) {
       options.signal.throwIfAborted();
-      await cutPiece(wav, from, end, piece);
+      await cutPiece(wav, from, end, piece, options.signal);
       texts.push(await transcribePiece(actor, engines, piece, options.signal));
       from = end;
       await options.update({
@@ -318,20 +397,31 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
         );
         if (!row || row.status !== "uploading") break;
         const actor = await actorFor(row);
-        await withLease(deps.prisma, `voice-note:${id}`, { ttlMs: LEASE_TTL_MS }, (lease) =>
-          runAsTenant(actor, () =>
-            transcribeRange(actor, id, {
-              final: false,
-              signal: lease.signal,
-              update: async (data) => {
-                await deps.prisma.voiceNote.update({ where: { id }, data });
-              },
-            }),
-          ),
+        await withLease(
+          deps.prisma,
+          `voice-note:${id}`,
+          { ttlMs: LEASE_TTL_MS, signal: shutdown.signal },
+          (lease) =>
+            limited(
+              () =>
+                runAsTenant(actor, () =>
+                  transcribeRange(actor, id, {
+                    final: false,
+                    signal: lease.signal,
+                    update: async (data) => {
+                      await deps.prisma.voiceNote.update({ where: { id }, data });
+                    },
+                  }),
+                ),
+              lease.signal,
+            ),
         );
       } while (advanceAgain.has(id));
     } catch (error) {
-      if (!(error instanceof LeaseHeldError || error instanceof LeaseLostError)) {
+      if (
+        !(error instanceof LeaseHeldError || error instanceof LeaseLostError) &&
+        !shutdown.signal.aborted
+      ) {
         log.warn("voice note live transcription paused", {
           voiceNoteId: id,
           reason: error instanceof Error ? error.message : String(error),
@@ -365,8 +455,11 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
       let artifactId = row.artifactId;
       if (!artifactId) {
         await update({ status: "transcribing", error: null });
-        const source = await assemble(id, row.parts);
-        await toPlayableAudio(source, playable);
+        const source = await assemble(id, row.parts, row.bytes);
+        const decoded = await toPlayableAudio(source, playable, signal);
+        if (decoded !== null && exceedsDeclaredDuration(decoded, row.durationMs)) {
+          throw new NoteRejectedError("This voice note is longer than it was said to be.");
+        }
         const bytes = new Uint8Array(await readFile(playable));
         const when = row.recordedAt ?? row.createdAt;
         const artifact = await storeOwnedArtifact(deps, actor, {
@@ -416,23 +509,31 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
     if (running.has(id)) return;
     running.add(id);
     try {
-      await withLease(deps.prisma, `voice-note:${id}`, { ttlMs: LEASE_TTL_MS }, (lease) =>
-        work(id, lease.signal),
+      await withLease(
+        deps.prisma,
+        `voice-note:${id}`,
+        { ttlMs: LEASE_TTL_MS, signal: shutdown.signal },
+        (lease) => limited(() => work(id, lease.signal), lease.signal),
       );
     } catch (error) {
       if (error instanceof LeaseHeldError || error instanceof LeaseLostError) return;
+      // Stopping the server is not the note's failure; the sweep resumes it.
+      if (shutdown.signal.aborted) return;
       const attempt = (tries.get(id) ?? 0) + 1;
       tries.set(id, attempt);
       const message = error instanceof Error ? error.message : String(error);
       log.warn("voice note failed", { voiceNoteId: id, attempt, reason: message });
-      const giveUp = attempt >= MAX_TRIES || error instanceof NoTranscriberError;
+      const giveUp =
+        attempt >= MAX_TRIES ||
+        error instanceof NoTranscriberError ||
+        error instanceof NoteRejectedError;
+      // The member sees a plain sentence; paths and ffmpeg output stay in the log above.
+      const shown = publicError(error);
       const row = await runAsSystem("voice note: record a failure", () =>
         deps.prisma.voiceNote.update({
           where: { id },
           // Not given up: the sweep tries again once it is stale.
-          data: giveUp
-            ? { status: "failed", error: message.slice(0, 500) }
-            : { error: message.slice(0, 500) },
+          data: giveUp ? { status: "failed", error: shown } : { error: shown },
           select: { spaceId: true },
         }),
       ).catch(() => null);
@@ -474,6 +575,70 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
       );
       await rm(noteDir(deps, row.id), { recursive: true, force: true });
     }
+    // Notes that failed and were never retried.
+    const forgotten = await runAsSystem("voice note: find long-failed notes", () =>
+      deps.prisma.voiceNote.findMany({
+        where: { status: "failed", updatedAt: { lt: new Date(Date.now() - FAILED_KEEP_MS) } },
+        select: { id: true, userId: true, spaceId: true, artifactId: true, transcript: true },
+        take: 20,
+      }),
+    );
+    for (const row of forgotten) {
+      // Only while still failed: a retry since the read keeps its note.
+      const { count } = await runAsSystem("voice note: drop a long-failed note", () =>
+        deps.prisma.voiceNote.deleteMany({ where: { id: row.id, status: "failed" } }),
+      );
+      if (count === 0) continue;
+      await rm(noteDir(deps, row.id), { recursive: true, force: true });
+      await dropUnsentArtifact(row);
+    }
+    if (Date.now() - lastOrphanSweep >= ORPHAN_SWEEP_MS) {
+      lastOrphanSweep = Date.now();
+      await sweepOrphanDirs();
+    }
+  }
+
+  /** The audio a note stored for its message, unless the note got as far as sending it. */
+  async function dropUnsentArtifact(row: {
+    userId: string;
+    spaceId: string;
+    artifactId: string | null;
+    transcript: string | null;
+  }) {
+    const familyId = row.artifactId;
+    if (!familyId || row.transcript !== null) return;
+    try {
+      const actor = await actorFor(row);
+      await runAsTenant(actor, () => deleteArtifactFamily(deps, actor, { familyId }));
+    } catch (error) {
+      log.warn("voice note audio was not removed", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** Folders left by notes that no longer exist (or were sent), such as after a crash. */
+  async function sweepOrphanDirs() {
+    const root = path.join(deps.env.dataDir, "voice-notes");
+    const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
+    const dirs: Array<{ name: string; mtimeMs: number }> = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const info = await stat(path.join(root, entry.name)).catch(() => null);
+      if (info) dirs.push({ name: entry.name, mtimeMs: info.mtimeMs });
+    }
+    for (let at = 0; at < dirs.length; at += 500) {
+      const batch = dirs.slice(at, at + 500);
+      const rows = await runAsSystem("voice note: find folders without a note", () =>
+        deps.prisma.voiceNote.findMany({
+          where: { id: { in: batch.map((dir) => dir.name) } },
+          select: { id: true, status: true },
+        }),
+      );
+      for (const name of selectOrphanDirs(batch, rows, Date.now(), ORPHAN_GRACE_MS)) {
+        await rm(path.join(root, name), { recursive: true, force: true });
+      }
+    }
   }
 
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -483,6 +648,7 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
     advance,
     start() {
       if (timer) return;
+      if (shutdown.signal.aborted) shutdown = new AbortController();
       timer = setInterval(() => {
         sweep().catch((error: unknown) => log.warn("voice note sweep failed", { error }));
       }, SWEEP_MS);
@@ -492,20 +658,35 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
     stop() {
       if (timer) clearInterval(timer);
       timer = null;
+      // A running ffmpeg is killed and the note is picked up again by the next sweep.
+      shutdown.abort();
     },
   };
 }
 
+/** An error whose message is fit to show the member who recorded the note. */
+class VoiceNoteUserError extends Error {}
+
 /** Nothing can transcribe: retrying will not help until a connection is added. */
-class NoTranscriberError extends Error {
+class NoTranscriberError extends VoiceNoteUserError {
   constructor() {
     super("Voice transcription is unavailable. Check the local speech server, then retry.");
   }
 }
 
+/** The upload does not match what was declared; processing it again will not change that. */
+class NoteRejectedError extends VoiceNoteUserError {}
+
+/** What the member sees of a failure; the cause (paths, ffmpeg output) is only logged. */
+function publicError(error: unknown): string {
+  if (error instanceof VoiceNoteUserError) return error.message;
+  if (error instanceof AudioConversionError) return "That recording could not be converted.";
+  return "Voice note processing failed. Try again later.";
+}
+
 class VoiceNoteRequestError extends Error {
   constructor(
-    readonly status: 400 | 404 | 409 | 413,
+    readonly status: 400 | 404 | 409 | 413 | 429,
     message: string,
   ) {
     super(message);
@@ -547,6 +728,7 @@ export function mountVoiceNoteRoutes(
     }
     return row;
   };
+  type NoteRow = Awaited<ReturnType<typeof find>>;
 
   // Declare (or resume) a note. Answers which parts the server already has.
   app.put(
@@ -564,6 +746,19 @@ export function mountVoiceNoteRoutes(
       const parsed = DeclareInput.safeParse(parsedJson);
       if (!parsed.success) throw new VoiceNoteRequestError(400, "That voice note is not valid.");
       const input = parsed.data;
+      const impossible = declareProblem({
+        bytes: input.bytes,
+        parts: input.parts,
+        maxPartBytes: MAX_PART_BYTES,
+      });
+      if (impossible) throw new VoiceNoteRequestError(400, impossible);
+      const answerFor = (existing: NoteRow) => {
+        const received =
+          existing.status === "uploading"
+            ? [...new Set(existing.receivedParts)]
+            : Array.from({ length: existing.parts }, (_, i) => i);
+        return c.json({ id: existing.id, status: existing.status, received });
+      };
       const existing = await deps.prisma.voiceNote.findUnique({
         where: { userId_clientId: { userId: actor.userId, clientId } },
       });
@@ -573,16 +768,27 @@ export function mountVoiceNoteRoutes(
         }
         // A note declared while still recording grows: the final declare names every part.
         if (existing.status === "uploading" && input.parts >= existing.parts) {
+          // It cannot shrink below what is already stored.
+          const stored = await storedBytes(deps, existing.id, existing.receivedParts);
+          if (input.bytes < stored) {
+            throw new VoiceNoteRequestError(400, "That voice note is not valid.");
+          }
           await deps.prisma.voiceNote.update({
             where: { id: existing.id },
             data: { parts: input.parts, durationMs: input.durationMs, bytes: input.bytes },
           });
         }
-        const received =
-          existing.status === "uploading"
-            ? [...new Set(existing.receivedParts)]
-            : Array.from({ length: existing.parts }, (_, i) => i);
-        return c.json({ id: existing.id, status: existing.status, received });
+        return answerFor(existing);
+      }
+      // Recordings that never finish uploading would otherwise pile up on disk.
+      const open = await deps.prisma.voiceNote.count({
+        where: { userId: actor.userId, status: "uploading" },
+      });
+      if (open >= MAX_OPEN_NOTES) {
+        throw new VoiceNoteRequestError(
+          429,
+          "Too many voice notes are still uploading. Try again once some have finished.",
+        );
       }
       // The chat must exist and be the member's to post in.
       try {
@@ -590,20 +796,27 @@ export function mountVoiceNoteRoutes(
       } catch {
         throw new VoiceNoteRequestError(404, "That chat is no longer available.");
       }
-      const created = await deps.prisma.voiceNote.create({
-        data: {
-          clientId,
-          userId: actor.userId,
-          spaceId: actor.spaceId,
-          botId: "botId" in input.target ? input.target.botId : null,
-          groupId: "groupId" in input.target ? input.target.groupId : null,
-          mimeType: input.mimeType,
-          durationMs: input.durationMs,
-          bytes: input.bytes,
-          parts: input.parts,
-          recordedAt: input.recordedAt ? new Date(input.recordedAt) : null,
-        },
-      });
+      let created: NoteRow;
+      try {
+        created = await deps.prisma.voiceNote.create({
+          data: {
+            clientId,
+            userId: actor.userId,
+            spaceId: actor.spaceId,
+            botId: "botId" in input.target ? input.target.botId : null,
+            groupId: "groupId" in input.target ? input.target.groupId : null,
+            mimeType: input.mimeType,
+            durationMs: input.durationMs,
+            bytes: input.bytes,
+            parts: input.parts,
+            recordedAt: input.recordedAt ? new Date(input.recordedAt) : null,
+          },
+        });
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+        // A second declare of the same note won the race: answer with its row.
+        return answerFor(await find(actor, clientId));
+      }
       await changed(actor.spaceId);
       return c.json({ id: created.id, status: created.status, received: [] });
     }),
@@ -623,15 +836,31 @@ export function mountVoiceNoteRoutes(
       const bytes = await readBoundedBytes(c.req.raw, MAX_PART_BYTES);
       if (bytes === null) throw new VoiceNoteRequestError(413, "That part is too large.");
       if (bytes.byteLength === 0) throw new VoiceNoteRequestError(400, "That part is empty.");
+      // What is stored plus this part must stay within the size the note was declared with.
+      const tooMuch = partProblem({
+        declaredBytes: row.bytes,
+        storedBytes: await storedBytes(deps, row.id, row.receivedParts),
+        incomingBytes: bytes.byteLength,
+      });
+      if (tooMuch) throw new VoiceNoteRequestError(413, tooMuch);
       const dir = noteDir(deps, row.id);
       await mkdir(dir, { recursive: true });
       const file = path.join(dir, `${part}.part`);
       await writeFile(`${file}.tmp`, bytes);
       await rename(`${file}.tmp`, file);
-      await deps.prisma.voiceNote.update({
-        where: { id: row.id },
+      const { count } = await deps.prisma.voiceNote.updateMany({
+        where: { id: row.id, status: "uploading", NOT: { receivedParts: { has: part } } },
         data: { receivedParts: { push: part } },
       });
+      if (count === 0) {
+        // Deleted (or finished) while this part arrived: do not leave its folder behind.
+        const left = await deps.prisma.voiceNote.findUnique({
+          where: { id: row.id },
+          select: { id: true },
+        });
+        if (!left) await rm(dir, { recursive: true, force: true });
+        return c.body(null, 204);
+      }
       void notes.advance(row.id);
       return c.body(null, 204);
     }),
@@ -704,8 +933,20 @@ export function mountVoiceNoteRoutes(
       if (row.status === "done" || row.status === "sending") {
         throw new VoiceNoteRequestError(409, "This voice note is already being sent.");
       }
-      await deps.prisma.voiceNote.delete({ where: { id: row.id } });
+      // Only while it is still unsent: a send that started since the read keeps its note.
+      const { count } = await deps.prisma.voiceNote.deleteMany({
+        where: { id: row.id, status: { notIn: ["done", "sending"] } },
+      });
+      if (count === 0) {
+        throw new VoiceNoteRequestError(409, "This voice note is already being sent.");
+      }
       await rm(noteDir(deps, row.id), { recursive: true, force: true });
+      // The audio stored for the chat goes too, unless the note reached sending.
+      if (row.artifactId && row.transcript === null) {
+        await deleteArtifactFamily(deps, actor, { familyId: row.artifactId }).catch(
+          () => undefined,
+        );
+      }
       await changed(actor.spaceId);
       return c.body(null, 204);
     }),

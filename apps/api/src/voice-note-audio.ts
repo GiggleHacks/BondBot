@@ -6,13 +6,35 @@ export const SEGMENT_TARGET_SECONDS = 300;
 /** How far back from the target a pause may be to cut there instead. */
 const SEGMENT_SEARCH_SECONDS = 90;
 const FFMPEG_TIMEOUT_MS = 15 * 60_000;
+/** The longest a note decodes to: MAX_NOTE_MS (61 minutes) plus a few seconds of slack. */
+export const DECODE_LIMIT_SECONDS = 61 * 60 + 5;
+/**
+ * Placed before `-i` on anything a member uploaded: stop reading after the limit, and let
+ * the input name no protocol but a local file or a pipe (no network, no playlist fetches).
+ */
+const UNTRUSTED_INPUT = [
+  "-t",
+  String(DECODE_LIMIT_SECONDS),
+  "-protocol_whitelist",
+  "file,pipe",
+];
+
+/** ffmpeg could not convert the recording; the detail is for the server log, not the member. */
+export class AudioConversionError extends Error {}
 
 export function ffmpegPath(): string {
   return process.env.FFMPEG_PATH?.trim() || "ffmpeg";
 }
 
-async function ffmpeg(args: string[], timeoutMs = FFMPEG_TIMEOUT_MS): Promise<string> {
+async function ffmpeg(
+  args: string[],
+  { timeoutMs = FFMPEG_TIMEOUT_MS, signal }: { timeoutMs?: number; signal?: AbortSignal } = {},
+): Promise<string> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new Error("Audio conversion was cancelled."));
+      return;
+    }
     const child = spawn(ffmpegPath(), ["-hide_banner", "-nostdin", "-y", ...args], {
       stdio: ["ignore", "ignore", "pipe"],
     });
@@ -23,34 +45,63 @@ async function ffmpeg(args: string[], timeoutMs = FFMPEG_TIMEOUT_MS): Promise<st
       stderr = (stderr + chunk).slice(-4_000_000);
     });
     const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
-    child.on("error", (error) => {
+    // A lost lease or a shutdown must not leave ffmpeg running.
+    const onAbort = () => child.kill("SIGKILL");
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const done = () => {
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    child.on("error", (error) => {
+      done();
       reject(error);
     });
     child.on("close", (code) => {
-      clearTimeout(timer);
+      done();
       if (code === 0) resolve(stderr);
-      else reject(new Error(`Audio conversion failed (${code}): ${stderr.slice(-300).trim()}`));
+      else if (signal?.aborted) {
+        reject(signal.reason ?? new Error("Audio conversion was cancelled."));
+      } else {
+        const detail = stderr.slice(-300).trim();
+        reject(new AudioConversionError(`Audio conversion failed (${code}): ${detail}`));
+      }
     });
   });
 }
 
 /** Re-encodes any browser recording into AAC in MP4, which every browser and phone plays. */
-export async function toPlayableAudio(source: string, target: string): Promise<void> {
-  await ffmpeg([
-    "-i",
-    source,
-    "-vn",
-    "-ac",
-    "1",
-    "-c:a",
-    "aac",
-    "-b:a",
-    "48k",
-    "-movflags",
-    "+faststart",
-    target,
-  ]);
+export async function toPlayableAudio(
+  source: string,
+  target: string,
+  signal?: AbortSignal,
+): Promise<number | null> {
+  const log = await ffmpeg(
+    [
+      ...UNTRUSTED_INPUT,
+      "-i",
+      source,
+      "-vn",
+      "-ac",
+      "1",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "48k",
+      "-movflags",
+      "+faststart",
+      target,
+    ],
+    { signal },
+  );
+  return parseDecodedSeconds(log);
+}
+
+/** Seconds of audio ffmpeg wrote, from the last progress line of its log; null when none. */
+export function parseDecodedSeconds(log: string): number | null {
+  const matches = [...log.matchAll(/time=(\d+):(\d+):([\d.]+)/g)];
+  const last = matches.at(-1);
+  if (!last) return null;
+  return Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]);
 }
 
 /** Midpoints of the pauses ffmpeg's silencedetect reported, in seconds. */
@@ -103,58 +154,101 @@ export const LIVE_MARGIN_SECONDS = 20;
 export const LIVE_MIN_SECONDS = 90;
 
 /** Decodes any recording (or a prefix of one still being uploaded) to speech WAV; returns seconds. */
-export async function decodeForSpeech(source: string, wav: string): Promise<number> {
-  await ffmpeg([
-    "-i",
-    source,
-    "-vn",
-    "-ac",
-    "1",
-    "-ar",
-    "16000",
-    "-c:a",
-    "pcm_s16le",
-    "-f",
-    "wav",
-    wav,
-  ]);
+export async function decodeForSpeech(
+  source: string,
+  wav: string,
+  signal?: AbortSignal,
+): Promise<number> {
+  await ffmpeg(
+    [
+      ...UNTRUSTED_INPUT,
+      "-i",
+      source,
+      "-vn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "-c:a",
+      "pcm_s16le",
+      "-f",
+      "wav",
+      wav,
+    ],
+    { signal },
+  );
   const { size } = await stat(wav);
   return Math.max(0, (size - WAV_HEADER_BYTES) / SPEECH_BYTES_PER_SECOND);
 }
 
 /** Pauses in the speech WAV after `from` seconds, as absolute times. */
-export async function pausesAfter(wav: string, from: number): Promise<number[]> {
-  const log = await ffmpeg([
-    "-ss",
-    String(from),
-    "-i",
-    wav,
-    "-af",
-    "silencedetect=noise=-35dB:d=0.4",
-    "-f",
-    "null",
-    "-",
-  ]);
+export async function pausesAfter(
+  wav: string,
+  from: number,
+  signal?: AbortSignal,
+): Promise<number[]> {
+  const log = await ffmpeg(
+    [
+      "-ss",
+      String(from),
+      "-i",
+      wav,
+      "-af",
+      "silencedetect=noise=-35dB:d=0.4",
+      "-f",
+      "null",
+      "-",
+    ],
+    { signal },
+  );
   return parseSilences(log).map((pause) => pause + from);
 }
 
 /** Cuts [from, to) out of the speech WAV as a small Opus file for a transcription request. */
-export async function cutPiece(wav: string, from: number, to: number, target: string) {
-  await ffmpeg([
-    "-ss",
-    String(from),
-    "-t",
-    String(Math.max(0.1, to - from)),
-    "-i",
-    wav,
-    "-ac",
-    "1",
-    "-c:a",
-    "libopus",
-    "-b:a",
-    "24k",
-    target,
-  ]);
+export async function cutPiece(
+  wav: string,
+  from: number,
+  to: number,
+  target: string,
+  signal?: AbortSignal,
+) {
+  await ffmpeg(
+    [
+      "-ss",
+      String(from),
+      "-t",
+      String(Math.max(0.1, to - from)),
+      "-i",
+      wav,
+      "-ac",
+      "1",
+      "-c:a",
+      "libopus",
+      "-b:a",
+      "24k",
+      target,
+    ],
+    { signal },
+  );
+}
+
+/**
+ * True when the audio received so far clearly cannot hold a new piece yet, so the live pass
+ * can skip decoding it. The length is estimated from the share of the declared bytes that
+ * arrived, with a margin so an uneven bitrate never skips a piece that could have gone out.
+ * Unknown sizes never skip. The final pass does not ask.
+ */
+export function liveHasNoPieceYet(input: {
+  from: number;
+  receivedBytes: number;
+  declaredBytes: number;
+  declaredSeconds: number;
+}): boolean {
+  const { from, receivedBytes, declaredBytes, declaredSeconds } = input;
+  if (!(declaredBytes > 0) || !(declaredSeconds > 0) || !(receivedBytes > 0)) return false;
+  const estimate = declaredSeconds * Math.min(1, receivedBytes / declaredBytes) * 1.25;
+  // A piece needs LIVE_MIN_SECONDS of new audio short of the newest LIVE_MARGIN_SECONDS.
+  return estimate < from + LIVE_MIN_SECONDS + LIVE_MARGIN_SECONDS;
 }
 
 /**

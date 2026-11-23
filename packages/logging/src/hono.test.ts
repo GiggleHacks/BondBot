@@ -59,6 +59,21 @@ describe("hono request logging", () => {
     });
   });
 
+  it("skips the completion record of a successful quiet path but not its failures", async () => {
+    const sink = createTestSink();
+    const logger = createLogger({ service: "rakazo-api", sinks: [sink] });
+    const app = new Hono();
+    app.use("*", requestLogging(logger, { quietWhenOk: ["/health"] }));
+    app.get("/health", (c) =>
+      c.req.query("down") ? c.json({ ok: false }, 503) : c.json({ ok: true }),
+    );
+    const ok = await app.request("/health");
+    expect(ok.headers.get("x-request-id")).toBeTruthy();
+    expect(sink.events).toHaveLength(0);
+    await app.request("/health?down=1");
+    expect(sink.events[0]).toMatchObject({ "http.status": 503 });
+  });
+
   it("normalizes matched routes and records duration", async () => {
     const sink = createTestSink();
     const logger = createLogger({ service: "rakazo-api", sinks: [sink] });

@@ -5,7 +5,11 @@ import { formatTraceparent } from "./ids.js";
 import { getLogger } from "./logger.js";
 import type { Logger } from "./types.js";
 
-export function requestLogging(logger?: Logger): MiddlewareHandler {
+export function requestLogging(
+  logger?: Logger,
+  // Paths a probe polls every few seconds: a successful answer is not worth a log line.
+  options: { quietWhenOk?: readonly string[] } = {},
+): MiddlewareHandler {
   return async (c, next) => {
     const log = logger ?? getLogger();
     const correlation = establishRequestCorrelation({
@@ -35,14 +39,17 @@ export function requestLogging(logger?: Logger): MiddlewareHandler {
             : status >= 400
               ? "warn"
               : "info";
-        log[level]("http.request.completed", {
-          // Completion records stay searchable without creating a second collector issue.
-          "error.report": !failure && !context["error.reported"],
-          "http.method": c.req.method,
-          "http.route": matchedRoute(c.req.path, c.req.routePath),
-          "http.status": status,
-          "http.duration_ms": Math.round(performance.now() - started),
-        });
+        const quiet = status === 200 && !failure && options.quietWhenOk?.includes(c.req.path);
+        if (!quiet) {
+          log[level]("http.request.completed", {
+            // Completion records stay searchable without creating a second collector issue.
+            "error.report": !failure && !context["error.reported"],
+            "http.method": c.req.method,
+            "http.route": matchedRoute(c.req.path, c.req.routePath),
+            "http.status": status,
+            "http.duration_ms": Math.round(performance.now() - started),
+          });
+        }
       }
     });
   };

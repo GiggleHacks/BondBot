@@ -840,7 +840,7 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
   app.onError(handleHttpError);
   const inFlight = trackInFlightRequests();
   app.use("*", inFlight.middleware);
-  app.use("*", requestLogging(logger));
+  app.use("*", requestLogging(logger, { quietWhenOk: ["/health", "/internal/health"] }));
   app.use("*", clientIpMiddleware(clientIp, env.clientIpHeader));
   app.use(
     "*",
@@ -1194,6 +1194,8 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
       // on waitForComputerReady for the full boot-wait window during shared Postgres journeys.
       auth.disposeOidcDiscovery();
       shutdown.abort();
+      // Kills any ffmpeg a voice note is running; the next start's sweep resumes the note.
+      voiceNotes.stop();
       // Aborted runs hand themselves back while realtime is still open to announce them.
       const runsStopped = runs?.stop();
       await userDeviceHub?.close();
