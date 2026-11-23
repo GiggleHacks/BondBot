@@ -40,12 +40,19 @@ export function modelBrandKey(
   return null;
 }
 
+/** The icon file and tint for a vendor key from modelBrandKey, if there is one. */
+export function modelBrandInfo(key: string | null): Brand | null {
+  return key ? (BRANDS[key] ?? null) : null;
+}
+
 export function ModelBrandIcon({
   modelProvider,
   modelId,
+  className = "size-3.5",
 }: {
   modelProvider: string | null | undefined;
   modelId: string | null | undefined;
+  className?: string;
 }) {
   const key = modelBrandKey(modelProvider, modelId);
   if (!key) return null;
@@ -60,7 +67,7 @@ export function ModelBrandIcon({
         aria-label={title}
         title={title}
         data-roster-model={key}
-        className="inline-block size-3.5 shrink-0 bg-current text-foreground/80"
+        className={`inline-block ${className} shrink-0 bg-current text-foreground/80`}
         style={{
           ...(brand.color ? { color: brand.color } : {}),
           WebkitMaskImage: `url(${url})`,
@@ -82,7 +89,7 @@ export function ModelBrandIcon({
       title={title}
       data-roster-model={key}
       draggable={false}
-      className="inline-block size-3.5 shrink-0"
+      className={`inline-block ${className} shrink-0`}
     />
   );
 }

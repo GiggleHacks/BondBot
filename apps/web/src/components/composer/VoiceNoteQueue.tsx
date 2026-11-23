@@ -6,6 +6,9 @@ import type { ArtifactTarget } from "../../lib/artifact-open";
 import type { VoiceNoteTarget } from "../../lib/voice-notes/store";
 import { voiceNotes } from "../../lib/voice-notes/voice-notes";
 
+// Local change (David, 2026-11-21): pending voice notes show in the chat now (PendingVoiceNotes).
+const SHOW_IN_COMPOSER = false;
+
 function sameTarget(a: VoiceNoteTarget, b: ArtifactTarget): boolean {
   return "groupId" in a
     ? "groupId" in b && a.groupId === b.groupId
@@ -83,7 +86,7 @@ export function VoiceNoteQueue({ target }: { target: ArtifactTarget }) {
           : undefined,
     });
   }
-  if (rows.length === 0) return null;
+  if (!SHOW_IN_COMPOSER || rows.length === 0) return null;
   return (
     <ul data-testid="voice-note-queue" className="mb-2 flex flex-col gap-1">
       {rows.map((row) => (

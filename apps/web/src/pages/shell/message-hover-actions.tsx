@@ -17,6 +17,9 @@ import { Check, Copy, MessageSquareDot, MoreHorizontal, Reply, Smile } from "luc
 import { useState } from "react";
 import { MessageHoverMetadata } from "../../components/MessageHoverMetadata";
 
+// Local change (David, 2026-11-21): no emoji reaction button in the action row.
+const SHOW_REACTION_BUTTON = false;
+
 export function MessageHoverActions({
   message,
   side,
@@ -44,6 +47,8 @@ export function MessageHoverActions({
   if (message.id.startsWith("progress:")) return null;
 
   const copied = copiedNow && copiedText === copyableMessageText(message);
+  // A message with nothing to copy (a lone image, say) gets no Copy button.
+  const canCopy = Boolean(copyableMessageText(message));
 
   function copyMessage() {
     const text = copyableMessageText(message);
@@ -59,7 +64,7 @@ export function MessageHoverActions({
   return (
     <MessageHoverMetadata pinned={moreOpen || reactionsOpen || copied} side={side}>
       <div data-testid="message-hover-actions" className="flex items-center gap-0.5">
-        {canReactToThreadMessage(message) ? (
+        {SHOW_REACTION_BUTTON && canReactToThreadMessage(message) ? (
           <Popover open={reactionsOpen} onOpenChange={setReactionsOpen}>
             <PopoverTrigger aria-label={t`React`} className={iconButtonClass}>
               <Smile size={15} strokeWidth={1.7} />
@@ -94,16 +99,25 @@ export function MessageHoverActions({
         >
           <Reply size={15} strokeWidth={1.7} />
         </button>
-        <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
-          <DropdownMenuTrigger
-            aria-label={copied ? t`Copied` : t`More`}
+        {canCopy ? (
+          // Local addition (David, 2026-11-21): Copy is one tap, not buried in the More menu.
+          <button
+            type="button"
+            data-testid="message-copy-button"
+            aria-label={copied ? t`Copied` : t`Copy`}
+            onClick={copyMessage}
             className={iconButtonClass}
           >
             {copied ? (
               <Check size={15} strokeWidth={1.7} />
             ) : (
-              <MoreHorizontal size={15} strokeWidth={1.7} />
+              <Copy size={15} strokeWidth={1.7} />
             )}
+          </button>
+        ) : null}
+        <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
+          <DropdownMenuTrigger aria-label={t`More`} className={iconButtonClass}>
+            <MoreHorizontal size={15} strokeWidth={1.7} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align={side === "end" ? "start" : "end"} className="w-auto">
             <DropdownMenuItem

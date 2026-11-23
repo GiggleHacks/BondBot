@@ -58,6 +58,7 @@ import { pagesRoutes } from "./routes/pages.js";
 import { paymentWalletRoutes } from "./routes/payment-wallet.js";
 import { routinesRoutes } from "./routes/routines.js";
 import { spacesRoutes } from "./routes/spaces.js";
+import { modelUsageRoutes } from "./routes/model-usage.js";
 import { spendingLimitRoutes } from "./routes/spending-limit.js";
 import { threadsRoutes } from "./routes/threads.js";
 import type { VoiceDeps } from "./voice.js";
@@ -193,5 +194,6 @@ export function createRouter(deps: RouterDeps) {
     ...pagesRoutes(ctx),
     ...paymentWalletRoutes(ctx),
     ...spendingLimitRoutes(ctx),
+    ...modelUsageRoutes(ctx),
   });
 }

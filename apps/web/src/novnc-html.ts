@@ -167,6 +167,69 @@ export function injectNovncStorageShim(html: string, { viewOnly = false } = {}) 
       subtree: true,
     });
   };
+  // Local addition (David, 2026-11-20): a tiny LIVE / fps badge, so a frozen picture is never mistaken for a live screen.
+  try {
+    const NativeWebSocket = window.WebSocket;
+    let current = null;
+    let everOpen = false;
+    const frames = [];
+    let queued = false;
+    if (NativeWebSocket) {
+      // noVNC checks the prototype of the socket it is given, so hand back a genuine WebSocket (no subclass).
+      const Tracked = function (...args) {
+        const ws = new NativeWebSocket(...args);
+        current = ws;
+        ws.addEventListener("open", () => { if (current === ws) everOpen = true; });
+        return ws;
+      };
+      Tracked.prototype = NativeWebSocket.prototype;
+      for (const key of ["CONNECTING", "OPEN", "CLOSING", "CLOSED"]) Tracked[key] = NativeWebSocket[key];
+      window.WebSocket = Tracked;
+    }
+    const proto = window.CanvasRenderingContext2D && window.CanvasRenderingContext2D.prototype;
+    if (proto) {
+      for (const name of ["drawImage", "putImageData"]) {
+        const original = proto[name];
+        if (typeof original !== "function") continue;
+        proto[name] = function (...args) {
+          try {
+            if (!queued && this.canvas && this.canvas.isConnected) {
+              queued = true;
+              requestAnimationFrame(() => { queued = false; frames.push(performance.now()); });
+            }
+          } catch {}
+          return original.apply(this, args);
+        };
+      }
+    }
+    const initBadge = () => {
+      const el = document.createElement("div");
+      const dot = document.createElement("span");
+      const label = document.createElement("span");
+      el.setAttribute("data-rakazo-live-badge", "");
+      el.style.cssText = "position:fixed;right:8px;bottom:8px;z-index:2147483000;display:flex;align-items:center;gap:5px;padding:2px 8px 2px 6px;border-radius:999px;background:rgba(0,0,0,.62);color:#e5e7eb;font:10px/12px ui-monospace,Menlo,Consolas,monospace;pointer-events:none;user-select:none;white-space:nowrap";
+      dot.style.cssText = "width:6px;height:6px;border-radius:50%;background:#22c55e";
+      el.append(dot, label);
+      document.body.appendChild(el);
+      const paint = () => {
+        const now = performance.now();
+        while (frames.length && now - frames[0] > 1000) frames.shift();
+        const root = document.documentElement;
+        const retrying = root.classList.contains("noVNC_reconnecting") || root.classList.contains("noVNC_connecting");
+        let color = "#22c55e";
+        let text;
+        if (current !== null && current.readyState === 1) text = "LIVE " + frames.length + " fps";
+        else if (current === null || current.readyState === 0 || retrying) { color = "#f59e0b"; text = everOpen ? "RECONNECTING" : "CONNECTING"; }
+        else { color = "#ef4444"; text = "OFFLINE"; }
+        dot.style.background = color;
+        label.textContent = text;
+      };
+      paint();
+      setInterval(paint, 500);
+    };
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initBadge);
+    else initBadge();
+  } catch {}
   report("loading");
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", observe);
   else observe();

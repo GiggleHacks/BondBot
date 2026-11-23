@@ -113,10 +113,13 @@ export function ComputerVpnFlagChip({
   botVpn,
   overview,
   compact = false,
+  iconsOnly = false,
 }: {
   botVpn: BotVpnStatus | undefined;
   overview: ComputerVpnOverview | null;
   compact?: boolean;
+  /** Dot, shield and flag with no words; the status is still the label and tooltip. */
+  iconsOnly?: boolean;
 }) {
   const display = resolveBotVpnDisplay(botVpn, overview);
   if (!display) return null;
@@ -179,6 +182,7 @@ export function ComputerVpnFlagChip({
   return (
     <span
       title={tooltip}
+      {...(iconsOnly ? { role: "img", "aria-label": shortStatus } : {})}
       className={cn(
         "relative inline-flex items-center rounded-md border transition-colors",
         compact ? "gap-0.5 px-1 py-px" : "gap-1.5 rounded-full px-2 py-0.5",
@@ -206,7 +210,7 @@ export function ComputerVpnFlagChip({
           isBlocked && "grayscale opacity-60",
         )}
       />
-      {!compact ? (
+      {!compact && !iconsOnly ? (
         <span
           className={cn(
             "text-[11px] font-medium tracking-tight tabular-nums",

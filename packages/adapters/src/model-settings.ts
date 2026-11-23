@@ -16,7 +16,9 @@ export function connectionModelSettings(
   credential?: LegacyCredential,
 ): ModelSettings {
   const settings = savedModelSettings(secret, modelId, credential);
-  if (!catalogKnowsModel(provider, modelId)) return settings;
+  // Local change (David, 2026-11-20): thinking is always on for OpenAI-compatible models, so their reasoning can be shown.
+  if (!catalogKnowsModel(provider, modelId))
+    return secret.kind === "openai_compatible" ? { ...settings, reasoning: true } : settings;
   const { images: _images, reasoning: _reasoning, ...limits } = settings;
   return limits;
 }

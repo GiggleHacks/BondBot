@@ -74,6 +74,7 @@ import { loadBotForRemoval } from "../bot-removal.js";
 import { changedBotSettings } from "../bot-setting-analytics.js";
 import { createBotFromTemplate, listBotTemplates } from "../bot-templates.js";
 import { switchBotComputerMode } from "../computer-mode-switch.js";
+import { recordModelSwitch } from "../model-switch-note.js";
 import { botIntroPrompt } from "../hidden-turns.prompt.js";
 import { requireIdentityConfirmation } from "../identity-confirmation.js";
 import { managedAppCatalog } from "../onboarding.js";
@@ -573,6 +574,7 @@ export function botsRoutes(ctx: RouterContext) {
         for (const setting of changedBotSettings(existing, input)) {
           deps.analytics?.capture(context.actor.userId, { name: "bot_setting_changed", setting });
         }
+        await recordModelSwitch(deps, context.actor.spaceId, existing, input);
         const bots = await repos.listBots(context.actor);
         const bot = bots.find((b) => b.id === input.botId);
         if (!bot) throw new IsolationError();

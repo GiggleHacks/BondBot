@@ -114,6 +114,7 @@ export function useComputerControls({
     screenAwaitsRetry,
     resetScreenReconnect,
     computerVisible,
+    dockedRef,
     refreshComputerScreen,
     refreshOwnControlScreen,
     ownControlLease,
@@ -334,7 +335,7 @@ export function useComputerControls({
   }, [controlBotNeedsRead, computerOpen]);
 
   /** Open the computer view. Only an explicit Take control asks for the lease. */
-  async function openComputer(botId?: string, takeControl = false) {
+  async function openComputer(botId?: string, takeControl = false, inPlace = false) {
     const id = botId ?? active?.id;
     if (!id) return false;
     const bot = botsRef.current.find((candidate) => candidate.id === id);
@@ -353,8 +354,11 @@ export function useComputerControls({
     }
     // Reopening during a boot shows it; a second boot would be refused as busy.
     const bootInFlight = bootsInFlight.current.has(id) || targetComputer?.state === "booting";
-    setComputerOpen(true);
-    computerVisible.current = true;
+    // Local change: the docked screen wakes the computer where it is, without opening the full window.
+    if (!inPlace) {
+      setComputerOpen(true);
+      computerVisible.current = true;
+    }
     if (bootInFlight && !takeControl) {
       // An external boot may have finished since this snapshot was cached.
       if (!bootsInFlight.current.has(id)) await refreshComputerFor(id).catch(() => undefined);
@@ -379,6 +383,27 @@ export function useComputerControls({
   const onOpenComputer = useCallback((botId?: string, takeControl?: boolean) => {
     void openComputerRef.current(botId, takeControl);
   }, []);
+
+  /**
+   * Local change (David, 2026-11-21): one press brings the docked screen back in place. A computer
+   * that is not running boots; a running one reconnects its screen. Never opens the full window.
+   */
+  async function refreshDockedComputer() {
+    const id = active?.id;
+    if (!id) return;
+    const current = computerRef.current;
+    if (current?.botId !== id || current.state !== "running") {
+      await openComputer(id, false, true);
+      return;
+    }
+    setScreenLoadError(null);
+    setScreenUrlLoadedBotId(null);
+    screenAwaitsRetry.current = false;
+    resetScreenReconnect();
+    setComputerError(null);
+    setComputerErrorFromScreen(false);
+    await refreshComputerScreen(id).catch(() => undefined);
+  }
 
   async function releaseComputer(reason?: ComputerReleaseReason) {
     const botId = computerBotIdRef.current ?? activeBotId.current;
@@ -496,8 +521,11 @@ export function useComputerControls({
               setComputerError(null);
               setComputerErrorFromScreen(false);
               // The screen is read only while its window is open, so a retry from the panel opens it.
-              setComputerOpen(true);
-              computerVisible.current = true;
+              // Docked, the screen is already being read, so Retry stays in the dock.
+              if (!dockedRef.current) {
+                setComputerOpen(true);
+                computerVisible.current = true;
+              }
               void refreshComputerScreen(computerBot.id);
             } else
               void bootComputer({
@@ -550,6 +578,7 @@ export function useComputerControls({
   return {
     computerBot,
     openComputer,
+    refreshDockedComputer,
     onOpenComputer,
     onReleaseComputer,
     releaseComputer,

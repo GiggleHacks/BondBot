@@ -135,7 +135,7 @@ import {
   STEERING_RESETS_MAX_PER_RUN,
   USER_PROGRESS_MESSAGE_MAX_LENGTH,
 } from "./user-progress.js";
-import { appendReasoningBlock } from "./reasoning-capture.js";
+import { appendReasoningBlock, reasoningEnabledFor, takeReasoningChunk } from "./reasoning-capture.js";
 import { wakeRun } from "./wake-run.js";
 
 type RuntimeEvent<T extends AgentRuntimeEvent["type"]> = Extract<AgentRuntimeEvent, { type: T }>;
@@ -172,6 +172,32 @@ export async function consumeRunEvents(
       if (!(error instanceof RunHistoryWriteError)) throw error;
     }
   };
+  // Local addition (David, 2026-11-20): stream the model's reasoning into the live message as it is written.
+  let reasoningChain: Promise<void> = Promise.resolve();
+  const publishReasoning = async (final: boolean) => {
+    if (ctx.scripted || isBackgroundRunTrigger(run.trigger) || run.trigger === "routine") return;
+    if (!reasoningEnabledFor(bot.id)) return;
+    const chunk = takeReasoningChunk(runId, final);
+    if (!chunk) return;
+    try {
+      await deps.events.append({
+        spaceId: run.spaceId,
+        threadId: run.threadId,
+        botId: bot.id,
+        type: "thread.progress",
+        runId,
+        payload: { reasoning: redactSecrets(chunk, ctx.secrets) },
+      });
+    } catch (error) {
+      if (!(error instanceof RunHistoryWriteError)) throw error;
+    }
+  };
+  const queueReasoning = (final: boolean) => {
+    reasoningChain = reasoningChain.then(() => publishReasoning(final)).catch(() => {});
+    return reasoningChain;
+  };
+  const reasoningTimer = setInterval(() => void queueReasoning(false), 350);
+  reasoningTimer.unref?.();
   // A quiet model call or a long tool streams no events, so Stop would otherwise go unseen
   // until the next event or heartbeat. The shared throttle keeps this at one read a second.
   let watching = true;
@@ -198,6 +224,7 @@ export async function consumeRunEvents(
       }
       if (event.type === "thinking") {
         await publishThinking(event.active);
+        if (!event.active) await queueReasoning(true);
         continue;
       }
       if (
@@ -262,6 +289,7 @@ export async function consumeRunEvents(
   } finally {
     watching = false;
     clearInterval(watch);
+    clearInterval(reasoningTimer);
     // Run completion clears thinking too; never let this replace the turn's own outcome.
     await publishThinking(false).catch(() => {});
   }

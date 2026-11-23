@@ -400,6 +400,10 @@ export async function gateToolCall(
   // which was counted when it was requested. One the limit refuses is refused before the card; the
   // handler counts it for good just before the press.
   const spends = purchase && !paysWithWallet(args) ? purchase : undefined;
+  // Local change (David, 2026-11-21): with a spending limit set, a pay click the limit allows needs no
+  // approval. The limit still refuses anything over it, in another currency, or whose price cannot be read,
+  // and the click is counted against it just before the press. With no limit, paying still asks every time.
+  let autoPaid = false;
   if (spends && nextApprovedTool !== name) {
     const spender = {
       userId: run.userId,
@@ -412,10 +416,17 @@ export async function gateToolCall(
       await auditToolCall(ctx, name, "denied", { reason: "spending_limit" });
       return { result: refusal("spending_limit", refused) };
     }
+    if (!cardUse && !loginUse) {
+      const limitRow = await deps.prisma.spendingLimit.findUnique({
+        where: { userId: run.userId },
+        select: { userId: true },
+      });
+      autoPaid = limitRow !== null;
+    }
   }
   let reviewReason: string | undefined;
-  let gateDecision: "ask" | "allow" = plan === "ask" ? "ask" : "allow";
-  const needsApprovalEarly = plan === "ask" || plan === "judge";
+  let gateDecision: "ask" | "allow" = plan === "ask" && !autoPaid ? "ask" : "allow";
+  const needsApprovalEarly = (plan === "ask" || plan === "judge") && !autoPaid;
   // A resumed approval keeps its key even if "Always allow" changed the policy.
   const usesApprovalKey =
     nextApprovedTool || name === "request_secret" || needsApprovalEarly || gated;
@@ -539,7 +550,7 @@ export async function gateToolCall(
         await runAutoReview();
       }
     }
-  } else if (applied?.duplicate && plan === "ask") {
+  } else if (applied?.duplicate && plan === "ask" && !autoPaid) {
     gateDecision = "ask";
   }
   if (context.signal.aborted) return { result: pauseForApproval(ctx) };

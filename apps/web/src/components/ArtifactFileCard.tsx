@@ -14,6 +14,7 @@ import { errorText } from "../lib/user-error";
 import { BuiCard } from "./ai/primitives";
 import { IconTooltip } from "./IconTooltip";
 import { PdfViewer } from "./PdfViewer";
+import { VoiceNotePlayer } from "./VoiceNotePlayer";
 import { SandboxedHtmlViewer } from "./SandboxedHtmlViewer";
 
 type ArtifactFileCardProps = {
@@ -22,6 +23,8 @@ type ArtifactFileCardProps = {
   name: string;
   mimeType: string;
   size: number;
+  /** Sent by the user rather than a bot (colours the voice note bubble). */
+  fromUser?: boolean;
 };
 
 function isTextPreview(mimeType: string) {
@@ -56,14 +59,19 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
 
   if (isAttachmentAudioMimeType(props.mimeType)) {
     return (
-      <BuiCard className="min-w-[280px] p-4 text-foreground">
-        <AudioArtifactPreview
+      <div>
+        <VoiceNotePlayer
           key={JSON.stringify([props.target, props.artifactId, props.mimeType])}
-          {...props}
+          target={props.target}
+          artifactId={props.artifactId}
+          name={props.name}
+          mimeType={props.mimeType}
+          size={props.size}
+          fromUser={props.fromUser}
           onDownload={startDownload}
         />
         {downloadError ? <DownloadError message={downloadError} /> : null}
-      </BuiCard>
+      </div>
     );
   }
 

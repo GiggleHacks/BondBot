@@ -53,8 +53,9 @@ export function thinkingLevelFor(
   preferred?: ModelThinkingLevel | null,
 ): ModelThinkingLevel {
   if (!model.reasoning) return "off";
-  if (preferred) return clampThinkingLevel(model, preferred);
-  return clampThinkingLevel(model, REASONING_MODEL_THINKING_LEVEL);
+  // Local change (David, 2026-11-20): every model that can think always runs at high effort.
+  void preferred;
+  return clampThinkingLevel(model, "high");
 }
 
 function configuredOpenRouterModel(

@@ -71,7 +71,11 @@ import { ChatContextMenu } from "./shell/chat-context-menu";
 import { ChatFindBar } from "./shell/chat-find-bar";
 import { ChatHeader } from "./shell/chat-header";
 import { FALLBACK_BOT_COLOR } from "./shell/chat-shared";
+import { ModelEdgeGlow } from "../components/ModelEdgeGlow";
+import { useBackLayer } from "../lib/back-layers";
+import { screenDockPreference } from "../lib/screen-dock";
 import { Composer } from "./shell/composer";
+import { DockedScreen } from "./shell/DockedScreen";
 import { ComputerOverlay } from "./shell/computer-overlay";
 import { ComputerPanel } from "./shell/computer-panel";
 import { type PendingVpnChoice, TeamComputerVpnDialog } from "./shell/computer-vpn-control";
@@ -282,8 +286,20 @@ function SpaceShell() {
   activeBotId.current = inGroup ? undefined : active?.id;
   const activeGroupId = useRef<string | undefined>(groupId);
   activeGroupId.current = groupId;
-  const computerState = useComputerState({ rpc, panel, activeId: active?.id, activeBotId });
+  const screenDockOn = screenDockPreference.use();
+  const screenDockActive = screenDockOn && isMobileSidebar && !inGroup && Boolean(active);
+  const computerState = useComputerState({
+    rpc,
+    panel,
+    activeId: active?.id,
+    activeBotId,
+    docked: screenDockActive,
+  });
   const { computer, computerOpen, setComputerOpen, booting, commitComputer } = computerState;
+  // On a phone, the Back gesture closes the newest open layer instead of leaving the app.
+  useBackLayer(mobileSidebarOpen, () => setMobileSidebarOpen(false), isMobileSidebar);
+  useBackLayer(Boolean(panel), () => setPanel(null), isMobileSidebar);
+  useBackLayer(computerOpen, () => setComputerOpen(false), isMobileSidebar);
   const [cleaningUpDisk, setCleaningUpDisk] = useState(false);
   const dismissDiskWarning = (botId: string) => {
     const current = computerState.computerRef.current;
@@ -1070,6 +1086,9 @@ function SpaceShell() {
         <CallReturnBar />
         {/* The header floats so the transcript scrolls under its buttons. */}
         <div ref={chatColumnRef} className="relative flex min-h-0 flex-1 flex-col">
+          {active && !inGroup ? (
+            <ModelEdgeGlow provider={active.modelProvider} modelId={active.modelId} />
+          ) : null}
           {/* Only the pills take input; the gaps pass clicks and scrolling to the transcript. */}
           <div aria-hidden="true" className="app-drag absolute inset-x-0 top-0 z-10 h-3" />
           {findOpen ? (
@@ -1093,6 +1112,23 @@ function SpaceShell() {
             voiceReady={false}
             inCall={Boolean(active) && call?.botId === active?.id}
             panelOpen={chatPanelOpen}
+            screenDocked={screenDockActive}
+            onToggleScreenDock={() => screenDockPreference.set(!screenDockOn)}
+            onSwitchModel={async (choice) => {
+              if (!active) return undefined;
+              // Resolves only once the server has saved the switch; a failure throws.
+              const updated = await rpc.bots.update({
+                botId: active.id,
+                modelProvider: choice.provider,
+                modelId: choice.modelId,
+              });
+              setBots((current) => current.map((bot) => (bot.id === updated.id ? updated : bot)));
+              void refreshBots().catch(() => undefined);
+              return {
+                provider: updated.modelProvider ?? choice.provider,
+                modelId: updated.modelId ?? choice.modelId,
+              };
+            }}
             onOpenNavigation={() => setMobileSidebarOpen(true)}
             onTogglePanel={toggleChatPanel}
             vpn={vpn}
@@ -1104,6 +1140,23 @@ function SpaceShell() {
               callBot(bot);
             }}
           />
+          {screenDockActive && active ? (
+            <DockedScreen
+              bot={active}
+              computer={computer}
+              embeddedScreenUrl={computerControls.embeddedScreenUrl}
+              screenBotId={computerState.screenBotId ?? null}
+              screenFrameKey={computerState.screenFrameKey}
+              heldScreen={computerState.heldScreen}
+              screenFrameRef={chatPanelOpen ? undefined : computerState.setScreenFrame}
+              computerScreenError={computerControls.computerScreenError}
+              computerBooting={computerControls.computerBooting}
+              booting={booting}
+              onWake={() => void openComputer(undefined, false, true)}
+              onRefresh={computerControls.refreshDockedComputer}
+              onClose={() => screenDockPreference.set(false)}
+            />
+          ) : null}
           {!active && !activeGroup && initialBotsLoaded ? (
             <div className="grid flex-1 place-items-center">
               <Button onClick={() => dialogs.setCreateBotOpen(true)}>
@@ -1112,6 +1165,7 @@ function SpaceShell() {
               </Button>
             </div>
           ) : (
+            <div className={`flex min-h-0 flex-1 flex-col ${screenDockActive ? "-mt-20" : ""}`}>
             <Transcript
               key={activeSnapshot?.threadId}
               meId={userId}
@@ -1157,6 +1211,7 @@ function SpaceShell() {
               onOpenImportSetup={openImportSetup}
               rpc={rpc}
             />
+            </div>
           )}
         </div>
         {active || activeGroup ? (

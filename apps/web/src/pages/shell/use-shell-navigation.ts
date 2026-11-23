@@ -57,13 +57,22 @@ export function useShellNavigation() {
     [guardedNavigate],
   );
   const overlay = readShellOverlay(searchParams);
-  // Overlays replace the URL rather than adding history, so opening and closing never race a navigation.
+  const overlayEntry = useRef<string | null>(null);
+  const historyKey = () => (window.history.state as { key?: string } | null)?.key ?? null;
   function setOverlay(next: ShellOverlay) {
     overlayRevision.current += 1;
-    guardedNavigate(
-      { search: searchString(withShellOverlay(searchParams, next)) },
-      { replace: true },
-    );
+    const search = searchString(withShellOverlay(searchParams, next));
+    if (next !== null && overlay === null) {
+      guardedNavigate({ search });
+      overlayEntry.current = historyKey();
+      return;
+    }
+    if (next === null && overlayEntry.current !== null && historyKey() === overlayEntry.current) {
+      overlayEntry.current = null;
+      guardedNavigate(-1);
+      return;
+    }
+    guardedNavigate({ search }, { replace: true });
   }
   return {
     navigate,

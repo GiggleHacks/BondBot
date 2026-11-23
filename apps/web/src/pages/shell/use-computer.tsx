@@ -40,11 +40,14 @@ export function useComputerState({
   panel,
   activeId,
   activeBotId,
+  docked = false,
 }: {
   rpc: ReturnType<typeof createSpaceRpc>;
   panel: Panel;
   activeId: string | undefined;
   activeBotId: RefObject<string | undefined>;
+  /** The phone's docked screen is showing, so the screen must load without the bot panel. */
+  docked?: boolean;
 }) {
   const { t } = useLingui();
   const [computer, setComputer] = useState<ComputerStatus | null>(null);
@@ -379,17 +382,20 @@ export function useComputerState({
   useEventListener(viewport, "scroll", syncViewport);
   const screenRequest = useRef(0);
   const computerVisible = useRef(false);
-  computerVisible.current = computerOpen || Boolean(activeId && panel === "settings");
+  // Local change (David, 2026-11-21): lets Wake / Retry act in place while the screen is docked.
+  const dockedRef = useRef(docked);
+  dockedRef.current = docked;
+  computerVisible.current = computerOpen || Boolean(activeId && (panel === "settings" || docked));
   computerOpenRef.current = computerOpen;
   computerBotIdRef.current = frameBotId;
   useEffect(() => {
-    if (computerOpen || panel !== "settings" || !activeId) return;
+    if (computerOpen || (panel !== "settings" && !docked) || !activeId) return;
     if (computerRef.current?.botId !== activeId || computerRef.current.state !== "running") return;
     if (screenUrlLoadedBotId === activeId || screenAwaitsRetry.current || screenErrorShown.current)
       return;
     if (screenRef.current.botId === activeId && screenRef.current.url) return;
     void refreshComputerScreen(activeId).catch(() => undefined);
-  }, [panel, activeId, computerOpen, computer?.botId, computer?.state, screenUrlLoadedBotId]);
+  }, [panel, docked, activeId, computerOpen, computer?.botId, computer?.state, screenUrlLoadedBotId]);
 
   function cacheComputerFor(botId: string, patch: Partial<CachedComputer>) {
     if (patch.computer?.botId && patch.computer.botId !== botId) return;
@@ -588,6 +594,7 @@ export function useComputerState({
     screenAwaitsRetry,
     resetScreenReconnect,
     computerVisible,
+    dockedRef,
     refreshComputerScreen,
     ownControlLease,
     expectOwnAnswer,

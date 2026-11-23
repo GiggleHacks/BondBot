@@ -286,6 +286,14 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     reasoning: z.string(),
   }),
   z.object({
+    /** A note that the bot's model was switched (local addition). It has no text, so the model never reads it. */
+    kind: z.literal("model_switch"),
+    provider: z.string(),
+    modelId: z.string(),
+    previousProvider: z.string().nullable().optional(),
+    previousModelId: z.string().nullable().optional(),
+  }),
+  z.object({
     kind: z.literal("child_bot"),
     botId: z.string(),
     name: z.string(),

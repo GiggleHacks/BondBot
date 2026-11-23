@@ -16,6 +16,8 @@ export type VoiceNotesSnapshot = {
   online: boolean;
   /** Notes the server has and is still working on (or that failed there). */
   server: ServerVoiceNote[];
+  /** Notes just let go of, still being closed on the device (local addition: they show in the chat at once). */
+  finishing: { clientId: string; durationMs: number; target: VoiceNoteTarget }[];
 };
 
 export type ServerVoiceNote = {
@@ -54,6 +56,7 @@ export class VoiceNotes {
     progress: {},
     online: typeof navigator === "undefined" ? true : navigator.onLine,
     server: [],
+    finishing: [],
   };
   private readonly listeners = new Set<() => void>();
   private readonly recorder: VoiceNoteRecorder;
@@ -150,8 +153,29 @@ export class VoiceNotes {
     }
     if (!this.recorder.active) return;
     const clientId = this.snapshot.recording?.clientId ?? null;
-    this.set({ recording: null });
-    await this.recorder.finish(send);
+    const recording = this.snapshot.recording;
+    const dropFinishing = () =>
+      this.set({ finishing: this.snapshot.finishing.filter((note) => note.clientId !== clientId) });
+    this.set({
+      recording: null,
+      finishing:
+        send && recording
+          ? [
+              ...this.snapshot.finishing,
+              {
+                clientId: recording.clientId,
+                durationMs: Math.max(0, Date.now() - recording.startedAt),
+                target: recording.target,
+              },
+            ]
+          : this.snapshot.finishing,
+    });
+    try {
+      await this.recorder.finish(send);
+    } catch (error) {
+      dropFinishing();
+      throw error;
+    }
     // The queue takes over from here; let a part already on its way land first.
     await this.live;
     this.liveParts = 0;
@@ -164,6 +188,7 @@ export class VoiceNotes {
       }).catch(() => undefined);
     }
     await this.refresh();
+    dropFinishing();
     if (send) this.kick(true);
   }
 

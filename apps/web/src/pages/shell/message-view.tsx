@@ -13,8 +13,9 @@ import type { ChildBotBlock, PeerExchange } from "@rakazo/core";
 import { isPeerReceiptBlocks, isToolActivityBlock, otherAuthor } from "@rakazo/core";
 import { BotAvatar, Button, cn, resolvePersonaColorDef } from "@rakazo/ui-web";
 import { ChevronRight, UserRound } from "lucide-react";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArtifactFileCard } from "../../components/ArtifactFileCard";
+import { ModelSwitchNote } from "../../components/ModelSwitchNote";
 import { AskCard } from "../../components/AskCard";
 import { CollaborationMarker } from "../../components/ai/CollaborationMarker";
 import { CloudAgentCard } from "../../components/CloudAgentCard";
@@ -319,6 +320,9 @@ export const MessageView = memo(function MessageView({
                     </div>
                   );
                 }
+                if (block.kind === "reasoning") {
+                  return <ReasoningBlock key={i} reasoning={block.reasoning} live={isLive} />;
+                }
                 return null;
               })}
               {!isLive && voiceReady && message.blocks.some((block) => block.kind === "text") ? (
@@ -422,6 +426,16 @@ export const MessageView = memo(function MessageView({
                   {block.fromLabel}: {block.text}
                 </span>
               </div>
+            );
+          }
+          if (block.kind === "model_switch") {
+            return (
+              <ModelSwitchNote
+                key={i}
+                provider={block.provider}
+                modelId={block.modelId}
+                createdAt={message.createdAt}
+              />
             );
           }
           if (block.kind === "meta") {
@@ -570,6 +584,7 @@ export const MessageView = memo(function MessageView({
                   name={block.name}
                   mimeType={block.mimeType}
                   size={block.size}
+                  fromUser={message.role === "user"}
                 />
               </div>
             );
@@ -743,9 +758,14 @@ function BotMention({
 }
 
 /** The model's reasoning for a turn: small grey text, open by default, tap the heading to fold it (local addition). */
-function ReasoningBlock({ reasoning }: { reasoning: string }) {
+export function ReasoningBlock({ reasoning, live = false }: { reasoning: string; live?: boolean }) {
   const show = reasoningPreference.use();
   const [open, setOpen] = useState(true);
+  const box = useRef<HTMLDivElement>(null);
+  // While it streams, follow the newest line.
+  useEffect(() => {
+    if (live && open && box.current) box.current.scrollTop = box.current.scrollHeight;
+  }, [reasoning, live, open]);
   if (!show) return null;
   return (
     <div className="w-full max-w-full">
@@ -756,10 +776,11 @@ function ReasoningBlock({ reasoning }: { reasoning: string }) {
         className="flex items-center gap-1 rounded-md py-0.5 text-body-sm font-medium text-muted-foreground hover:text-foreground"
       >
         <ChevronRight className={`size-3.5 transition-transform ${open ? "rotate-90" : ""}`} />
-        <span>Reasoning</span>
+        <span>{live ? "Thinking…" : "Reasoning"}</span>
       </button>
       {open ? (
         <div
+          ref={box}
           dir="auto"
           className="mt-0.5 max-h-[50vh] overflow-y-auto whitespace-pre-wrap border-s-2 border-border ps-3 text-body-sm leading-relaxed text-muted-foreground"
         >

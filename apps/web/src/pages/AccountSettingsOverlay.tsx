@@ -59,6 +59,7 @@ import { localTimezone, sameTimeZone, timezoneOptions } from "../lib/local-timez
 import { usePasskeysSupported } from "../lib/passkeys";
 import { remoteImagesPreference } from "../lib/remote-images-preference";
 import { responseStreamingPreference } from "../lib/response-streaming";
+import { modelGlowPreference } from "../lib/model-glow-pref";
 import { reasoningPreference } from "../lib/reasoning-preference";
 import { toolActivityPreference } from "../lib/tool-activity-preference";
 import type { AppearancePreference } from "../lib/ui-appearance";
@@ -147,6 +148,7 @@ export function GeneralSettingsPanels({
   const showToolActivity = toolActivityPreference.use();
   const showToolActivityId = useId();
   const showReasoning = reasoningPreference.use();
+  const modelGlow = modelGlowPreference.use();
   const showReasoningId = useId();
   const enterToSend = composerEnterToSendPreference.use();
   const enterToSendId = useId();
@@ -490,6 +492,21 @@ export function GeneralSettingsPanels({
               data-testid="reasoning-toggle"
               checked={showReasoning}
               onCheckedChange={(checked) => reasoningPreference.set(checked)}
+            />
+          }
+        />
+        <SettingsRow
+          label={
+            <Label htmlFor="model-glow-toggle" className="text-body font-normal text-foreground">
+              Model colour around the chat
+            </Label>
+          }
+          control={
+            <Switch
+              id="model-glow-toggle"
+              data-testid="model-glow-toggle"
+              checked={modelGlow}
+              onCheckedChange={(checked) => modelGlowPreference.set(checked)}
             />
           }
         />

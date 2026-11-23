@@ -1,13 +1,16 @@
 import { useLingui } from "@lingui/react/macro";
 import type { Bot, Group, ThreadSnapshot } from "@rakazo/contracts";
 import { BotAvatar, Button, GroupAvatar } from "@rakazo/ui-web";
-import { Gift, Menu, Phone } from "lucide-react";
+import { Gift, Menu, Monitor, Phone } from "lucide-react";
 import { useState } from "react";
 import { IconTooltip } from "../../components/IconTooltip";
 import { InviteDialog } from "../../components/InviteDialog";
 import { useBilling } from "../../components/SubscriptionGate";
 import { desktopBridge, windowChromeKind } from "../../lib/desktop";
 import { WindowChrome } from "../WindowChrome";
+import { ModelBrandIcon, modelBrandKey } from "../../components/ModelBrandIcon";
+import { ConnectionBars } from "../../components/ConnectionBars";
+import { ModelSwitcher } from "../../components/ModelSwitcher";
 import { ComputerVpnFlagChip, ComputerVpnPopover } from "./computer-vpn-control";
 import type { ComputerVpnController } from "./use-computer-vpn";
 
@@ -25,6 +28,9 @@ export function ChatHeader({
   onTogglePanel,
   onCall,
   vpn,
+  screenDocked = false,
+  onToggleScreenDock,
+  onSwitchModel,
 }: {
   inGroup: boolean;
   active: Bot | undefined;
@@ -39,6 +45,15 @@ export function ChatHeader({
   onTogglePanel: () => void;
   onCall: (bot: Bot) => void;
   vpn?: ComputerVpnController;
+  /** The phone's docked screen is showing. */
+  screenDocked?: boolean;
+  /** Shows or hides the docked screen; left out where there is nothing to dock. */
+  onToggleScreenDock?: () => void;
+  /** Saves a model switch for the chat's bot; resolves only once it is saved. */
+  onSwitchModel?: (choice: {
+    provider: string;
+    modelId: string;
+  }) => Promise<{ provider: string; modelId: string } | undefined>;
 }) {
   const { t } = useLingui();
   const referral = useBilling().status?.referral;
@@ -76,10 +91,31 @@ export function ChatHeader({
                 <ComputerVpnFlagChip
                   botVpn={vpn.overview.bots[active.id]}
                   overview={vpn.overview}
+                  iconsOnly
                 />
               </Button>
             }
           />
+        ) : null}
+        {!inGroup && active && modelBrandKey(active.modelProvider, active.modelId) ? (
+          onSwitchModel ? (
+            <ModelSwitcher bot={active} onSwitch={onSwitchModel} />
+          ) : (
+            <Button
+              variant="floating"
+              size="icon-sm"
+              data-testid="header-model-chip"
+              aria-label={`Model: ${active.modelId ?? ""}`}
+              onClick={onTogglePanel}
+              className="app-no-drag size-[34px] shrink-0 rounded-full p-0"
+            >
+              <ModelBrandIcon
+                modelProvider={active.modelProvider}
+                modelId={active.modelId}
+                className="size-[18px]"
+              />
+            </Button>
+          )
         ) : null}
         <Button
           variant="floating"
@@ -109,6 +145,20 @@ export function ChatHeader({
         </Button>
       </div>
       <div className="flex items-center justify-self-end gap-2">
+        <ConnectionBars />
+        {onToggleScreenDock && !inGroup && active ? (
+          <Button
+            variant="floating"
+            size="icon-lg"
+            data-testid="screen-dock-toggle"
+            aria-label={screenDocked ? "Hide screen" : "Show screen"}
+            aria-pressed={screenDocked}
+            onClick={onToggleScreenDock}
+            className={`app-no-drag md:hidden ${screenDocked ? "text-emerald-300 ring-1 ring-emerald-400/60" : ""}`}
+          >
+            <Monitor strokeWidth={1.7} className="size-[18px]" />
+          </Button>
+        ) : null}
         {phoneCallsEnabled && !inGroup && active ? (
           <IconTooltip label={inCall ? t`Open call` : t`Call`}>
             <Button

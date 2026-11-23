@@ -1,4 +1,5 @@
 import { isRetryableError, reconnectDelayMs, retryDelayMs } from "@rakazo/core";
+import { connectionMonitor } from "./connection-status";
 
 /**
  * Follows a server stream until stopped: reconnects after it drops, backs off while it cannot
@@ -20,6 +21,7 @@ export function followStream<T>(
       try {
         const stream = await open(controller.signal);
         opened = true;
+        connectionMonitor.streamOpened();
         for await (const frame of stream) {
           if (!active) return;
           onFrame(frame);
@@ -27,6 +29,7 @@ export function followStream<T>(
       } catch (cause) {
         failure = cause;
       } finally {
+        if (opened) connectionMonitor.streamClosed();
         controller.abort();
       }
       if (!active) return;

@@ -1612,6 +1612,18 @@ export const appContract = {
     /** The latest payments that count, newest first. */
     payments: oc.output(z.array(SpendingPaymentSchema)),
   },
+  /** The models this account's runs used most over the last 30 days, most used first (local addition). */
+  botModels: {
+    mostUsed: oc.output(
+      z.array(
+        z.object({
+          provider: z.string(),
+          modelId: z.string(),
+          runs: z.number().int().nonnegative(),
+        }),
+      ),
+    ),
+  },
   /** The signed-in user's wallet; absent when the deployment offers none. */
   paymentWallet: {
     status: oc.output(PaymentWalletStatusSchema),
