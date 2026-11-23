@@ -312,6 +312,16 @@ export function reduceLiveMessageBlocks(
   current: readonly MessageBlock[],
   update: LiveMessageUpdate,
 ): MessageBlock[] {
+  // Local addition (David, 2026-11-20): the model's reasoning streams in ahead of everything else and keeps growing.
+  if (update.type === "progress" && typeof update.payload?.reasoning === "string") {
+    const known = current.find((block) => block.kind === "reasoning");
+    const reasoning =
+      (known?.kind === "reasoning" ? known.reasoning : "") + update.payload.reasoning;
+    return [
+      { kind: "reasoning", reasoning },
+      ...current.filter((block) => block.kind !== "reasoning"),
+    ];
+  }
   // A reset drops the text streamed so far (it will not be in the reply) and keeps the steps,
   // including tools still waiting on that text to finish its sentence.
   let blocks = current;

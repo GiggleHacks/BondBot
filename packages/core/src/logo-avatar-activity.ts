@@ -176,6 +176,7 @@ export function reduceLogoAvatarSignals(
     return { ...next, thinking, ...(thinking ? { composing: false } : {}) };
   }
   if (event.type === "thread.progress") {
+    if (typeof event.payload.reasoning === "string") return next;
     const text = event.payload.delta ?? event.payload.text;
     return {
       ...next,
