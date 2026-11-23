@@ -54,6 +54,9 @@ export async function switchBotComputerMode(
     if (active) {
       throw new ORPCError("BAD_REQUEST", { message: "Stop the bot first" });
     }
+    if (currentMode === "dedicated" && mode === "team" && bot.computer.vpnLocked) {
+      throw new ORPCError("BAD_REQUEST", { message: "Unlock Kill Switch first" });
+    }
     if (bot.computer.controlBotId === bot.id && hasActiveComputerControl(bot.computer)) {
       throw new ORPCError("BAD_REQUEST", { message: "Release the computer first" });
     }

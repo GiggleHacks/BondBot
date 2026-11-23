@@ -27,17 +27,27 @@ import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from socketserver import UnixStreamServer
+from socketserver import ThreadingMixIn, UnixStreamServer
 from urllib.parse import unquote
 
 PROFILES_DIR = os.environ.get("RAKAZO_VPN_PROFILES_DIR", "/boot/config/wireguard/rakazo-profiles")
 STATE_PATH = os.environ.get("RAKAZO_VPN_STATE_PATH", "/boot/config/rakazo-vpn-state.json")
 SOCK_PATH = os.environ.get("RAKAZO_VPN_SOCK", "/var/run/rakazo-vpn/vpn.sock")
 HTTP_PORT = int(os.environ.get("RAKAZO_VPN_HTTP_PORT", "5174"))
+# Host headers the TCP dashboard answers to. Anything else (DNS rebinding, a proxy
+# in front) is refused; add e.g. the tailscale serve name via RAKAZO_VPN_ALLOWED_HOSTS.
+ALLOWED_HOSTS = {f"127.0.0.1:{HTTP_PORT}", f"localhost:{HTTP_PORT}"} | {
+    h.strip().lower() for h in os.environ.get("RAKAZO_VPN_ALLOWED_HOSTS", "").split(",") if h.strip()
+}
+
+# tailscale serve forwards the tailnet name as the Host header (e.g. cccbox.<tailnet>.ts.net[:port]).
+TAILSCALE_HOST_RE = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)*\.ts\.net(?::\d+)?")
 
 MANGLE_CHAIN = "RAKAZO-VPN-MANGLE"
 KS_CHAIN = "RAKAZO-VPN-KS"
 RULE_PRIO = "100"
+IPT = ["iptables", "-w"]
+IPT6 = ["ip6tables", "-w"]
 STALE_AFTER = 180
 STARTUP_GRACE = 25
 
@@ -58,15 +68,27 @@ COUNTRY_NAMES = {
     "US": "United States",
 }
 
-BRIDGE_RE = re.compile(r"^rakazo-c[a-f0-9]{7}$")
+# \Z, not $: "$" would also accept a trailing newline.
+BRIDGE_RE = re.compile(r"^rakazo-c[a-f0-9]{7}\Z")
 BOT_CONTAINER_RE = re.compile(r"^rakazo-bot-([a-z0-9-]+)$")
 
 LOCK = threading.RLock()
 STATE: dict[str, dict] = {"bridges": {}}
 PROFILES: dict[str, dict] = {}
 PROBE_CACHE: dict[str, dict] = {}
+# Local change 2026-11-21 (David): one failed internet check no longer flips a computer to "blocked".
+# The last good result is kept until FAIL_TOLERANCE checks in a row fail. Tunnel health is unaffected:
+# a down tunnel still shows blocked at once, and the kill switch (iptables) is untouched.
+PROBE_FAILS: dict[str, int] = {}
+LAST_GOOD: dict[str, dict] = {}
+FAIL_TOLERANCE = 3
+LAST_GOOD_MAX_AGE = 120
 HOST_IP_CACHE: dict[str, object] = {"ip": None, "country": None, "at": 0.0}
 STARTED_AT = time.time()
+
+
+def valid_country(loc: object) -> str | None:
+    return loc if isinstance(loc, str) and re.fullmatch(r"[A-Z]{2}", loc) else None
 
 
 def sh(args: list[str], timeout: int = 12, input_text: str | None = None) -> tuple[int, str, str]:
@@ -158,49 +180,91 @@ def load_profiles() -> dict[str, dict]:
     if not os.path.isdir(PROFILES_DIR):
         return loaded
     for path in sorted(glob.glob(os.path.join(PROFILES_DIR, "*.conf"))):
-        p = parse_profile_file(path, used_tables, used_marks)
+        try:
+            p = parse_profile_file(path, used_tables, used_marks)
+        except Exception as exc:
+            log(f"skipping unreadable profile {path}: {exc}")
+            continue
         loaded[p["id"]] = p
     return loaded
 
 
+def log(msg: str) -> None:
+    print(f"[rakazo-vpn-manager] {time.strftime('%F %T')} {msg}", file=sys.stderr, flush=True)
+
+
+def read_state_file(path: str) -> dict[str, dict]:
+    """Parse one state file; raises if it is unreadable or not a state document."""
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    bridges = data["bridges"]
+    if not isinstance(bridges, dict):
+        raise ValueError("bridges is not an object")
+    clean: dict[str, dict] = {}
+    for bridge, cfg in bridges.items():
+        if not BRIDGE_RE.fullmatch(bridge) or not isinstance(cfg, dict):
+            continue
+        profile = cfg.get("profile")
+        locked = bool(cfg.get("locked", False)) and bool(profile)
+        clean[bridge] = {
+            "profile": str(profile) if profile else None,
+            "locked": locked,
+        }
+    return {"bridges": clean}
+
+
 def load_state() -> dict[str, dict]:
-    if not os.path.exists(STATE_PATH):
-        return {"bridges": {}}
-    try:
-        with open(STATE_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        bridges = data.get("bridges", {})
-        clean: dict[str, dict] = {}
-        if isinstance(bridges, dict):
-            for bridge, cfg in bridges.items():
-                if not BRIDGE_RE.match(bridge) or not isinstance(cfg, dict):
-                    continue
-                profile = cfg.get("profile")
-                locked = bool(cfg.get("locked", False)) and bool(profile)
-                clean[bridge] = {
-                    "profile": str(profile) if profile else None,
-                    "locked": locked,
-                }
-        return {"bridges": clean}
-    except Exception:
-        return {"bridges": {}}
+    # A damaged state file must never turn into "no locks": fall back to the previous copy.
+    failed = False
+    for path in (STATE_PATH, f"{STATE_PATH}.bak"):
+        if not os.path.exists(path):
+            continue
+        try:
+            state = read_state_file(path)
+        except Exception as exc:
+            failed = True
+            log(f"state file {path} is unusable: {exc}")
+            continue
+        if path != STATE_PATH:
+            log(f"using backup state {path}")
+        return state
+    if failed:
+        log("ERROR: no usable state file, starting with NO locked bridges; reconcile from the API to restore them")
+        try:
+            os.replace(STATE_PATH, f"{STATE_PATH}.corrupt")
+        except OSError:
+            pass
+    return {"bridges": {}}
 
 
 def save_state() -> None:
     tmp = f"{STATE_PATH}.tmp"
+    bak = f"{STATE_PATH}.bak"
     os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(STATE, f, indent=2, sort_keys=True)
+        f.flush()
+        os.fsync(f.fileno())
+    # Keep the previous good state as .bak (never overwrite it with a damaged file).
+    try:
+        read_state_file(STATE_PATH)
+        with open(STATE_PATH, "rb") as src, open(f"{bak}.tmp", "wb") as dst:
+            dst.write(src.read())
+            dst.flush()
+            os.fsync(dst.fileno())
+        os.replace(f"{bak}.tmp", bak)
+    except Exception:
+        pass
     os.replace(tmp, STATE_PATH)
 
 
 def cleanup_legacy_single_tunnel() -> None:
     # Tear down the old single-tunnel wgrk setup cleanly if present.
-    while sh(["iptables", "-t", "mangle", "-D", "PREROUTING", "-i", "rakazo-c+", "-j", "MARK", "--set-mark", "0x7100"])[0] == 0:
+    while sh([*IPT, "-t", "mangle", "-D", "PREROUTING", "-i", "rakazo-c+", "-j", "MARK", "--set-mark", "0x7100"])[0] == 0:
         pass
-    while sh(["iptables", "-t", "nat", "-D", "POSTROUTING", "-o", "wgrk", "-j", "MASQUERADE"])[0] == 0:
+    while sh([*IPT, "-t", "nat", "-D", "POSTROUTING", "-o", "wgrk", "-j", "MASQUERADE"])[0] == 0:
         pass
-    while sh(["iptables", "-t", "mangle", "-D", "FORWARD", "-o", "wgrk", "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"])[0] == 0:
+    while sh([*IPT, "-t", "mangle", "-D", "FORWARD", "-o", "wgrk", "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"])[0] == 0:
         pass
     while sh(["ip", "rule", "del", "fwmark", "0x7100", "lookup", "7100", "priority", RULE_PRIO])[0] == 0:
         pass
@@ -247,10 +311,10 @@ def ensure_tunnel_up(profile: dict) -> None:
         pass
     sh(["ip", "rule", "add", "fwmark", f"{mark}/0xffff", "lookup", table, "priority", RULE_PRIO])
 
-    if sh(["iptables", "-t", "nat", "-C", "POSTROUTING", "-o", iface, "-j", "MASQUERADE"])[0] != 0:
-        sh(["iptables", "-t", "nat", "-A", "POSTROUTING", "-o", iface, "-j", "MASQUERADE"])
-    if sh(["iptables", "-t", "mangle", "-C", "FORWARD", "-o", iface, "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"])[0] != 0:
-        sh(["iptables", "-t", "mangle", "-A", "FORWARD", "-o", iface, "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"])
+    if sh([*IPT, "-t", "nat", "-C", "POSTROUTING", "-o", iface, "-j", "MASQUERADE"])[0] != 0:
+        sh([*IPT, "-t", "nat", "-A", "POSTROUTING", "-o", iface, "-j", "MASQUERADE"])
+    if sh([*IPT, "-t", "mangle", "-C", "FORWARD", "-o", iface, "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"])[0] != 0:
+        sh([*IPT, "-t", "mangle", "-A", "FORWARD", "-o", iface, "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"])
 
 
 def tunnel_status(profile: dict) -> dict:
@@ -292,65 +356,87 @@ def tunnel_status(profile: dict) -> dict:
     }
 
 
+def ensure_jump(base: list[str], chain: str, jump: str) -> None:
+    """Keep exactly one `-i rakazo-c+ -j <jump>` rule at the top of `chain`.
+
+    The new rule goes in before any stale copy is deleted (by index), so the jump is never absent.
+    """
+    wanted = f"-A {chain} -i rakazo-c+ -j {jump}"
+    rc, out, err = sh([*base, "-S", chain])
+    if rc != 0:
+        raise RuntimeError(f"{base[0]} -S {chain} failed: {err}")
+    rules = [l.strip() for l in out.splitlines() if l.strip().startswith(f"-A {chain} ")]
+    hits = [i for i, l in enumerate(rules, 1) if l == wanted]
+    if not hits or hits[0] != 1:
+        rc, _, err = sh([*base, "-I", chain, "1", "-i", "rakazo-c+", "-j", jump])
+        if rc != 0:
+            raise RuntimeError(f"{base[0]} -I {chain} failed: {err}")
+        hits = [1] + [h + 1 for h in hits]
+    for idx in reversed(hits[1:]):
+        rc, _, err = sh([*base, "-D", chain, str(idx)])
+        if rc != 0:
+            raise RuntimeError(f"{base[0]} -D {chain} {idx} failed: {err}")
+
+
 def ensure_forward_hook_position() -> None:
-    """Keep RAKAZO-VPN-KS at FORWARD rule #1 (above DOCKER-FORWARD) and block IPv6."""
-    _, fwd_out, _ = sh(["iptables", "-S", "FORWARD"])
-    lines = [l.strip() for l in fwd_out.splitlines() if l.strip().startswith("-A FORWARD")]
-    wanted = f"-A FORWARD -i rakazo-c+ -j {KS_CHAIN}"
-    if not lines or lines[0] != wanted:
-        while sh(["iptables", "-D", "FORWARD", "-i", "rakazo-c+", "-j", KS_CHAIN])[0] == 0:
-            pass
-        sh(["iptables", "-I", "FORWARD", "1", "-i", "rakazo-c+", "-j", KS_CHAIN])
+    """Keep the jumps to RAKAZO-VPN-KS / RAKAZO-VPN-MANGLE at rule #1 (above DOCKER-FORWARD) and block IPv6."""
+    ensure_jump(IPT, "FORWARD", KS_CHAIN)
+    ensure_jump([*IPT, "-t", "mangle"], "PREROUTING", MANGLE_CHAIN)
+    try:
+        ensure_jump(IPT6, "FORWARD", "DROP")
+    except RuntimeError as exc:
+        # Hosts without usable ip6tables never carried IPv6 for the computers; do not block IPv4 policy on it.
+        log(f"ipv6 FORWARD drop not ensured: {exc}")
 
-    _, m_out, _ = sh(["iptables", "-t", "mangle", "-S", "PREROUTING"])
-    m_lines = [l.strip() for l in m_out.splitlines() if l.strip().startswith("-A PREROUTING")]
-    m_wanted = f"-A PREROUTING -i rakazo-c+ -j {MANGLE_CHAIN}"
-    if not m_lines or m_lines[0] != m_wanted:
-        while sh(["iptables", "-t", "mangle", "-D", "PREROUTING", "-i", "rakazo-c+", "-j", MANGLE_CHAIN])[0] == 0:
-            pass
-        sh(["iptables", "-t", "mangle", "-I", "PREROUTING", "1", "-i", "rakazo-c+", "-j", MANGLE_CHAIN])
 
-    _, fwd6_out, _ = sh(["ip6tables", "-S", "FORWARD"])
-    lines6 = [l.strip() for l in fwd6_out.splitlines() if l.strip().startswith("-A FORWARD")]
-    if not lines6 or lines6[0] != "-A FORWARD -i rakazo-c+ -j DROP":
-        while sh(["ip6tables", "-D", "FORWARD", "-i", "rakazo-c+", "-j", "DROP"])[0] == 0:
-            pass
-        sh(["ip6tables", "-I", "FORWARD", "1", "-i", "rakazo-c+", "-j", "DROP"])
+def restore_table(payload: str) -> None:
+    """Apply one table's rules in a single atomic iptables-restore transaction (only declared chains are touched)."""
+    rc, _, err = sh(["iptables-restore", "-w", "--noflush"], timeout=20, input_text=payload)
+    if rc != 0:
+        raise RuntimeError(f"iptables-restore failed (rc={rc}), previous rules kept: {err}")
+
+
+def build_policy_payloads(tunnels: dict[str, dict]) -> tuple[str, str]:
+    """iptables-restore payloads (filter, mangle) for RAKAZO-VPN-KS and RAKAZO-VPN-MANGLE from STATE + tunnel health."""
+    mangle_rules: list[str] = []
+    ks_rules = [f"-A {KS_CHAIN} -o rakazo-c+ -j RETURN"]
+
+    for bridge, cfg in sorted(STATE["bridges"].items()):
+        if not BRIDGE_RE.fullmatch(bridge):
+            continue
+        pid = cfg.get("profile")
+        locked = bool(cfg.get("locked", False))
+        prof = PROFILES.get(pid) if pid else None
+        t_info = tunnels.get(pid) if pid else None
+
+        if prof and (locked or (t_info and t_info["up"])):
+            mangle_rules.append(
+                f"-A {MANGLE_CHAIN} -i {bridge} -j MARK --set-xmark {prof['markHex']}/0xffff"
+            )
+
+        if locked:
+            if prof:
+                ks_rules.append(f"-A {KS_CHAIN} -i {bridge} -o {prof['iface']} -j RETURN")
+            ks_rules.append(f"-A {KS_CHAIN} -i {bridge} -j DROP")
+
+    def table(name: str, chain: str, rules: list[str]) -> str:
+        return "\n".join([f"*{name}", f":{chain} - [0:0]", f"-F {chain}", *rules, "COMMIT"]) + "\n"
+
+    return table("filter", KS_CHAIN, ks_rules), table("mangle", MANGLE_CHAIN, mangle_rules)
 
 
 def apply_iptables_policies() -> dict[str, dict]:
-    """Rewrite RAKAZO-VPN-MANGLE and RAKAZO-VPN-KS atomically from STATE + tunnel health."""
+    """Rewrite RAKAZO-VPN-MANGLE and RAKAZO-VPN-KS from STATE + tunnel health, one atomic restore per table.
+
+    Raises RuntimeError if a table could not be applied; that table then keeps its previous rules.
+    """
     with LOCK:
         tunnels = {pid: tunnel_status(p) for pid, p in PROFILES.items()}
+        filter_payload, mangle_payload = build_policy_payloads(tunnels)
 
-        sh(["iptables", "-N", KS_CHAIN])
-        sh(["iptables", "-t", "mangle", "-N", MANGLE_CHAIN])
-
-        mangle_cmds = [f"-F {MANGLE_CHAIN}"]
-        ks_cmds = [f"-F {KS_CHAIN}"]
-        ks_cmds.append(f"-A {KS_CHAIN} -o rakazo-c+ -j RETURN")
-
-        for bridge, cfg in sorted(STATE["bridges"].items()):
-            pid = cfg.get("profile")
-            locked = bool(cfg.get("locked", False))
-            prof = PROFILES.get(pid) if pid else None
-            t_info = tunnels.get(pid) if pid else None
-
-            if prof and (locked or (t_info and t_info["up"])):
-                mangle_cmds.append(
-                    f"-A {MANGLE_CHAIN} -i {bridge} -j MARK --set-xmark {prof['markHex']}/0xffff"
-                )
-
-            if locked:
-                if prof:
-                    ks_cmds.append(f"-A {KS_CHAIN} -i {bridge} -o {prof['iface']} -j RETURN")
-                ks_cmds.append(f"-A {KS_CHAIN} -i {bridge} -j DROP")
-
-        # Apply rules
-        for line in mangle_cmds:
-            sh(["iptables", "-t", "mangle", *line.split()])
-        for line in ks_cmds:
-            sh(["iptables", *line.split()])
+        # Kill switch first: a newly locked bridge is dropped before its traffic is marked.
+        restore_table(filter_payload)
+        restore_table(mangle_payload)
 
         ensure_forward_hook_position()
         return tunnels
@@ -363,7 +449,7 @@ def refresh_host_ip() -> tuple[str | None, str | None]:
         if rc == 0 and out:
             info = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
             ip = info.get("ip")
-            loc = info.get("loc")
+            loc = valid_country(info.get("loc"))
             if ip and re.fullmatch(r"[0-9.]{7,15}", ip):
                 HOST_IP_CACHE.update(ip=ip, country=loc, at=now)
     return HOST_IP_CACHE["ip"], HOST_IP_CACHE["country"]  # type: ignore[return-value]
@@ -384,14 +470,16 @@ def list_bot_containers() -> dict[str, str]:
 
 
 def probe_one_container(bridge: str, container_name: str) -> tuple[str, dict]:
-    rc, out, _ = sh(
-        ["docker", "exec", container_name, "curl", "-4", "-s", "--max-time", "4", "https://1.1.1.1/cdn-cgi/trace"],
-        timeout=7,
+    t0 = time.time()
+    rc, out, err = sh(
+        ["docker", "exec", container_name, "curl", "-4", "-s", "--max-time", "6", "https://1.1.1.1/cdn-cgi/trace"],
+        timeout=9,
     )
+    took = time.time() - t0
     if rc == 0 and out:
         info = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
         ip = info.get("ip")
-        loc = info.get("loc")
+        loc = valid_country(info.get("loc"))
         if ip and re.fullmatch(r"[0-9.]{7,15}", ip):
             return bridge, {
                 "containerName": container_name,
@@ -406,6 +494,7 @@ def probe_one_container(bridge: str, container_name: str) -> tuple[str, dict]:
         "exitCountry": None,
         "reachable": False,
         "probedAt": int(time.time()),
+        "failReason": f"rc={rc} took={took:.1f}s out={out[:60]!r} err={err[:120]!r}",
     }
 
 
@@ -427,6 +516,31 @@ def probe_bridges(target_bridges: set[str] | None = None) -> None:
                 except Exception:
                     pass
     with LOCK:
+        now = time.time()
+        for b, res in list(results.items()):
+            if target_bridges is not None:
+                # A policy change: earlier results say nothing about the new setup.
+                LAST_GOOD.pop(b, None)
+                PROBE_FAILS.pop(b, None)
+            if res.get("reachable"):
+                PROBE_FAILS[b] = 0
+                LAST_GOOD[b] = res
+                continue
+            PROBE_FAILS[b] = PROBE_FAILS.get(b, 0) + 1
+            print(
+                f"[rakazo-vpn-manager] probe failed {time.strftime('%F %T')} bridge={b} "
+                f"container={res.get('containerName')} streak={PROBE_FAILS[b]} {res.get('failReason')}",
+                flush=True,
+            )
+            good = LAST_GOOD.get(b)
+            if (
+                target_bridges is None
+                and good
+                and PROBE_FAILS[b] < FAIL_TOLERANCE
+                and now - good["probedAt"] < LAST_GOOD_MAX_AGE
+                and good.get("containerName") == res.get("containerName")
+            ):
+                results[b] = dict(good)
         if target_bridges is None:
             PROBE_CACHE.clear()
         PROBE_CACHE.update(results)
@@ -496,19 +610,34 @@ def build_snapshot() -> dict:
 
 
 def set_bridge_policy(bridge: str, profile_id: str | None, locked: bool) -> dict:
-    if not BRIDGE_RE.match(bridge):
+    if not BRIDGE_RE.fullmatch(bridge):
         raise ValueError(f"Invalid bridge name: {bridge}")
     with LOCK:
         if profile_id is not None and profile_id not in PROFILES:
             raise ValueError(f"Unknown VPN profile: {profile_id}")
         if locked and not profile_id:
             raise ValueError("Cannot lock a bridge without a VPN profile")
+        previous = dict(STATE["bridges"])
         if profile_id is None and not locked:
             STATE["bridges"].pop(bridge, None)
         else:
             STATE["bridges"][bridge] = {"profile": profile_id, "locked": locked}
-        save_state()
-        apply_iptables_policies()
+        try:
+            save_state()
+            apply_iptables_policies()
+        except Exception:
+            # Not applied: keep the old policy (rules and state) and let the caller see the error.
+            STATE["bridges"] = previous
+            try:
+                save_state()
+            except Exception as exc:
+                log(f"state rollback save failed: {exc}")
+            try:
+                # A partially applied change (one table restored) must not outlive the rolled-back state.
+                apply_iptables_policies()
+            except Exception as exc:
+                log(f"rules rollback apply failed: {exc}")
+            raise
 
     probe_bridges({bridge})
     snap = build_snapshot()
@@ -517,10 +646,13 @@ def set_bridge_policy(bridge: str, profile_id: str | None, locked: bool) -> dict
 
 def reconcile_bridges(desired: dict[str, dict]) -> dict:
     with LOCK:
+        previous = dict(STATE["bridges"])
         next_bridges: dict[str, dict] = {}
+        explicit: set[str] = set()
         for bridge, cfg in desired.items():
-            if not BRIDGE_RE.match(bridge) or not isinstance(cfg, dict):
+            if not BRIDGE_RE.fullmatch(bridge) or not isinstance(cfg, dict):
                 continue
+            explicit.add(bridge)
             profile_id = cfg.get("profile")
             locked = bool(cfg.get("locked", False))
             if profile_id and profile_id not in PROFILES:
@@ -530,14 +662,36 @@ def reconcile_bridges(desired: dict[str, dict]) -> dict:
                 continue
             if profile_id:
                 next_bridges[bridge] = {"profile": str(profile_id), "locked": locked}
+        # Locks are a union: only an explicit payload entry may change or unlock a bridge.
+        for bridge, cfg in previous.items():
+            if bridge not in explicit and cfg.get("locked"):
+                next_bridges[bridge] = dict(cfg)
         STATE["bridges"] = next_bridges
-        save_state()
-        apply_iptables_policies()
+        try:
+            save_state()
+            apply_iptables_policies()
+        except Exception:
+            STATE["bridges"] = previous
+            try:
+                save_state()
+            except Exception as exc:
+                log(f"state rollback save failed: {exc}")
+            try:
+                # A partially applied change (one table restored) must not outlive the rolled-back state.
+                apply_iptables_policies()
+            except Exception as exc:
+                log(f"rules rollback apply failed: {exc}")
+            raise
+    with LOCK:
+        LAST_GOOD.clear()
+        PROBE_FAILS.clear()
     probe_bridges(None)
     return build_snapshot()
 
 
 class ApiHandler(BaseHTTPRequestHandler):
+    timeout = 15  # per-connection socket timeout, so a stalled client cannot pin a thread
+
     def address_string(self) -> str:
         return "local"
 
@@ -555,11 +709,26 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def read_json(self) -> dict:
-        length = int(self.headers.get("Content-Length", "0") or 0)
-        if length <= 0 or length > 1_048_576:
-            return {}
+        """Read a JSON object body; anything else raises ValueError (HTTP 400)."""
+        try:
+            length = int(self.headers.get("Content-Length", "0") or 0)
+        except ValueError:
+            raise ValueError("invalid Content-Length") from None
+        if length <= 0:
+            raise ValueError("request body required")
+        if length > 1_048_576:
+            self.close_connection = True  # the unread body must not be parsed as the next request
+            raise ValueError("request body too large")
         raw = self.rfile.read(length)
-        return json.loads(raw.decode("utf-8"))
+        if len(raw) != length:
+            raise ValueError("incomplete request body")
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except ValueError as exc:  # includes JSONDecodeError and UnicodeDecodeError
+            raise ValueError(f"invalid JSON body: {exc}") from None
+        if not isinstance(data, dict):
+            raise ValueError("request body must be a JSON object")
+        return data
 
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
@@ -597,9 +766,15 @@ class ApiHandler(BaseHTTPRequestHandler):
         bridge = unquote(m.group(1))
         try:
             data = self.read_json()
-            profile = data.get("profile")
-            locked = bool(data.get("locked", False))
-            res = set_bridge_policy(bridge, str(profile) if profile else None, locked)
+            if "profile" not in data or "locked" not in data:
+                raise ValueError("profile and locked are required")
+            profile = data["profile"]
+            locked = data["locked"]
+            if profile is not None and not isinstance(profile, str):
+                raise ValueError("profile must be a string or null")
+            if not isinstance(locked, bool):
+                raise ValueError("locked must be a boolean")
+            res = set_bridge_policy(bridge, profile or None, locked)
             self.send_json(200, res)
         except ValueError as exc:
             self.send_json(400, {"error": str(exc)})
@@ -611,7 +786,7 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/reconcile":
             try:
                 data = self.read_json()
-                bridges = data.get("bridges", {})
+                bridges = data.get("bridges")
                 if not isinstance(bridges, dict):
                     raise ValueError("bridges must be an object")
                 res = reconcile_bridges(bridges)
@@ -624,11 +799,33 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.send_json(404, {"error": "Not found"})
 
 
-class ThreadingUnixStreamServer(UnixStreamServer):
-    daemon_threads = True
+class TcpApiHandler(ApiHandler):
+    """The 127.0.0.1 listener: read-only status and dashboard only. Changes go through the unix socket."""
 
-    def server_bind(self) -> None:
-        super().server_bind()
+    TCP_GET_PATHS = ("/", "/index.html", "/status", "/status.json")
+
+    def host_allowed(self) -> bool:
+        host = (self.headers.get("Host") or "").strip().lower()
+        return host in ALLOWED_HOSTS or bool(TAILSCALE_HOST_RE.fullmatch(host))
+
+    def do_GET(self) -> None:
+        if not self.host_allowed():
+            self.send_json(403, {"error": "Forbidden host"})
+            return
+        if self.path.split("?", 1)[0] not in self.TCP_GET_PATHS:
+            self.send_json(404, {"error": "Not found"})
+            return
+        super().do_GET()
+
+    def deny_write(self) -> None:
+        self.close_connection = True  # a body we refuse to read must not be parsed as the next request
+        self.send_json(405, {"error": "Read-only listener; use the unix socket"})
+
+    do_PUT = do_POST = do_DELETE = do_PATCH = deny_write
+
+
+class ThreadingUnixStreamServer(ThreadingMixIn, UnixStreamServer):
+    daemon_threads = True
 
 
 def render_dashboard_html() -> str:
@@ -650,11 +847,17 @@ th{color:var(--mut);font-weight:500;font-size:12px}
 <div class="card"><h2>WireGuard Tunnels</h2><table><thead><tr><th>Profile</th><th>Country</th><th>Interface</th><th>Handshake</th><th>Endpoint</th></tr></thead><tbody id="tunnels"></tbody></table></div>
 <div class="card"><h2>Bot Computers</h2><table><thead><tr><th>Container</th><th>Bridge</th><th>Config</th><th>Lock</th><th>State</th><th>Exit IP</th></tr></thead><tbody id="bridges"></tbody></table></div>
 </main><script>
+const STATES=["vpn","direct","fallback","blocked","stopped"];
+function cell(v,tag){const td=document.createElement("td");if(tag){const e=document.createElement(tag);e.textContent=v;td.appendChild(e)}else{td.textContent=v}return td}
+function row(cells){const tr=document.createElement("tr");cells.forEach(c=>tr.appendChild(c));return tr}
 async function tick(){
   const s=await (await fetch("status.json",{cache:"no-store"})).json();
   document.getElementById("host").textContent="Host Direct IP: "+(s.hostIp||"?")+" ("+(s.hostCountry||"?")+")";
-  document.getElementById("tunnels").innerHTML=(s.profiles||[]).map(p=>`<tr><td>${p.serverLabel}</td><td>${p.countryName} (${p.countryCode})</td><td>${p.iface}</td><td>${p.up?(p.handshakeAgeSec==null?"starting":p.handshakeAgeSec+"s ago"):"DOWN"}</td><td>${p.endpoint||"—"}</td></tr>`).join("");
-  document.getElementById("bridges").innerHTML=Object.values(s.bridges||{}).map(b=>`<tr><td>${b.containerName||"—"}</td><td><code>${b.bridge}</code></td><td>${b.profile||"Direct"}</td><td>${b.locked?"LOCKED":"Unlocked"}</td><td><span class="pill ${b.state}">${b.state}</span></td><td>${b.exitIp?(b.exitIp+" ("+(b.exitCountry||"?")+")"):"—"}</td></tr>`).join("");
+  document.getElementById("tunnels").replaceChildren(...(s.profiles||[]).map(p=>row([cell(p.serverLabel),cell(p.countryName+" ("+p.countryCode+")"),cell(p.iface),cell(p.up?(p.handshakeAgeSec==null?"starting":p.handshakeAgeSec+"s ago"):"DOWN"),cell(p.endpoint||"\u2014")])));
+  document.getElementById("bridges").replaceChildren(...Object.values(s.bridges||{}).map(b=>{
+    const pill=cell(b.state,"span");pill.firstChild.className="pill "+(STATES.includes(b.state)?b.state:"stopped");
+    return row([cell(b.containerName||"\u2014"),cell(b.bridge,"code"),cell(b.profile||"Direct"),cell(b.locked?"LOCKED":"Unlocked"),pill,cell(b.exitIp?(b.exitIp+" ("+(b.exitCountry||"?")+")"):"\u2014")]);
+  }));
 }
 tick();setInterval(tick,5000);
 </script></body></html>"""
@@ -664,6 +867,9 @@ def monitor_loop(stop_event: threading.Event) -> None:
     while not stop_event.is_set():
         try:
             apply_iptables_policies()
+        except Exception as exc:
+            print(f"[rakazo-vpn-manager] monitor apply error: {exc}", file=sys.stderr, flush=True)
+        try:
             probe_bridges(None)
         except Exception as exc:
             print(f"[rakazo-vpn-manager] monitor error: {exc}", file=sys.stderr, flush=True)
@@ -677,9 +883,21 @@ def bootstrap() -> None:
     with LOCK:
         PROFILES = load_profiles()
         STATE = load_state()
+        # Policy first: locked bridges are dropped (fail closed) before any tunnel exists.
+        # A failure here is retried by the monitor loop and must not stop the manager.
+        try:
+            apply_iptables_policies()
+        except Exception as exc:
+            log(f"initial policy apply failed: {exc}")
         for prof in PROFILES.values():
-            ensure_tunnel_up(prof)
-        apply_iptables_policies()
+            try:
+                ensure_tunnel_up(prof)
+            except Exception as exc:
+                log(f"profile {prof['id']} skipped, tunnel not brought up: {exc}")
+        try:
+            apply_iptables_policies()
+        except Exception as exc:
+            log(f"policy apply after tunnels failed: {exc}")
 
 
 def main() -> int:
@@ -703,7 +921,7 @@ def main() -> int:
     os.chmod(SOCK_PATH, 0o660)
     threading.Thread(target=unix_srv.serve_forever, daemon=True).start()
 
-    http_srv = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), ApiHandler)
+    http_srv = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), TcpApiHandler)
     print(f"rakazo-vpn-manager ready: {len(PROFILES)} profiles loaded, unix={SOCK_PATH}, http=127.0.0.1:{HTTP_PORT}", flush=True)
     http_srv.serve_forever()
     return 0

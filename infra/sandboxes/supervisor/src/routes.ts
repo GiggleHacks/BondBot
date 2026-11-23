@@ -41,6 +41,7 @@ import {
 import {
   computerComputeGpus,
   computerDns,
+  computerEgressSetting,
   computerMounts,
   controlViaLoopback,
   dataDir,
@@ -172,6 +173,24 @@ app.put("/vpn/homes/:homeKey", async (c) => {
     .safeParse(await c.req.json().catch(() => undefined));
   if (!body.success) {
     return c.json({ error: "invalid VPN policy payload" }, 400);
+  }
+  // Only clearing a policy is always allowed. Choosing a country or locking needs the named
+  // rakazo-c* bridge the host rules match, which only restricted egress gives a computer
+  // network, and a locked computer must resolve DNS from its own network: with no
+  // SANDBOX_COMPUTER_DNS, Docker 28+ forwards from the host namespace, past the Kill Switch.
+  if (body.data.profile !== null || body.data.locked) {
+    if (computerEgressSetting === "auto") {
+      await ensureRestrictedEgressEnforced().catch(() => undefined);
+    }
+    if (computerEgressMode !== "restricted") {
+      return c.json(
+        { error: "VPN needs restricted computer egress (SANDBOX_COMPUTER_EGRESS)" },
+        400,
+      );
+    }
+    if (body.data.locked && !computerDns) {
+      return c.json({ error: "Kill Switch needs SANDBOX_COMPUTER_DNS to be set" }, 400);
+    }
   }
   try {
     const result = await setHomeVpnPolicy(homeKey, body.data);
