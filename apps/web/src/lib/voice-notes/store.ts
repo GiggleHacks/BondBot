@@ -164,3 +164,61 @@ export function memoryVoiceNoteStore(): VoiceNoteStore {
     },
   };
 }
+
+/**
+ * Wraps a store that can fail (IndexedDB blocked, full or broken): the first failure moves
+ * writes to memory for the rest of the page's life, so recording still works, and reads look
+ * in both places so nothing already saved is lost from view.
+ */
+export function failoverVoiceNoteStore(
+  primary: VoiceNoteStore,
+  fallback: VoiceNoteStore = memoryVoiceNoteStore(),
+): VoiceNoteStore {
+  let failed = false;
+  const write = async <T>(run: (store: VoiceNoteStore) => Promise<T>): Promise<T> => {
+    if (!failed) {
+      try {
+        return await run(primary);
+      } catch {
+        failed = true;
+      }
+    }
+    return run(fallback);
+  };
+  const read = async <T>(run: (store: VoiceNoteStore) => Promise<T>): Promise<T | undefined> => {
+    try {
+      return await run(primary);
+    } catch {
+      failed = true;
+      return undefined;
+    }
+  };
+  return {
+    putNote: (note) => write((store) => store.putNote(note)),
+    putChunk: (chunk) => write((store) => store.putChunk(chunk)),
+    async getNote(clientId) {
+      return (await fallback.getNote(clientId)) ?? (await read((store) => store.getNote(clientId)));
+    },
+    async listNotes() {
+      const merged = new Map<string, LocalVoiceNote>();
+      for (const note of (await read((store) => store.listNotes())) ?? []) {
+        merged.set(note.clientId, note);
+      }
+      // What lives in memory is newer than whatever IndexedDB still holds for the same note.
+      for (const note of await fallback.listNotes()) merged.set(note.clientId, note);
+      return [...merged.values()].sort((a, b) => a.startedAt - b.startedAt);
+    },
+    async deleteNote(clientId) {
+      await fallback.deleteNote(clientId);
+      await read((store) => store.deleteNote(clientId));
+    },
+    async listChunks(clientId) {
+      const merged = new Map<number, VoiceNoteChunk>();
+      for (const chunk of (await read((store) => store.listChunks(clientId))) ?? []) {
+        merged.set(chunk.index, chunk);
+      }
+      for (const chunk of await fallback.listChunks(clientId)) merged.set(chunk.index, chunk);
+      return [...merged.values()].sort((a, b) => a.index - b.index);
+    },
+  };
+}

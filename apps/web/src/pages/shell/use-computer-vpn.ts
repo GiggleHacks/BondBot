@@ -1,11 +1,10 @@
-import { useNow } from "@rakazo/chat-ui/hooks";
 import type {
   BotVpnStatus,
   ComputerVpnOverview,
   SetComputerVpnInput,
 } from "@rakazo/contracts";
 import { toast } from "@rakazo/ui-web";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { createSpaceRpc } from "../../lib/rpc";
 import { playVpnSound, primeVpnAudio } from "../../lib/vpn-sounds";
 
@@ -14,6 +13,13 @@ export interface ComputerVpnController {
   pendingBotId: string | null;
   refreshVpn: () => Promise<void>;
   setBotVpn: (input: SetComputerVpnInput) => Promise<BotVpnStatus | null>;
+}
+
+const POLL_MS = 15_000;
+
+/** Nobody looks at a hidden tab, and an offline browser cannot answer. */
+function pollingAllowed(): boolean {
+  return document.visibilityState !== "hidden" && navigator.onLine !== false;
 }
 
 /** Polls live per-computer Proton VPN state and exit IPs, and exposes mutations. */
@@ -28,22 +34,52 @@ export function useComputerVpn({
 }): ComputerVpnController {
   const [overview, setOverview] = useState<ComputerVpnOverview | null>(null);
   const [pendingBotId, setPendingBotId] = useState<string | null>(null);
-  const pollTick = useNow(spaceId ? 15_000 : null);
+  const [polling, setPolling] = useState(pollingAllowed);
+  // Counts requests, so an answer arriving after a newer request (or a space change) is dropped.
+  const latestRequest = useRef(0);
+
+  useEffect(() => {
+    const update = () => setPolling(pollingAllowed());
+    document.addEventListener("visibilitychange", update);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      document.removeEventListener("visibilitychange", update);
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
 
   const refreshVpn = useCallback(async () => {
     if (!spaceId) return;
+    const request = ++latestRequest.current;
     try {
       const next = await rpc.computer.vpnState();
-      setOverview(next);
+      if (request !== latestRequest.current) return;
+      // Same answer as the last one: keep the object so nothing downstream re-renders.
+      setOverview((current) =>
+        current && JSON.stringify(current) === JSON.stringify(next) ? current : next,
+      );
     } catch {
       // Transient status poll failure should not break the shell.
     }
   }, [rpc, spaceId]);
 
+  // Another space's computers must not show while this one loads (or if it never answers).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the space changes
   useEffect(() => {
-    void pollTick;
+    latestRequest.current += 1;
+    setOverview(null);
+  }, [spaceId]);
+
+  // Refreshes at once, then every 15 s; stops while the tab is hidden or offline and
+  // refreshes once more when it comes back.
+  useEffect(() => {
+    if (!spaceId || !polling) return;
     void refreshVpn();
-  }, [pollTick, refreshVpn]);
+    const timer = setInterval(() => void refreshVpn(), POLL_MS);
+    return () => clearInterval(timer);
+  }, [spaceId, polling, refreshVpn]);
 
   const setBotVpn = useCallback(
     async (input: SetComputerVpnInput): Promise<BotVpnStatus | null> => {
@@ -81,5 +117,8 @@ export function useComputerVpn({
     [overview, refreshBots, refreshVpn, rpc],
   );
 
-  return { overview, pendingBotId, refreshVpn, setBotVpn };
+  return useMemo(
+    () => ({ overview, pendingBotId, refreshVpn, setBotVpn }),
+    [overview, pendingBotId, refreshVpn, setBotVpn],
+  );
 }

@@ -603,7 +603,7 @@ export function SidebarRoster({
                         trigger={
                           <button
                             type="button"
-                            aria-label={t`VPN for ${item.chat.name}`}
+                            aria-label={`VPN for ${item.chat.name}`}
                             onClick={(event) => event.stopPropagation()}
                             className={`absolute z-10 transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-ring ${
                               mini

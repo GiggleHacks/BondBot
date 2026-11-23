@@ -24,6 +24,8 @@ vi.mock("../../lib/rpc", () => ({ selectedSpaceId: () => "space-1" }));
 vi.mock("../../lib/voice-notes/voice-notes", () => ({
   voiceNotes: {
     subscribe: vi.fn(() => () => {}),
+    subscribeNotice: vi.fn(() => () => {}),
+    start: vi.fn(),
     record: vi.fn(async () => {}),
     stop: vi.fn(async () => {}),
     state: { recording: null },

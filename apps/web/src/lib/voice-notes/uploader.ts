@@ -13,6 +13,16 @@ export type VoiceNoteFetch = (
 /** A refusal that sending again will not fix (the chat is gone, the note is too long). */
 export class VoiceNoteRejected extends Error {}
 
+/** The person deleted the note while it was being sent: stop, and do not write it back. */
+export class VoiceNoteCancelled extends Error {}
+
+/** Throws when the device copy is gone, so a deleted note is never written back or completed. */
+async function stillQueued(store: VoiceNoteStore, clientId: string): Promise<LocalVoiceNote> {
+  const current = await store.getNote(clientId);
+  if (!current) throw new VoiceNoteCancelled("Deleted.");
+  return current;
+}
+
 export function partCount(chunkCount: number): number {
   return Math.ceil(chunkCount / SLICES_PER_PART);
 }
@@ -30,7 +40,13 @@ async function check(res: Response): Promise<Response> {
   } catch {
     // Not JSON; the status says enough.
   }
-  const retryable = res.status === 408 || res.status === 429 || res.status >= 500;
+  // Signed out or a session that lapsed: the note is fine, it goes up once signed in again.
+  const retryable =
+    res.status === 401 ||
+    res.status === 403 ||
+    res.status === 408 ||
+    res.status === 429 ||
+    res.status >= 500;
   throw retryable ? new Error(message) : new VoiceNoteRejected(message);
 }
 
@@ -46,6 +62,7 @@ async function uploadParts(
   onSent?: (sent: number) => void | Promise<void>,
 ): Promise<void> {
   const base = `/api/voice-notes/${encodeURIComponent(note.clientId)}`;
+  await stillQueued(store, note.clientId);
   const declared = await check(
     await send(base, {
       method: "PUT",
@@ -68,6 +85,7 @@ async function uploadParts(
   await onSent?.(sent);
   for (let part = 0; part < parts; part += 1) {
     if (have.has(part)) continue;
+    await stillQueued(store, note.clientId);
     const slice = chunks.slice(part * SLICES_PER_PART, (part + 1) * SLICES_PER_PART);
     const body = new Blob(
       slice.map((c) => c.blob),
@@ -95,9 +113,14 @@ export async function uploadNote(
 ): Promise<void> {
   const parts = partCount(note.chunkCount);
   await uploadParts(store, note, send, parts, async (sent) => {
-    if (sent > 0) await store.putNote({ ...note, state: "uploading", uploadedParts: sent });
+    // Re-read the row: a copy from before a delete must not bring the note back.
+    if (sent > 0) {
+      const current = await stillQueued(store, note.clientId);
+      await store.putNote({ ...current, state: "uploading", uploadedParts: sent });
+    }
     onProgress?.(sent / parts);
   });
+  await stillQueued(store, note.clientId);
   await check(
     await send(`/api/voice-notes/${encodeURIComponent(note.clientId)}/complete`, {
       method: "POST",
@@ -139,7 +162,10 @@ export async function drainQueue(
 ): Promise<DrainResult> {
   const now = options.now ?? Date.now;
   const result: DrainResult = { sent: [], failed: [] };
-  for (const note of await store.listNotes()) {
+  for (const listed of await store.listNotes()) {
+    // The list may be minutes old by the time this note's turn comes; the row may be gone.
+    const note = await store.getNote(listed.clientId);
+    if (!note) continue;
     const waiting = note.state === "pending" || note.state === "uploading";
     if (!waiting || (note.retryAt !== undefined && note.retryAt > now())) continue;
     await store.putNote({ ...note, state: "uploading", error: undefined });
@@ -150,6 +176,11 @@ export async function drainQueue(
       await store.deleteNote(note.clientId);
       result.sent.push(note.clientId);
     } catch (error) {
+      // Deleted meanwhile: nothing to record, and nothing to bring back.
+      if (error instanceof VoiceNoteCancelled || !(await store.getNote(note.clientId))) {
+        options.onChange?.();
+        continue;
+      }
       const attempts = (note.attempts ?? 0) + 1;
       const rejected = error instanceof VoiceNoteRejected;
       await store.putNote({

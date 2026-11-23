@@ -736,7 +736,7 @@ export function BotSettings({
               {vpn?.overview?.supported && vpn.overview.bots[bot.id] ? (
                 <div className="flex items-center justify-between gap-3 py-1">
                   <span className="text-body-sm text-foreground">
-                    <Trans>Computer VPN</Trans>
+                    Computer VPN
                   </span>
                   <ComputerVpnPopover
                     botId={bot.id}

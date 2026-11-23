@@ -29,7 +29,6 @@ export function useHoldToTalk({
   target: ArtifactTarget;
   disabled?: boolean;
 }) {
-  const { t } = useLingui();
   const [recording, setRecording] = useState<Recording>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const recordingRef = useRef(recording);
@@ -57,6 +56,12 @@ export function useHoldToTalk({
     [clear],
   );
 
+  // Start the upload queue even where the chat's pending-note list is not on the page.
+  useEffect(() => voiceNotes.start(), []);
+
+  // The recorder reports a recording that could not be saved or was cut off (a call, a headset).
+  useEffect(() => voiceNotes.subscribeNotice(showNotice), [showNotice]);
+
   useEffect(
     () => () => {
       if (noticeTimer.current) clearTimeout(noticeTimer.current);
@@ -78,12 +83,12 @@ export function useHoldToTalk({
           clear();
           showNotice(
             error instanceof DOMException && error.name === "NotAllowedError"
-              ? t`Allow microphone access to record`
-              : t`Could not start recording`,
+              ? "Allow microphone access to record"
+              : "Could not start recording",
           );
         });
     },
-    [clear, showNotice, t],
+    [clear, showNotice],
   );
 
   const submit = useCallback(() => {
@@ -149,20 +154,18 @@ export function useHoldToTalk({
   };
 }
 
-function useSeconds(since: number): number {
-  const now = useNow(500);
+function useSeconds(since: number, active: boolean): number {
+  // Ticks only while recording; the strip is mounted all the time.
+  const now = useNow(active ? 500 : null);
   return Math.max(0, Math.floor((now - since) / 1000));
 }
 
 /** Takes the text field's place while recording: a live dot, the time, and what was heard. */
 export function HoldToTalkStrip({ talk }: { talk: ReturnType<typeof useHoldToTalk> }) {
-  const { t } = useLingui();
   const startedAt = talk.recording?.startedAt ?? Date.now();
-  const seconds = useSeconds(startedAt);
+  const seconds = useSeconds(startedAt, talk.recording !== null);
   if (!talk.recording) return null;
-  const hint = talk.recording.locked
-    ? t`Recording… tap the red button to send`
-    : t`Release to send`;
+  const hint = talk.recording.locked ? "Recording… tap the red button to send" : "Release to send";
   return (
     <div
       data-testid="hold-to-talk-strip"
@@ -211,7 +214,7 @@ export function HoldToTalkControls({
         {/* The mic stays where it was, now red: tapping it again stops and sends. */}
         <Button
           size="icon"
-          aria-label={t`Stop and send recording`}
+          aria-label="Stop and send recording"
           onClick={talk.submit}
           className="size-8 shrink-0 animate-pulse rounded-full bg-destructive-fill text-destructive-foreground shadow-sm hover:bg-destructive-fill/90"
         >
@@ -238,11 +241,11 @@ export function HoldToTalkControls({
           {talk.notice}
         </span>
       ) : null}
-      <IconTooltip label={t`Tap to record`}>
+      <IconTooltip label="Tap to record">
         <Button
           variant="outline"
           size="icon"
-          aria-label={t`Record voice note`}
+          aria-label="Record voice note"
           disabled={disabled}
           {...talk.buttonProps}
           className={cn(

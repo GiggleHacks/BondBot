@@ -1,4 +1,3 @@
-import { useLingui } from "@lingui/react/macro";
 import { Button } from "@rakazo/ui-web";
 import { AudioLines, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useSyncExternalStore } from "react";
@@ -34,7 +33,6 @@ type Row = {
  * or being transcribed. Each leaves the list when its message appears in the chat.
  */
 export function VoiceNoteQueue({ target }: { target: ArtifactTarget }) {
-  const { t } = useLingui();
   const state = useSyncExternalStore(voiceNotes.subscribe, voiceNotes.getSnapshot);
   useEffect(() => voiceNotes.start(), []);
 
@@ -48,14 +46,14 @@ export function VoiceNoteQueue({ target }: { target: ArtifactTarget }) {
       durationMs: note.durationMs,
       failed,
       status: failed
-        ? (note.error ?? t`Could not send`)
+        ? (note.error ?? "Could not send")
         : !state.online
-          ? t`Waiting for connection`
+          ? "Waiting for connection"
           : note.state === "uploading" && progress !== undefined
-            ? t`Sending ${Math.round(progress * 100)}%`
+            ? `Sending ${Math.round(progress * 100)}%`
             : note.retryAt
-              ? t`Will retry soon`
-              : t`Sending…`,
+              ? "Will retry soon"
+              : "Sending…",
       onRetry: failed ? () => void voiceNotes.retry(note.clientId) : undefined,
       onDelete: () => void voiceNotes.discard(note.clientId),
     });
@@ -71,14 +69,14 @@ export function VoiceNoteQueue({ target }: { target: ArtifactTarget }) {
       durationMs: note.durationMs,
       failed: failed || stalled,
       status: failed
-        ? (note.error ?? t`Could not transcribe`)
+        ? (note.error ?? "Could not transcribe")
         : stalled
-          ? t`Retrying: ${note.error}`
+          ? `Retrying: ${note.error}`
           : note.status === "sending"
-            ? t`Sending…`
+            ? "Sending…"
             : note.segmentsTotal > 1
-              ? t`Transcribing ${note.segmentsDone}/${note.segmentsTotal}`
-              : t`Transcribing…`,
+              ? `Transcribing ${note.segmentsDone}/${note.segmentsTotal}`
+              : "Transcribing…",
       onRetry: failed ? () => void voiceNotes.retryOnServer(note.clientId) : undefined,
       onDelete:
         failed || stalled || note.status === "queued"
@@ -106,7 +104,7 @@ export function VoiceNoteQueue({ target }: { target: ArtifactTarget }) {
             <Button
               variant="ghost"
               size="icon"
-              aria-label={t`Retry voice note`}
+              aria-label="Retry voice note"
               onClick={row.onRetry}
               className="size-6 shrink-0 rounded-full"
             >
@@ -117,7 +115,7 @@ export function VoiceNoteQueue({ target }: { target: ArtifactTarget }) {
             <Button
               variant="ghost"
               size="icon"
-              aria-label={t`Delete voice note`}
+              aria-label="Delete voice note"
               onClick={row.onDelete}
               className="size-6 shrink-0 rounded-full text-muted-foreground"
             >

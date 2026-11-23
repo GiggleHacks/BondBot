@@ -85,7 +85,7 @@ export function ChatHeader({
               <Button
                 variant="floating"
                 size="sm"
-                aria-label={t`VPN settings for ${active.name}`}
+                aria-label={`VPN settings for ${active.name}`}
                 className="app-no-drag h-[34px] rounded-full px-1.5"
               >
                 <ComputerVpnFlagChip

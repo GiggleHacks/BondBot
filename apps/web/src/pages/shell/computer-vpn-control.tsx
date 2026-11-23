@@ -342,14 +342,14 @@ export function ComputerVpnPopover({
 
   const statusText =
     display.state === "vpn"
-      ? t`Protected via Proton VPN`
+      ? "Protected via Proton VPN"
       : display.state === "blocked"
-        ? t`Kill Switch active — internet blocked`
+        ? "Kill Switch active — internet blocked"
         : display.state === "fallback"
-          ? t`Tunnel down — fell back to Direct`
+          ? "Tunnel down — fell back to Direct"
           : display.state === "stopped"
-            ? t`Computer stopped`
-            : t`Direct connection (No VPN)`;
+            ? "Computer stopped"
+            : "Direct connection (No VPN)";
 
   return (
     <Popover
@@ -367,7 +367,7 @@ export function ComputerVpnPopover({
               <CountryFlag code={display.countryCode} />
               <span className="truncate">{botName}</span>
               <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                {isTeam ? t`Team computer` : t`Own computer`}
+                {isTeam ? "Team computer" : t`Own computer`}
               </span>
             </div>
             <div className={cn("mt-1 flex items-center gap-1 text-label font-medium", statusTone)}>
@@ -380,10 +380,10 @@ export function ComputerVpnPopover({
             </div>
             <div className="mt-0.5 text-label text-muted-foreground tabular-nums">
               {display.exitIp
-                ? t`Exit IP: ${display.exitIp} (${display.countryCode})`
+                ? `Exit IP: ${display.exitIp} (${display.countryCode})`
                 : display.state === "stopped"
-                  ? t`Starts on ${selectedProfile ? display.countryName : "Direct"}`
-                  : t`No outbound internet`}
+                  ? `Starts on ${selectedProfile ? display.countryName : "Direct"}`
+                  : "No outbound internet"}
             </div>
           </div>
         </div>
@@ -391,7 +391,7 @@ export function ComputerVpnPopover({
         {teamConfirm ? (
           <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-2.5">
             <p className="text-label text-foreground">
-              {t`${botName} currently shares the Team Computer. Separate it or update everyone on it?`}
+              {`${botName} currently shares the Team Computer. Separate it or update everyone on it?`}
             </p>
             <Button
               size="sm"
@@ -405,7 +405,7 @@ export function ComputerVpnPopover({
                 )
               }
             >
-              {t`Switch ${botName} to Own computer (${teamConfirm.label})`}
+              {`Switch ${botName} to Own computer (${teamConfirm.label})`}
             </Button>
             <Button
               size="sm"
@@ -420,7 +420,7 @@ export function ComputerVpnPopover({
                 )
               }
             >
-              {t`Apply to whole Team Computer`}
+              Apply to whole Team Computer
             </Button>
             <Button
               size="sm"
@@ -448,9 +448,9 @@ export function ComputerVpnPopover({
               >
                 <CountryFlag code={overview.hostCountry ?? "TH"} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate">{t`Direct (Thailand)`}</div>
+                  <div className="truncate">Direct (Thailand)</div>
                   <div className="text-label text-muted-foreground">
-                    {locked ? t`Unlock Kill Switch to switch to Direct` : t`Your host IP`}
+                    {locked ? "Unlock Kill Switch to switch to Direct" : "Your host IP"}
                   </div>
                 </div>
                 {selectedProfile === null ? <Check className="size-4 shrink-0" /> : null}
@@ -490,7 +490,7 @@ export function ComputerVpnPopover({
                             prof.up ? "bg-emerald-500" : "bg-destructive",
                           )}
                         />
-                        <span>{prof.up ? t`Tunnel ready` : t`Tunnel down`}</span>
+                        <span>{prof.up ? "Tunnel ready" : "Tunnel down"}</span>
                       </div>
                     </div>
                     {active ? <Check className="size-4 shrink-0" /> : null}
@@ -503,16 +503,16 @@ export function ComputerVpnPopover({
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-body-sm font-medium text-foreground">
                   {locked ? <Lock className="size-3.5 text-emerald-400" /> : <Unlock className="size-3.5 text-muted-foreground" />}
-                  <span>{t`Lock to VPN (Kill Switch)`}</span>
+                  <span>Lock to VPN (Kill Switch)</span>
                 </div>
                 <p className="text-label text-muted-foreground">
                   {selectedProfile
-                    ? t`Never fall back to Direct if tunnel drops`
-                    : t`Select a VPN country to enable lock`}
+                    ? "Never fall back to Direct if tunnel drops"
+                    : "Select a VPN country to enable lock"}
                 </p>
               </div>
               <Switch
-                aria-label={t`Lock to VPN (Kill Switch)`}
+                aria-label="Lock to VPN (Kill Switch)"
                 checked={locked}
                 disabled={busy || !selectedProfile}
                 className="data-checked:bg-emerald-500"
@@ -542,17 +542,17 @@ export function TeamComputerVpnDialog({
     <Dialog open={Boolean(choice)} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{t`Separate computer for ${choice?.botName ?? ""}?`}</DialogTitle>
+          <DialogTitle>{`Separate computer for ${choice?.botName ?? ""}?`}</DialogTitle>
           <DialogDescription>
-            {t`${choice?.botName ?? "This bot"} currently shares the Team Computer with your other bots. To give only this bot ${choice?.label ?? "a VPN"}, switch it to Own computer.`}
+            {`${choice?.botName ?? "This bot"} currently shares the Team Computer with your other bots. To give only this bot ${choice?.label ?? "a VPN"}, switch it to Own computer.`}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="flex-col gap-2 sm:flex-col">
           <Button disabled={busy} onClick={() => onConfirm(true)}>
-            {t`Switch ${choice?.botName ?? ""} to Own computer & use ${choice?.label ?? ""}`}
+            {`Switch ${choice?.botName ?? ""} to Own computer & use ${choice?.label ?? ""}`}
           </Button>
           <Button variant="outline" disabled={busy} onClick={() => onConfirm(false)}>
-            {t`Apply ${choice?.label ?? ""} to whole Team Computer`}
+            {`Apply ${choice?.label ?? ""} to whole Team Computer`}
           </Button>
           <Button variant="ghost" disabled={busy} onClick={onClose}>
             {t`Cancel`}

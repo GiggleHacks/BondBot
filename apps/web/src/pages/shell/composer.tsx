@@ -27,7 +27,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { HoldToTalkStrip, useHoldToTalk } from "../../components/composer/HoldToTalk";
-import { VoiceNoteQueue } from "../../components/composer/VoiceNoteQueue";
 import { recordMessageSent } from "../../components/GitHubStarPrompt";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { attachmentPickerAccept } from "../../lib/attachment-picker-accept";
@@ -361,13 +360,22 @@ const ComposerBody = memo(function Composer({
       talk.startHeld();
     }
   });
-  useEventListener(window, "keyup", (event) => {
+  const releaseTalkKey = () => {
     const { talk, downAt } = dictateKey.current;
     if (!downAt || !talk.recording || talk.recording.locked) return;
-    const key = event.key?.toLowerCase();
-    if (key !== "d" && key !== "control" && key !== "meta") return;
     dictateKey.current.downAt = 0;
     talk.release(Date.now() - downAt);
+  };
+  useEventListener(window, "keyup", (event) => {
+    const key = event.key?.toLowerCase();
+    if (key !== "d" && key !== "control" && key !== "meta") return;
+    releaseTalkKey();
+  });
+  // The keyup never arrives when the window loses focus or the page hides while the key is
+  // held (alt-tab, a call, the screen locking): let go as if it had.
+  useEventListener(window, "blur", releaseTalkKey);
+  useEventListener(document, "visibilitychange", () => {
+    if (document.visibilityState === "hidden") releaseTalkKey();
   });
   useLayoutEffect(() => {
     if (pendingCaret.current === null) return;
@@ -691,7 +699,6 @@ const ComposerBody = memo(function Composer({
           </Button>
         </fieldset>
       ) : null}
-      <VoiceNoteQueue target={artifactTarget} />
       <PendingAttachmentChips
         attachments={pendingAttachments}
         onRemove={(attachment) => {

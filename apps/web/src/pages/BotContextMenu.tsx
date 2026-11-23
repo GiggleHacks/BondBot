@@ -169,7 +169,7 @@ export function BotContextMenu({
           <ContextMenuSub>
             <ContextMenuSubTrigger>
               <Globe />
-              <span>{t`VPN`}</span>
+              <span>VPN</span>
               <span className="ms-auto flex items-center gap-1">
                 <CountryFlag code={vpnMenu.currentCode} className="h-2.5 w-3.5 rounded-[2px] ring-1 ring-white/15" />
                 {vpnMenu.locked ? <Lock className="size-3 text-emerald-400" /> : null}
@@ -178,10 +178,10 @@ export function BotContextMenu({
             <ContextMenuSubContent className="min-w-[220px]">
               <ContextMenuItem
                 disabled={vpnMenu.locked}
-                onClick={() => vpnMenu.onSelectProfile(null, t`Direct`)}
+                onClick={() => vpnMenu.onSelectProfile(null, "Direct")}
               >
                 <CountryFlag code={vpnMenu.hostCountry ?? "TH"} className="h-2.5 w-3.5 rounded-[2px] ring-1 ring-white/15" />
-                <span>{t`Direct (Thailand)`}</span>
+                <span>Direct (Thailand)</span>
                 {vpnMenu.currentProfile === null ? <Check className="ms-auto" /> : null}
               </ContextMenuItem>
               {vpnMenu.profiles.map((prof) => (
@@ -204,7 +204,7 @@ export function BotContextMenu({
               >
                 <Lock />
                 <span>
-                  {vpnMenu.locked ? t`Unlock Kill Switch` : t`Lock to VPN (Kill Switch)`}
+                  {vpnMenu.locked ? "Unlock Kill Switch" : "Lock to VPN (Kill Switch)"}
                 </span>
                 {vpnMenu.locked ? <Check className="ms-auto" /> : null}
               </ContextMenuItem>

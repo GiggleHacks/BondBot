@@ -46,12 +46,13 @@ export function MessageHoverActions({
   // Streaming progress bubbles keep hover free for selection / stop clicks.
   if (message.id.startsWith("progress:")) return null;
 
-  const copied = copiedNow && copiedText === copyableMessageText(message);
+  const messageText = copyableMessageText(message);
+  const copied = copiedNow && copiedText === messageText;
   // A message with nothing to copy (a lone image, say) gets no Copy button.
-  const canCopy = Boolean(copyableMessageText(message));
+  const canCopy = Boolean(messageText);
 
   function copyMessage() {
-    const text = copyableMessageText(message);
+    const text = messageText;
     if (!text) return;
     void copy(text).then((ok) => {
       if (ok) setCopiedText(text);

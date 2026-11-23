@@ -31,6 +31,20 @@ export function voiceNotesSupported(): boolean {
 
 type WakeLockSentinelLike = { release(): Promise<void> };
 
+/** How long finishing waits for the browser's own `stop` event before carrying on without it. */
+const STOP_WAIT_MS = 3_000;
+const INTERRUPTED = "Recording interrupted. What was recorded is being sent.";
+
+export type RecorderEvents = {
+  /**
+   * The recording ended by itself (microphone taken away, recorder error, storage full):
+   * the owner should finish it, keeping what was saved, and tell the person why.
+   */
+  onInterrupted?: (message: string) => void;
+  /** Worth telling the person, but the recording carries on or is already ending. */
+  onNotice?: (message: string) => void;
+};
+
 /**
  * One recording at a time. Audio goes straight to the store in slices; nothing is
  * transcribed or sent while recording, so pauses never end the note.
@@ -41,6 +55,12 @@ export class VoiceNoteRecorder {
   private note: LocalVoiceNote | null = null;
   private nextIndex = 0;
   private writes: Promise<void> = Promise.resolve();
+  private stored = 0;
+  private storedBytes = 0;
+  private writeFailed = false;
+  private stopping = false;
+  private finishing: Promise<LocalVoiceNote | null> | null = null;
+  private interrupted = false;
   private stopped: Promise<void> | null = null;
   private wakeLock: WakeLockSentinelLike | null = null;
   private limitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -50,6 +70,7 @@ export class VoiceNoteRecorder {
     private readonly onLimit: () => void,
     /** Each slice once it is stored: lets finished parts upload while still recording. */
     private readonly onSlice?: (note: LocalVoiceNote) => void,
+    private readonly events: RecorderEvents = {},
   ) {}
 
   get active(): boolean {
@@ -66,6 +87,20 @@ export class VoiceNoteRecorder {
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
+    try {
+      return await this.begin(stream, input);
+    } catch (error) {
+      // The microphone is open but nothing can record or store: do not leave it running.
+      this.release(stream);
+      await this.store.deleteNote(input.clientId).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async begin(
+    stream: MediaStream,
+    input: { clientId: string; spaceId: string | null; target: VoiceNoteTarget },
+  ): Promise<LocalVoiceNote> {
     const mimeType = recordingMimeType();
     let media: MediaRecorder;
     try {
@@ -92,9 +127,26 @@ export class VoiceNoteRecorder {
     this.media = media;
     this.note = note;
     this.nextIndex = 0;
+    this.stored = 0;
+    this.storedBytes = 0;
+    this.writeFailed = false;
+    this.stopping = false;
+    this.interrupted = false;
+    this.writes = Promise.resolve();
     this.stopped = new Promise<void>((resolve) => {
-      media.onstop = () => resolve();
+      media.onstop = () => {
+        resolve();
+        // Nobody asked it to stop: a phone call, Siri or the system took the microphone.
+        if (!this.stopping) this.interrupt(INTERRUPTED);
+      };
     });
+    media.onerror = () => this.interrupt(INTERRUPTED);
+    for (const track of stream.getTracks()) {
+      track.addEventListener("ended", this.onTrackEnded);
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this.onVisibility);
+    }
     media.ondataavailable = (event) => {
       if (!event.data || event.data.size === 0) return;
       const index = this.nextIndex++;
@@ -102,11 +154,24 @@ export class VoiceNoteRecorder {
       note.bytes += blob.size;
       note.chunkCount = this.nextIndex;
       note.durationMs = Date.now() - note.startedAt;
-      // Serialized, so the note row never claims a slice that is not stored yet.
+      // Serialized, so the note row never claims a slice that is not stored yet. A failed
+      // write must not wedge the chain: it ends the recording and keeps what was saved.
       this.writes = this.writes
-        .then(() => this.store.putChunk({ clientId: note.clientId, index, blob }))
-        .then(() => this.store.putNote({ ...note }))
-        .then(() => this.onSlice?.({ ...note }));
+        .then(async () => {
+          if (this.writeFailed) return;
+          await this.store.putChunk({ clientId: note.clientId, index, blob });
+          this.stored = index + 1;
+          this.storedBytes += blob.size;
+          const saved = { ...note, chunkCount: this.stored, bytes: this.storedBytes };
+          await this.store.putNote(saved);
+          this.onSlice?.(saved);
+        })
+        .catch(() => {
+          this.writeFailed = true;
+          const message = "Could not save the recording. What was saved is being sent.";
+          if (this.stopping) this.events.onNotice?.(message);
+          else this.interrupt(message);
+        });
     };
     media.start(SLICE_MS);
     this.limitTimer = setTimeout(() => this.onLimit(), MAX_NOTE_MS);
@@ -114,28 +179,85 @@ export class VoiceNoteRecorder {
     return note;
   }
 
-  /** Ends the recording. `send` queues it for upload; otherwise it is deleted. */
-  async finish(send: boolean): Promise<LocalVoiceNote | null> {
-    const note = this.note;
+  private readonly onTrackEnded = () =>
+    this.interrupt(INTERRUPTED);
+
+  /** Hidden pages (a call, the screen locking) may never fire the next slice: store it now. */
+  private readonly onVisibility = () => {
     const media = this.media;
-    if (!note || !media) return null;
+    if (document.visibilityState !== "hidden" || !media || media.state !== "recording") return;
+    try {
+      media.requestData();
+    } catch {
+      // The recorder is already ending.
+    }
+  };
+
+  private interrupt(message: string) {
+    if (!this.note || this.stopping || this.interrupted) return;
+    this.interrupted = true;
+    this.events.onInterrupted?.(message);
+  }
+
+  /** Always stops the microphone and forgets the recording, whatever state it was in. */
+  private release(stream: MediaStream | null = this.stream) {
     if (this.limitTimer) clearTimeout(this.limitTimer);
     this.limitTimer = null;
-    if (media.state !== "inactive") media.stop();
-    await this.stopped;
-    await this.writes;
-    for (const track of this.stream?.getTracks() ?? []) track.stop();
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.onVisibility);
+    }
+    for (const track of stream?.getTracks() ?? []) {
+      track.removeEventListener("ended", this.onTrackEnded);
+      try {
+        track.stop();
+      } catch {
+        // Already gone.
+      }
+    }
     this.media = null;
     this.stream = null;
     this.note = null;
     this.stopped = null;
-    await this.releaseScreen();
-    if (!send || note.chunkCount === 0) {
+  }
+
+  /** Ends the recording. `send` queues it for upload; otherwise it is deleted. */
+  finish(send: boolean): Promise<LocalVoiceNote | null> {
+    // An interruption and the person's own tap can both end it: the first one does the work.
+    this.finishing ??= this.endRecording(send).finally(() => {
+      this.finishing = null;
+    });
+    return this.finishing;
+  }
+
+  private async endRecording(send: boolean): Promise<LocalVoiceNote | null> {
+    const note = this.note;
+    const media = this.media;
+    if (!note || !media) return null;
+    this.stopping = true;
+    try {
+      if (media.state !== "inactive") media.stop();
+      let wait: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        this.stopped,
+        new Promise<void>((resolve) => {
+          wait = setTimeout(resolve, STOP_WAIT_MS);
+        }),
+      ]);
+      clearTimeout(wait);
+      await this.writes;
+    } finally {
+      // Whatever went wrong above, the microphone and the screen lock must be let go.
+      this.release();
+      await this.releaseScreen();
+    }
+    if (!send || this.stored === 0) {
       await this.store.deleteNote(note.clientId);
       return null;
     }
     const queued: LocalVoiceNote = {
       ...note,
+      chunkCount: this.stored,
+      bytes: this.storedBytes,
       durationMs: Date.now() - note.startedAt,
       state: "pending",
     };

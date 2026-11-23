@@ -1,6 +1,8 @@
 // Local addition (David, 2026-11-22): is the app really connected? A light check every few seconds
 // (a tiny public request to the server), plus the live streams and the browser's own online flag,
 // boiled down to one level the signal bars show.
+import { timeoutSignal } from "./timeout-signal";
+
 export type ConnectionLevel = "checking" | "good" | "slow" | "reconnecting" | "offline";
 
 export type ConnectionSnapshot = {
@@ -16,6 +18,9 @@ export type ConnectionSnapshot = {
 
 export const SLOW_MS = 1500;
 export const STREAM_GRACE_MS = 10_000;
+/** After this many failed checks in a row the quick retry gives way to a slower one. */
+export const BACKOFF_AFTER_FAILURES = 5;
+export const BACKOFF_MAX_MS = 30_000;
 
 export function deriveLevel(input: {
   online: boolean;
@@ -44,12 +49,25 @@ export function deriveLevel(input: {
   return "good";
 }
 
+/** Quick retries while a failure is fresh; a long outage backs off to 10-30 s. */
+export function nextCheckDelayMs(failures: number, intervalMs: number, retryMs: number): number {
+  if (failures >= BACKOFF_AFTER_FAILURES) {
+    return Math.min(BACKOFF_MAX_MS, 10_000 * 2 ** (failures - BACKOFF_AFTER_FAILURES));
+  }
+  return failures > 0 ? Math.min(intervalMs, retryMs) : intervalMs;
+}
+
 async function defaultProbe(timeoutMs: number): Promise<boolean> {
-  const res = await fetch("/api/auth/ok", { cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
-  // A captive portal or an error page that answers 200 is not the server.
-  if (!res.ok || !(res.headers.get("content-type") ?? "").includes("json")) return false;
-  const body = (await res.json().catch(() => null)) as { ok?: boolean } | null;
-  return body?.ok === true;
+  const timeout = timeoutSignal(timeoutMs);
+  try {
+    const res = await fetch("/api/auth/ok", { cache: "no-store", signal: timeout.signal });
+    // A captive portal or an error page that answers 200 is not the server.
+    if (!res.ok || !(res.headers.get("content-type") ?? "").includes("json")) return false;
+    const body = (await res.json().catch(() => null)) as { ok?: boolean } | null;
+    return body?.ok === true;
+  } finally {
+    timeout.clear();
+  }
 }
 
 export type ConnectionMonitorOptions = {
@@ -187,7 +205,8 @@ export class ConnectionMonitor {
 
   private schedule() {
     clearTimeout(this.timer);
-    const delay = this.snapshot.failures > 0 ? Math.min(this.intervalMs, this.retryMs) : this.intervalMs;
+    if (this.users === 0) return;
+    const delay = nextCheckDelayMs(this.snapshot.failures, this.intervalMs, this.retryMs);
     this.timer = setTimeout(() => {
       if (document.visibilityState === "hidden") {
         this.schedule();

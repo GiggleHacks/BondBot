@@ -483,7 +483,7 @@ export function GeneralSettingsPanels({
         <SettingsRow
           label={
             <Label htmlFor={showReasoningId} className="text-body font-normal text-foreground">
-              <Trans>Show reasoning</Trans>
+              Show reasoning
             </Label>
           }
           control={
