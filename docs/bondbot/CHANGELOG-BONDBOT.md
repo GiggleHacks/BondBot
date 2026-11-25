@@ -104,3 +104,10 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Before deploying: back up the database (upstream drops some computer execution columns). cccbox's patch-in-place recipe in LOCAL-PATCHES.md does not fit a base change; build a full image from infra/compose/Dockerfile.
 - Ported the file Share button (phone share sheet) that was live on cccbox but built from an older tree, so it was missing from the 0.1.22 sync.
 - Moved the sidebar CPU/RAM widget (host-stats.js) into the source; on cccbox it had only been hand-added to the built page.
+
+## Deployed to cccbox (2026-11-25 19:27 ICT)
+- Rakazo v0.16.0 base is live. Images rakazo-voice:v016-20261125 (tagged :local) and rakazo-computer-sudo:v016 (tagged :local), both built off the server and loaded with docker load.
+- New compose file from v0.16.0; sudo override is overrides/computer-spec.v016.ts. 41 migrations applied (rehearsed on a copy first).
+- Verified: health, web, 332 migrations, throwaway computer boot (sudo, internet, LAN blocked), speech-to-text reachable. Not exercised: a real bot run, voice notes, VPN switching, phone layouts.
+- `content-encryption migrate` (upstream 0.14 note) has NOT been run, to keep rollback simple.
+- Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v016-20261125/rollback.sh (loses data written after the deploy).
