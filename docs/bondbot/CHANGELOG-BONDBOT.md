@@ -119,3 +119,9 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Pixel effects: pixel trail behind the mouse (components/fx/pixel-fx.ts, loaded after first paint) and a stepped flicker/lift on hover (styles/pixel-fx.css). Settings > Preferences > Pixel effects turns both off on that device (localStorage bondbot.pixelFx); reduced motion also turns them off; touch never draws.
 - Profile photo: Settings > Account > Photo (click or drop an image; Remove photo). Cropped to a 192px webp in the browser and saved on the account (better-auth user.image). The account menu header shows the photo and opens Settings. Mobile profile screen has a Photo row (pick + square crop, remove). Server rejects anything but empty, https URLs, or png/jpeg/webp/gif data URLs up to 200k characters (isUserImageValue in contracts; auth user create/update hooks). `me` now returns `image`.
 - Themes: Appearance now offers System, Light, Dark, Dark blue and Dark purple (web dropdown, command palette, mobile menu). Tinted palettes are data-palette blocks in tokens.css generated from darkPaletteOverrides in ui-tokens.
+
+## Deployed to cccbox: 0.2.0 (2026-11-25 20:48 ICT)
+- Image rakazo-voice:v020-20261125 (tagged :local), built off the server from f2cbef845 and loaded with docker load. api, web, worker and supervisor recreated. No schema change.
+- Rehearsed on cccbox first against a throwaway Postgres: easy and short passwords refused, PIN sign-up and sign-in, lockout after five wrong PINs.
+- Verified live: services healthy, v0.2.0 in the sidebar, Settings shows Photo, the theme list and Pixel effects. Not exercised: the signed-out landing on the live server, photo upload, a bot run.
+- Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v020-20261125/rollback.sh (image pre-v020-20261125; a database dump from just before is beside it).
