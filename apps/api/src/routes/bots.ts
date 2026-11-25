@@ -1,16 +1,14 @@
-import { randomBytes } from "node:crypto";
 import { ORPCError } from "@orpc/server";
 import {
   archiveBot,
-  checkpointAndStopComputer,
+  carriedBotModelPin,
   defaultVaultItemTitle,
-  endTeachingWithLease,
   forgetBotSecret,
   forgetPageShareSecrets,
   groupsRemovedByDeletingBot,
-  hasActiveComputerControl,
+  importedLoginValue,
   isSecretAlreadySaved,
-  LOGIN_ALREADY_SAVED,
+  LoginAlreadySavedError,
   listVaultItems,
   listVaultItemUses,
   newVaultItemName,
@@ -18,14 +16,14 @@ import {
   pageUrlOrigin,
   relabelVaultItem,
   revealBotSecret,
-  SAVED_LOGIN_UNREADABLE,
-  SPACE_VAULT_NOT_IN_USE,
+  SpaceVaultNotInUseError,
   stopCancelledGroupRuns,
   storeBotSecret,
-  toComputerRef,
-  UNKNOWN_BOTS,
-  UNSUPPORTED_ACCESS,
-  VAULT_CHANGED,
+  storeBotWebhookKey,
+  switchBotComputer,
+  VaultFullError,
+  VaultItemRefusedError,
+  VaultRetryError,
   validateBotModelChange,
   wakeRun,
 } from "@rakazo/adapters";
@@ -40,101 +38,53 @@ import type {
   VaultPutInput,
 } from "@rakazo/contracts";
 import {
-  AUTHENTICATOR_KEY_UNREADABLE,
-  BLOCKED_ITEM_ANSWER,
   BotSecretAuth,
-  encodeLoginSecret,
+  botInboundPath,
+  botInboundUrl,
   noneSkipped,
   resolveBotAvatarSet,
-  UNCHOSEN_ITEM_ANSWER,
   VaultPolicy,
   vaultImportLogin,
   vaultImportOrigin,
 } from "@rakazo/contracts";
-import { ACTIVE_RUN_STATUSES, ClientError, COMPUTER_USING_RUNS, displayName } from "@rakazo/core";
+import { ClientError, displayName } from "@rakazo/core";
 import type { Prisma } from "@rakazo/db";
 import {
   botProfileLabelsChanged,
   commitBotUpdate,
-  expireComputerExecutionLeases,
   IsolationError,
   isRecordNotFound,
-  recordComputerRunEnd,
   recordSecurityEvent,
   restoreBotUnderComputerQuota,
   settingsTarget,
   THREAD_LOCK_TRANSACTION_OPTIONS,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
-import type { AgentImportServices } from "../agent-import.js";
-import { agentImportSetupState, createImportedBot, previewAgentImport } from "../agent-import.js";
-import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "../agent-secrets.js";
-import { botEmailAddress, botEmailAddresses, claimBotEmailAddress } from "../bot-email-address.js";
-import { loadBotForRemoval } from "../bot-removal.js";
-import { changedBotSettings } from "../bot-setting-analytics.js";
-import { createBotFromTemplate, listBotTemplates } from "../bot-templates.js";
-import { switchBotComputerMode } from "../computer-mode-switch.js";
-import { recordModelSwitch } from "../model-switch-note.js";
-import { botIntroPrompt } from "../hidden-turns.prompt.js";
-import { requireIdentityConfirmation } from "../identity-confirmation.js";
-import { managedAppCatalog } from "../onboarding.js";
+import { managedAppCatalog } from "../account/onboarding.js";
+import { requireIdentityConfirmation } from "../auth/identity-confirmation.js";
+import type { AgentImportServices } from "../bots/agent-import.js";
+import {
+  agentImportSetupState,
+  createImportedBot,
+  previewAgentImport,
+} from "../bots/agent-import.js";
+import { deleteAgentSecret, listAgentSecrets, putAgentSecret } from "../bots/agent-secrets.js";
+import { loadBotForRemoval } from "../bots/bot-removal.js";
+import { createBotFromTemplate, listBotTemplates } from "../bots/bot-templates.js";
+import { botIntroPrompt } from "../bots/hidden-turns.prompt.js";
+import {
+  botEmailAddress,
+  botEmailAddresses,
+  claimBotEmailAddress,
+} from "../email/bot-email-address.js";
 import type { RouterDeps } from "../router.js";
-import { purgeClearedThreadMemory } from "../thread-memory.js";
-import { loadMessagePage } from "../thread-message-pages.js";
+import { resumeRoutinesAfterRestore } from "../routines/routine-resume.js";
+import { changedBotSettings } from "../telemetry/bot-setting-analytics.js";
+import { purgeClearedThreadMemory } from "../threads/thread-memory.js";
+import { loadMessagePage } from "../threads/thread-message-pages.js";
 import type { RouterContext } from "./context.js";
 import { computerContext, modelSetup, THREAD_MESSAGE_PAGE_SIZE } from "./shared.js";
-
-const BOT_SECRET_INPUT_ERRORS = [
-  "Invalid credential destination",
-  "Invalid credential length",
-  "Credential cannot be used with this authentication method",
-  "Remove the existing credential before changing its destination",
-  "Credential limit reached",
-  "Invalid card",
-  "Invalid contact",
-  SPACE_VAULT_NOT_IN_USE,
-  BLOCKED_ITEM_ANSWER,
-  UNCHOSEN_ITEM_ANSWER,
-];
-
-/** A credential the user typed that cannot be stored, as a bad request, or a retry. Never echoes it. */
-export function mapBotSecretInputError(error: unknown): unknown {
-  // Read again on a retry, so it is a conflict to retry, not a mistake in the request.
-  if (
-    error instanceof Error &&
-    (error.message === SAVED_LOGIN_UNREADABLE || error.message === VAULT_CHANGED)
-  )
-    return new ORPCError("CONFLICT", { message: error.message });
-  if (
-    error instanceof Error &&
-    BOT_SECRET_INPUT_ERRORS.some((prefix) => error.message.startsWith(prefix))
-  ) {
-    return new ORPCError("BAD_REQUEST", { message: error.message });
-  }
-  return error;
-}
-
-/** Map credential validation failures to a bad request without echoing the submitted value. */
-function mapBotSecretStoreError(error: unknown): unknown {
-  if (error instanceof ORPCError) return error;
-  if (
-    error instanceof Error &&
-    (error.message === UNSUPPORTED_ACCESS || error.message === UNKNOWN_BOTS)
-  )
-    return new ORPCError("BAD_REQUEST", { message: error.message });
-  const mapped = mapBotSecretInputError(error);
-  if (mapped !== error) return mapped;
-  // Login decoding failures: a JSON parse message can quote the submitted value, so never forward it.
-  if (error instanceof SyntaxError || (error instanceof Error && error.name === "ZodError")) {
-    const issues = (error as { issues?: { path?: unknown[] }[] }).issues ?? [];
-    if (issues.some((issue) => issue.path?.[0] === "otp"))
-      return new ORPCError("BAD_REQUEST", { message: AUTHENTICATOR_KEY_UNREADABLE });
-    return new ORPCError("BAD_REQUEST", {
-      message: "A website login needs a label and a value for every field",
-    });
-  }
-  return error;
-}
+import { recordModelSwitch } from "../model-switch-note.js";
 
 function vaultScope(actor: Actor, vault?: SettingsScope) {
   return { userId: actor.userId, spaceId: actor.spaceId, vault };
@@ -156,19 +106,15 @@ async function saveVaultCredential(
   const bots = { allBots: input.allBots, botIds: input.botIds };
   if (input.value === undefined) {
     if (!name) throw new ORPCError("BAD_REQUEST", { message: "A new item needs its value" });
-    try {
-      const labels = {
-        title: input.title,
-        note: input.note,
-        policy: input.policy,
-        bots,
-        alsoOn: input.alsoOn,
-      };
-      if (!(await relabelVaultItem(deps.prisma, scope, name, labels))) {
-        throw new ORPCError("NOT_FOUND", { message: "Credential not found" });
-      }
-    } catch (error) {
-      throw mapBotSecretStoreError(error);
+    const labels = {
+      title: input.title,
+      note: input.note,
+      policy: input.policy,
+      bots,
+      alsoOn: input.alsoOn,
+    };
+    if (!(await relabelVaultItem(deps.prisma, scope, name, labels))) {
+      throw new ORPCError("NOT_FOUND", { message: "Credential not found" });
     }
     return vaultItemDto(deps, scope, name);
   }
@@ -190,19 +136,15 @@ async function saveVaultCredential(
       alsoOn: input.alsoOn,
       createOnly,
     });
-  try {
-    if (name) {
-      await store(name, false);
-      return vaultItemDto(deps, scope, name);
-    }
-    const base = input.title || defaultVaultItemTitle(input.destination, value);
-    const fresh = await createVaultItem(deps, scope, base, input.destination.auth.type, (item) =>
-      store(item, true),
-    );
-    return vaultItemDto(deps, scope, fresh);
-  } catch (error) {
-    throw mapBotSecretStoreError(error);
+  if (name) {
+    await store(name, false);
+    return vaultItemDto(deps, scope, name);
   }
+  const base = input.title || defaultVaultItemTitle(input.destination, value);
+  const fresh = await createVaultItem(deps, scope, base, input.destination.auth.type, (item) =>
+    store(item, true),
+  );
+  return vaultItemDto(deps, scope, fresh);
 }
 
 /**
@@ -255,7 +197,7 @@ async function importVaultLogins(
     else {
       const destination = { origin, auth: { type: "login" as const } };
       try {
-        const plaintext = encodeLoginSecret(vaultImportLogin(row));
+        const plaintext = importedLoginValue(vaultImportLogin(row));
         const base = row.title || defaultVaultItemTitle(destination, plaintext);
         await createVaultItem(deps, scope, base, "login", (item) =>
           storeBotSecret({
@@ -278,20 +220,16 @@ async function importVaultLogins(
           metadata: { procedure: "vault.import", kind: "vault_credential", scope: vault },
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "";
-        if (message === LOGIN_ALREADY_SAVED) skip(index, "duplicate");
-        else if (message === "Credential limit reached") {
+        if (error instanceof LoginAlreadySavedError) skip(index, "duplicate");
+        else if (error instanceof VaultFullError) {
           full = true;
           skip(index, "limit");
         }
-        // A saved login that can't be read for now may be this one: stop, as a retry is safe.
-        else if (
-          message === SPACE_VAULT_NOT_IN_USE ||
-          message === SAVED_LOGIN_UNREADABLE ||
-          message === VAULT_CHANGED
-        )
-          throw mapBotSecretStoreError(error);
-        else if (mapBotSecretStoreError(error) instanceof ORPCError) skip(index, "invalid");
+        // No login can be saved here, or a saved one may be this one and can't be read for now:
+        // stop, as a retry is safe.
+        else if (error instanceof SpaceVaultNotInUseError || error instanceof VaultRetryError)
+          throw error;
+        else if (error instanceof VaultItemRefusedError) skip(index, "invalid");
         else throw error;
       }
     }
@@ -404,9 +342,8 @@ export function botsRoutes(ctx: RouterContext) {
         repos.listBots(context.actor, { archived: true }),
       ),
       get: authed.bots.get.handler(async ({ context, input }) => {
-        const found = (await repos.listBots(context.actor)).find((bot) => bot.id === input.botId);
-        if (!found) throw new IsolationError();
-        return found;
+        const found = await repos.getBotView(context.actor, input.botId);
+        return { ...found, meetingsEnabled: await deps.meetings?.visible(context.actor, found.id) };
       }),
       create: authed.bots.create.handler(async ({ context, input }) => {
         // Older apps always send Original, which would pin every new bot to it.
@@ -452,9 +389,7 @@ export function botsRoutes(ctx: RouterContext) {
           avatarSet: resolveBotAvatarSet(source.avatarSet),
           avatarSetPinned: source.avatarSetPinned,
           computerMode: source.computer?.scope === "dedicated" ? "dedicated" : "team",
-          modelProvider: source.modelProvider,
-          modelId: source.modelId,
-          thinkingLevel: source.thinkingLevel,
+          ...carriedBotModelPin(source),
           disabledBuiltinTools: source.disabledBuiltinTools,
           replyMode: source.replyMode,
         });
@@ -575,10 +510,7 @@ export function botsRoutes(ctx: RouterContext) {
           deps.analytics?.capture(context.actor.userId, { name: "bot_setting_changed", setting });
         }
         await recordModelSwitch(deps, context.actor.spaceId, existing, input);
-        const bots = await repos.listBots(context.actor);
-        const bot = bots.find((b) => b.id === input.botId);
-        if (!bot) throw new IsolationError();
-        return bot;
+        return repos.getBotView(context.actor, input.botId);
       }),
       restoreInstructions: authed.bots.restoreInstructions.handler(async ({ context, input }) => {
         const bot = await repos.getBot(context.actor, input.botId);
@@ -594,11 +526,22 @@ export function botsRoutes(ctx: RouterContext) {
           expectedInstructions: input.expectedInstructions,
           instructionRestore: { versionId: input.versionId, undo: input.undo },
         });
-        return (await repos.listBots(context.actor)).find((bot) => bot.id === input.botId)!;
+        return repos.getBotView(context.actor, input.botId);
       }),
-      setComputer: authed.bots.setComputer.handler(async ({ context, input }) =>
-        switchBotComputerMode(deps, repos, context.actor, input.botId, input.mode),
-      ),
+      setComputer: authed.bots.setComputer.handler(async ({ context, input }) => {
+        const { bot, switched } = await switchBotComputer(
+          { ...deps, repos },
+          context.actor,
+          input.botId,
+          input.mode,
+        );
+        if (switched)
+          deps.analytics?.capture(context.actor.userId, {
+            name: "bot_setting_changed",
+            setting: "computer",
+          });
+        return bot;
+      }),
       archive: authed.bots.archive.handler(async ({ context, input }) => {
         const bot = await repos.getBot(context.actor, input.botId, { includeArchived: true });
         await archiveBot(
@@ -618,7 +561,11 @@ export function botsRoutes(ctx: RouterContext) {
       }),
       restore: authed.bots.restore.handler(async ({ context, input }) => {
         const bot = await repos.getBot(context.actor, input.botId, { includeArchived: true });
-        if (!bot.archivedAt) return { ok: true as const };
+        if (!bot.archivedAt) {
+          // Finishes a restore that brought the bot back but stopped before its routines.
+          await resumeRoutinesAfterRestore(deps, context.actor.userId, [bot.id]);
+          return { ok: true as const };
+        }
         if (bot.computer) {
           // The limit is the computer's owner's: a shared Team Computer is the space owner's.
           await restoreBotUnderComputerQuota(deps.prisma, {
@@ -629,6 +576,7 @@ export function botsRoutes(ctx: RouterContext) {
         } else {
           await deps.prisma.bot.update({ where: { id: bot.id }, data: { archivedAt: null } });
         }
+        await resumeRoutinesAfterRestore(deps, context.actor.userId, [bot.id]);
         return { ok: true as const };
       }),
       remove: authed.bots.remove.handler(async ({ context, input }) => {
@@ -659,43 +607,22 @@ export function botsRoutes(ctx: RouterContext) {
         const bot = await repos.getBot(context.actor, input.botId);
         // Webhook runs act as the bot's creator, so only the creator can issue its secret.
         if (bot.userId !== context.actor.userId) throw new ORPCError("FORBIDDEN");
-        const plaintext = randomBytes(32).toString("base64url");
-        const stored = await deps.secrets.put(plaintext, {
-          operationId: "bots.rotateWebhookSecret",
-          traceId: "bots.rotateWebhookSecret",
-          spaceId: context.actor.spaceId,
-          userId: context.actor.userId,
-          signal: context.signal ?? new AbortController().signal,
-        });
-        await deps.prisma.$transaction(async (tx) => {
-          const previousSecretId = bot.webhookSecretId;
-          await tx.secret.create({
-            data: {
-              id: stored.id,
-              userId: context.actor.userId,
-              spaceId: context.actor.spaceId,
-              kind: "webhook",
-              ciphertext: stored.ciphertext,
-            },
-          });
-          await tx.bot.update({
-            where: { id: bot.id },
-            data: { webhookSecretId: stored.id },
-          });
-          if (previousSecretId) {
-            await tx.secret.deleteMany({
-              where: {
-                id: previousSecretId,
-                spaceId: context.actor.spaceId,
-                userId: context.actor.userId,
-                kind: "webhook",
-              },
-            });
-          }
-        });
+        const plaintext = await storeBotWebhookKey(
+          { prisma: deps.prisma, secretStore: deps.secrets },
+          bot,
+          {
+            operationId: "bots.rotateWebhookSecret",
+            traceId: "bots.rotateWebhookSecret",
+            spaceId: context.actor.spaceId,
+            userId: context.actor.userId,
+            signal: context.signal ?? new AbortController().signal,
+          },
+          { replace: true },
+        );
+        if (!plaintext) throw new ClientError("NOT_FOUND", "Not Found");
         return {
           secret: plaintext,
-          path: `/api/v1/bots/${bot.id}/webhook`,
+          path: botInboundPath(bot.id, "webhook"),
           webhookConfigured: true as const,
         };
       }),
@@ -732,7 +659,8 @@ export function botsRoutes(ctx: RouterContext) {
           spaceId: context.actor.spaceId,
           metadata: { procedure: "bots.revealWebhookSecret", kind: "webhook", botId: bot.id },
         });
-        return { secret };
+        const origin = deps.env.publishedInboundOrigin;
+        return origin ? { secret, url: botInboundUrl(origin, bot.id, "webhook") } : { secret };
       }),
     },
     groups: {
@@ -786,6 +714,16 @@ export function botsRoutes(ctx: RouterContext) {
       }),
       restore: authed.groups.restore.handler(async ({ context, input }) => {
         await groupRepos.restoreGroup(context.actor, input.groupId);
+        // Its archived bots came back with it, and so do the routines archiving them turned off.
+        const members = await deps.prisma.chatGroupMember.findMany({
+          where: { groupId: input.groupId, group: { spaceId: context.actor.spaceId } },
+          select: { botId: true },
+        });
+        await resumeRoutinesAfterRestore(
+          deps,
+          context.actor.userId,
+          members.map((member) => member.botId),
+        );
         return { ok: true as const };
       }),
       remove: authed.groups.remove.handler(async ({ context, input }) => {

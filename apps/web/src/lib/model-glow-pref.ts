@@ -1,4 +1,4 @@
-import { createStoredPreference } from "./stored-preference";
+import { createStoredPreference } from "./preferences/stored-preference";
 
 export const MODEL_GLOW_STORAGE_KEY = "rakazo.modelGlow";
 

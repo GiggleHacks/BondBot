@@ -3,14 +3,14 @@
 // connection, shows speed, and can be cancelled. A photo picked before a voice
 // note rides along with that note.
 import { inferAttachmentMimeType, isImageInputConfirmation } from "@rakazo/core";
-import { readFileAsBase64 } from "./pending-attachments";
-import { prepareImage } from "./prepare-image";
+import { readFileAsBase64 } from "./composer/pending-attachments";
+import { prepareImage } from "./composer/prepare-image";
 import {
   createSpaceRpc,
   recheckSessionOnUnauthorized,
   selectedSpaceId,
   withSpaceHeaders,
-} from "./rpc";
+} from "./query/rpc";
 import { SpeedTracker, xhrSend } from "./upload-progress";
 
 export type SendTarget = { botId: string } | { groupId: string };

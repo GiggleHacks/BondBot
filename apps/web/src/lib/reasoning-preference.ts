@@ -1,4 +1,4 @@
-import { createStoredPreference } from "./stored-preference";
+import { createStoredPreference } from "./preferences/stored-preference";
 
 export const REASONING_STORAGE_KEY = "rakazo.showReasoning";
 

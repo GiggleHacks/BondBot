@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { boundedSandboxCommandTimeoutMs } from "@rakazo/core";
+import { boundedSandboxCommandTimeoutMs } from "@rakazo/core/node/sandbox-command";
 import { getLogger } from "@rakazo/logging";
 import { requestLogging } from "@rakazo/logging/hono";
 import type Docker from "dockerode";
@@ -9,6 +9,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { computerControlEndpoint, controlDesktop } from "./computer-control.js";
+import { computerGpuMatches, resolveComputerGpu } from "./computer-gpu.js";
 import {
   computerLocaleFields,
   computerLocaleMatches,
@@ -22,6 +23,7 @@ import {
   COMPUTER_UID,
   COMPUTER_USER,
   computerBridgeNameFor,
+  computerBrowserProxyPacMatches,
   computerComputeGpusMatch,
   computerDnsMatches,
   computerHomeStorage,
@@ -39,19 +41,20 @@ import {
   xdotoolCommand,
 } from "./computer-spec.js";
 import {
+  computerBrowserProxyPacUrl,
   computerComputeGpus,
   computerDns,
   computerEgressSetting,
+  computerGpu,
   computerMounts,
   controlViaLoopback,
   dataDir,
   docker,
-  ensureComputerImage,
   inspectSupervisorContainer,
   screenNetworkMode,
   supervisorToken,
 } from "./context.js";
-import { computerEgressMode, ensureRestrictedEgressEnforced } from "./egress.js";
+import { computerEgressMode, computerEgressReport, ensureComputerEgress } from "./egress.js";
 import {
   applyContainerActions,
   observeContainer,
@@ -150,6 +153,7 @@ app.use("*", async (c, next) => {
 });
 
 app.get("/health", (c) => c.json({ ok: true, image: COMPUTER_IMAGE }));
+app.get("/diagnostics/egress", (c) => c.text(computerEgressReport()));
 
 app.get("/vpn/status", async (c) => {
   try {
@@ -180,7 +184,7 @@ app.put("/vpn/homes/:homeKey", async (c) => {
   // SANDBOX_COMPUTER_DNS, Docker 28+ forwards from the host namespace, past the Kill Switch.
   if (body.data.profile !== null || body.data.locked) {
     if (computerEgressSetting === "auto") {
-      await ensureRestrictedEgressEnforced().catch(() => undefined);
+      await ensureComputerEgress().catch(() => undefined);
     }
     if (computerEgressMode !== "restricted") {
       return c.json(
@@ -244,8 +248,9 @@ app.post("/computers", async (c) => {
       spaceId: body.spaceId,
     });
     return await withBotLifecycleLock(body.botId, async () => {
-      await ensureComputerImage();
-      await ensureRestrictedEgressEnforced();
+      await ensureComputerEgress();
+      // Docker resolves the render node anew on every start, so check it again now.
+      const gpu = computerGpu && resolveComputerGpu();
       const runtimeInfo = await inspectSupervisorContainer();
       // A containerized supervisor's host paths (data directory, Docker socket) are known only now.
       assertComputerMountSources(
@@ -338,10 +343,14 @@ app.post("/computers", async (c) => {
           computerDnsMatches(info.HostConfig.Dns, computerDns) &&
           // So are host mounts: an added, changed or removed one replaces the computer.
           computerMountsMatch(info, computerMounts) &&
+          // So is the render node with its group.
+          computerGpuMatches(info, gpu) &&
           // And GPUs: turning them on or off, or changing the count, replaces it too.
           computerComputeGpusMatch(info.HostConfig.DeviceRequests, computerComputeGpus) &&
           // So are the owner's time zone and language.
           computerLocaleMatches(info.Config.Env, locale) &&
+          // And the bot browser's proxy auto-config.
+          computerBrowserProxyPacMatches(info.Config.Env, computerBrowserProxyPacUrl) &&
           controlPublishOk &&
           (!storage.homeVolume || homeVolumeMatches(info.HostConfig.Mounts, storage.homeVolume)) &&
           // A computer that cannot rejoin its network is replaced below instead.
@@ -405,7 +414,9 @@ app.post("/computers", async (c) => {
           publishControlPort: controlViaLoopback,
           dns: computerDns,
           mounts: computerMounts,
+          gpu,
           computeGpus: computerComputeGpus,
+          browserProxyPacUrl: computerBrowserProxyPacUrl,
           locale,
         });
         let container: Docker.Container | undefined;
@@ -698,8 +709,7 @@ app.post("/computers/:id/browser", async (c) => {
     ])
     .safeParse(await c.req.json());
   // Refused here, before anything reaches the computer: the caller learns by this code alone that
-  // nothing ran, and may keep a one-time code for another try. Keep in step with the adapters'
-  // INVALID_BROWSER_REQUEST.
+  // nothing ran, and may keep a one-time code for another try.
   if (!parsed.success) {
     return c.json(
       { ok: false, code: "invalid_browser_request", error: "Invalid page browser request" },

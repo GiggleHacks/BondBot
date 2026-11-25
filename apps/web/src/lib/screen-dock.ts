@@ -1,5 +1,5 @@
 // Local addition (David, 2026-11-21): the phone's docked screen above the chat.
-import { createStoredPreference } from "./stored-preference";
+import { createStoredPreference } from "./preferences/stored-preference";
 
 /** Whether the live screen is docked above the chat on a phone. */
 export const screenDockPreference = createStoredPreference<boolean>({

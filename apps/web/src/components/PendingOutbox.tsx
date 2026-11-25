@@ -1,6 +1,6 @@
 // Local addition: a send lands in the chat immediately, then uploads with speed and a bar.
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import type { ArtifactTarget } from "../lib/artifact-open";
+import type { ArtifactTarget } from "../lib/pages/artifact-open";
 import { sendQueue, type SendItem } from "../lib/send-queue";
 import { UploadMeter } from "./UploadMeter";
 

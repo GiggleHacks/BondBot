@@ -2,8 +2,8 @@
 import { Spinner } from "@rakazo/ui-web";
 import { Download, Pause, Play } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ArtifactTarget } from "../lib/artifact-open";
-import { fetchArtifactBytes } from "../lib/artifact-open";
+import type { ArtifactTarget } from "../lib/pages/artifact-open";
+import { fetchArtifactBytes } from "../lib/pages/artifact-open";
 import {
   formatVoiceTime,
   nextVoiceSpeed,

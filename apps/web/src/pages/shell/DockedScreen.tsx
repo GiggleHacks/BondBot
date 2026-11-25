@@ -1,18 +1,19 @@
 // Local addition (David, 2026-11-21): the live screen docked above the chat on a phone, with a
 // draggable divider, a full screen view and a way to close it.
 import type { Bot, ComputerStatus } from "@rakazo/contracts";
+import { computerPreviewPlaceholder } from "@rakazo/i18n/computer-preview";
 import { Button } from "@rakazo/ui-web";
 import { Maximize2, MessageSquare, RefreshCw, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBackLayer } from "../../lib/back-layers";
-import { screenFrames, screenIframeSandbox } from "../../lib/computer-screen";
+import { screenFrames, screenIframeSandbox } from "../../lib/computers/computer-screen";
 import {
   clampDockHeight,
   defaultDockHeight,
   screenDockHeightPreference,
 } from "../../lib/screen-dock";
-import { computerPlaceholder, resolveOwnedComputerScreen } from "./computer-view";
+import { resolveOwnedComputerScreen } from "./computers/computer-view";
 
 /** The floating header's height, so the docked screen starts just under it. */
 const HEADER_OFFSET = 66;
@@ -323,11 +324,7 @@ export function DockedScreen({
               <span>
                 {computerScreenError ??
                   computerBooting ??
-                  computerPlaceholder(
-                    owned.computer?.state,
-                    booting,
-                    "Connecting to the screen…",
-                  )}
+                  computerPreviewPlaceholder(owned.computer?.state, booting)}
               </span>
               {asleep ? (
                 <Button size="sm" variant="secondary" onClick={onWake}>

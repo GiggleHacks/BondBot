@@ -34,11 +34,11 @@ import {
 import { getLogger } from "@rakazo/logging";
 import type { Context, Hono } from "hono";
 import * as z from "zod";
-import { deleteArtifactFamily, storeOwnedArtifact } from "./artifacts.js";
-import { readBoundedBody, readBoundedBytes } from "./http-body.js";
-import type { ThreadTarget } from "./thread-target.js";
-import { resolveThreadTarget, sendThreadMessage } from "./thread-target.js";
-import { loadVoiceCredential, voiceContext, voiceProviderFor } from "./voice.js";
+import { deleteArtifactFamily, storeOwnedArtifact } from "./content/artifacts.js";
+import { readBoundedBody, readBoundedBytes } from "./http/http-body.js";
+import type { ThreadTarget } from "./threads/thread-target.js";
+import { resolveThreadTarget, sendThreadMessage } from "./threads/thread-target.js";
+import { loadVoiceCredential, voiceContext, voiceProviderFor } from "./calls/voice.js";
 import {
   AudioConversionError,
   cutPiece,

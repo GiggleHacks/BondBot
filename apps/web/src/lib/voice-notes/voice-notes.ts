@@ -1,4 +1,4 @@
-import { selectedSpaceId, withSpaceHeaders } from "../rpc";
+import { selectedSpaceId, withSpaceHeaders } from "../query/rpc";
 import { sendQueue } from "../send-queue";
 import { SpeedTracker, xhrSend } from "../upload-progress";
 import { timeoutSignal } from "../timeout-signal";

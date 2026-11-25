@@ -5,7 +5,7 @@ import type {
 } from "@rakazo/contracts";
 import { toast } from "@rakazo/ui-web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { createSpaceRpc } from "../../lib/rpc";
+import type { createSpaceRpc } from "../../lib/query/rpc";
 import { playVpnSound, primeVpnAudio } from "../../lib/vpn-sounds";
 
 export interface ComputerVpnController {

@@ -14,7 +14,7 @@
     "pack": "pnpm --filter @rakazo/web build && pnpm build && electron-builder --mac --win --linux",
     "pack:dir": "pnpm --filter @rakazo/web build && pnpm build && electron-builder --dir",
     "pack:win": "node scripts/build.mjs && node scripts/copy-static.mjs && electron-builder --win portable --x64 --publish never",
-    "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.jsdom.json && tsc --noEmit -p e2e/tsconfig.json && tsc --noEmit -p scripts/tsconfig.json",
+    "check": "tsrs --noEmit -p tsconfig.json && tsrs --noEmit -p tsconfig.jsdom.json && tsrs --noEmit -p e2e/tsconfig.json && tsrs --noEmit -p scripts/tsconfig.json",
     "test": "vitest run --root ../.. apps/desktop/src",
     "test:e2e": "pnpm build && playwright test --config e2e/playwright.config.ts",
     "release": "pnpm --filter @rakazo/web build && pnpm build && electron-builder --publish never"

@@ -2,7 +2,7 @@
 // player, with its status underneath: waiting for connection, sending, then transcribing (animated).
 import { Mic, RotateCcw, Trash2, WifiOff } from "lucide-react";
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import type { ArtifactTarget } from "../lib/artifact-open";
+import type { ArtifactTarget } from "../lib/pages/artifact-open";
 import { formatVoiceTime, placeholderPeaks, VOICE_NOTE_BARS } from "../lib/voice-note";
 import type { VoiceNoteTarget } from "../lib/voice-notes/store";
 import { sendQueue } from "../lib/send-queue";

@@ -6,7 +6,7 @@ import { connectedModelChoices, modelOptionKey } from "@rakazo/core";
 import { useQuery } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSpaceQueries } from "../lib/query";
+import { useSpaceQueries } from "../lib/query/query";
 import { shortModelLabel } from "../lib/model-label";
 import { ModelBrandIcon, modelBrandInfo, modelBrandKey } from "./ModelBrandIcon";
 import { modelGlowColorFor } from "./ModelEdgeGlow";
