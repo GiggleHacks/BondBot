@@ -38,3 +38,47 @@ export async function downloadArtifact(
   const bytes = await fetchArtifactBytes(target, artifactId);
   downloadArtifactBytes(name, mimeType, bytes);
 }
+
+/** True when the browser can hand a file or text to the system share sheet (phones, some desktops). */
+export function canShareArtifacts(): boolean {
+  return typeof navigator !== "undefined" && typeof navigator.share === "function";
+}
+
+function shareableMimeType(mimeType: string): string {
+  // Share sheets accept a short list of file types; markdown is not on every browser's list.
+  return mimeType.startsWith("text/") ? "text/plain" : mimeType;
+}
+
+/** Opens the share sheet with the file; falls back to sharing the text of a text file. */
+export async function shareArtifactBytes(
+  name: string,
+  mimeType: string,
+  bytes: Uint8Array,
+): Promise<void> {
+  const file = new File([new Uint8Array(bytes)], name, { type: shareableMimeType(mimeType) });
+  try {
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: name });
+      return;
+    }
+    if (mimeType.startsWith("text/")) {
+      await navigator.share({ title: name, text: new TextDecoder().decode(bytes) });
+      return;
+    }
+    throw new Error("Sharing this file type is not supported here");
+  } catch (error) {
+    // Closing the share sheet is not an error.
+    if (error instanceof DOMException && error.name === "AbortError") return;
+    throw error;
+  }
+}
+
+export async function shareArtifact(
+  target: ArtifactTarget,
+  artifactId: string,
+  name: string,
+  mimeType: string,
+): Promise<void> {
+  const bytes = await fetchArtifactBytes(target, artifactId);
+  await shareArtifactBytes(name, mimeType, bytes);
+}

@@ -102,4 +102,4 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Dropped because upstream covers it: the compact "Awake" row, the dock Retry workaround, computer-mode-switch.ts (the Kill Switch unlock guard moved into switchBotComputer).
 - Type-check and build pass. Unit tests still failing are ones that already failed before the merge or on upstream, or that expect behaviour BondBot changes on purpose (always-high effort, forced thinking, separate Copy button, hidden Voice tab, untranslated Thai strings). Not checked in a browser; no Docker image built.
 - Before deploying: back up the database (upstream drops some computer execution columns). cccbox's patch-in-place recipe in LOCAL-PATCHES.md does not fit a base change; build a full image from infra/compose/Dockerfile.
-
+- Ported the file Share button (phone share sheet) that was live on cccbox but built from an older tree, so it was missing from the 0.1.22 sync.

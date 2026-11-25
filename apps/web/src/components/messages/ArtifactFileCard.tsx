@@ -13,22 +13,25 @@ import {
   DialogTitle,
   Spinner,
 } from "@rakazo/ui-web";
-import { Check, Code2, Copy, Download, FileText, Play, X } from "lucide-react";
+import { Check, Code2, Copy, Download, FileText, Play, Share2, X } from "lucide-react";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useCopyText } from "../../lib/copy-text";
 import type { ArtifactTarget } from "../../lib/pages/artifact-open";
 import {
+  canShareArtifacts,
   downloadArtifact,
   downloadArtifactBytes,
   fetchArtifactBytes,
+  shareArtifact,
+  shareArtifactBytes,
 } from "../../lib/pages/artifact-open";
 import { selectFilePreviewContents } from "../../lib/pages/file-preview-selection";
 import { errorText } from "../../lib/query/user-error";
 import { BuiCard } from "../ai/primitives";
 import { IconTooltip } from "../IconTooltip";
-import { PdfViewer } from "./PdfViewer";
 import { VoiceNotePlayer } from "../VoiceNotePlayer";
+import { PdfViewer } from "./PdfViewer";
 import { SandboxedHtmlViewer } from "./SandboxedHtmlViewer";
 
 type ArtifactFileCardProps = {
@@ -68,6 +71,15 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
       await downloadArtifact(props.target, props.artifactId, props.name, props.mimeType);
     } catch {
       setDownloadError(t`Could not download ${props.name}. Try again.`);
+    }
+  }
+
+  async function startShare() {
+    setDownloadError(null);
+    try {
+      await shareArtifact(props.target, props.artifactId, props.name, props.mimeType);
+    } catch {
+      setDownloadError(`Could not share ${props.name}. Open the file and try Share there.`);
     }
   }
 
@@ -143,6 +155,18 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
               <Download size={19} strokeWidth={1.8} />
             </button>
           </IconTooltip>
+          {canShareArtifacts() ? (
+            <IconTooltip label={`Share ${props.name}`}>
+              <button
+                type="button"
+                aria-label={`Share ${props.name}`}
+                onClick={() => void startShare()}
+                className="grid w-14 shrink-0 place-items-center border-s border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <Share2 size={19} strokeWidth={1.8} />
+              </button>
+            </IconTooltip>
+          ) : null}
         </BuiCard>
         {downloadError ? <DownloadError message={downloadError} /> : null}
       </div>
@@ -263,6 +287,30 @@ function FilePreview({
             <Download />
           </Button>
         </IconTooltip>
+        {canShareArtifacts() ? (
+          <IconTooltip label={`Share ${name}`}>
+            <Button
+              variant="ghost"
+              size="icon-lg"
+              className="rounded-full text-muted-foreground"
+              aria-label={`Share ${name}`}
+              onClick={() =>
+                void (async () => {
+                  setDownloadError(null);
+                  try {
+                    if (state.status === "ready")
+                      await shareArtifactBytes(name, mimeType, state.bytes);
+                    else await shareArtifact(target, artifactId, name, mimeType);
+                  } catch {
+                    setDownloadError(`Could not share ${name}.`);
+                  }
+                })()
+              }
+            >
+              <Share2 />
+            </Button>
+          </IconTooltip>
+        ) : null}
         <DialogClose
           ref={closeButtonRef}
           aria-label={t`Close preview`}

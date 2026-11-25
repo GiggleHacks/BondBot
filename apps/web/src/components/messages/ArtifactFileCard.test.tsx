@@ -16,6 +16,9 @@ vi.mock("../../lib/pages/artifact-open", () => ({
   fetchArtifactBytes: mocks.fetch,
   downloadArtifact: mocks.download,
   downloadArtifactBytes: vi.fn(),
+  canShareArtifacts: () => false,
+  shareArtifact: vi.fn(),
+  shareArtifactBytes: vi.fn(),
 }));
 vi.mock("@lingui/react/macro", () => {
   const t = (strings: TemplateStringsArray, ...values: unknown[]) =>
