@@ -109,6 +109,7 @@ import { registerWindowControls } from "./window-controls.js";
 import { isMcpOAuthServerId, mcpOAuthPartition } from "./window-open.js";
 
 process.setSourceMapsEnabled(true);
+if (process.platform === "win32") app.setAppUserModelId("dev.bondbot.desktop");
 installDesktopEarlyErrorReporting();
 const PERFORMANCE_USER_DATA = process.env.RAKAZO_PERFORMANCE_USER_DATA;
 /** Test hook: where the app-managed stack answers. Mode `new` still requires loopback. */

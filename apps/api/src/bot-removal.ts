@@ -2,6 +2,8 @@ import { destroyBot } from "@rakazo/adapters";
 import type { Actor } from "@rakazo/contracts";
 import type { createRepos } from "@rakazo/db";
 import { requireSpaceOwner } from "@rakazo/db";
+import { getLogger } from "@rakazo/logging";
+import { setSupervisorHomeVpn } from "./computer-vpn.js";
 import type { RouterDeps } from "./router.js";
 
 /** A bot this actor may remove: theirs or the owner's, in this space, archived included. */
@@ -24,7 +26,7 @@ export function createBotRemoval(deps: RouterDeps, repos: ReturnType<typeof crea
     options: Parameters<typeof destroyBot>[3],
   ) => {
     const bot = await loadBotForRemoval(deps.prisma, repos, actor, botId);
-    return destroyBot(
+    const result = await destroyBot(
       {
         prisma: deps.prisma,
         sandbox: deps.sandbox,
@@ -47,6 +49,18 @@ export function createBotRemoval(deps: RouterDeps, repos: ReturnType<typeof crea
       },
       options,
     );
+    if (bot.computer?.scope === "dedicated" && (bot.computer.vpnProfile || bot.computer.vpnLocked)) {
+      await setSupervisorHomeVpn(deps.env, bot.computer.homeKey, {
+        profile: null,
+        locked: false,
+      }).catch((error) => {
+        getLogger().warn("bot removal VPN cleanup failed", {
+          botId: bot.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
+    return result;
   };
   return removeBot;
 }

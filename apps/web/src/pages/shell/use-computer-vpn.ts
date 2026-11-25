@@ -33,6 +33,8 @@ export function useComputerVpn({
   refreshBots: (includeArchived?: boolean) => Promise<void>;
 }): ComputerVpnController {
   const [overview, setOverview] = useState<ComputerVpnOverview | null>(null);
+  const overviewRef = useRef<ComputerVpnOverview | null>(null);
+  overviewRef.current = overview;
   const [pendingBotId, setPendingBotId] = useState<string | null>(null);
   const [polling, setPolling] = useState(pollingAllowed);
   // Counts requests, so an answer arriving after a newer request (or a space change) is dropped.
@@ -84,7 +86,7 @@ export function useComputerVpn({
   const setBotVpn = useCallback(
     async (input: SetComputerVpnInput): Promise<BotVpnStatus | null> => {
       primeVpnAudio();
-      const previous = overview?.bots[input.botId];
+      const previous = overviewRef.current?.bots[input.botId];
       setPendingBotId(input.botId);
       try {
         const updated = await rpc.computer.setVpn(input);
@@ -114,7 +116,7 @@ export function useComputerVpn({
         setPendingBotId((current) => (current === input.botId ? null : current));
       }
     },
-    [overview, refreshBots, refreshVpn, rpc],
+    [refreshBots, refreshVpn, rpc],
   );
 
   return useMemo(

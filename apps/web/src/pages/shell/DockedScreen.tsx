@@ -51,6 +51,9 @@ export function DockedScreen({
   booting,
   onWake,
   onRefresh,
+  hasControl = false,
+  onTakeControl,
+  onRelease,
   onClose,
 }: {
   bot: Bot;
@@ -67,6 +70,12 @@ export function DockedScreen({
   onWake: () => void;
   /** One press brings the screen back where it is: wakes a stopped computer, reconnects a running one. */
   onRefresh?: () => Promise<void> | void;
+  /** True while this person holds control of the screen: it then takes taps, drags and keys itself. */
+  hasControl?: boolean;
+  /** Takes control; resolves true when it is granted. */
+  onTakeControl?: () => Promise<boolean> | boolean;
+  /** Hands control back. */
+  onRelease?: () => Promise<void> | void;
   onClose: () => void;
 }) {
   const viewport = useViewportHeight();
@@ -101,6 +110,39 @@ export function DockedScreen({
     !computerBooting &&
     !computerScreenError &&
     (!owned.computer || owned.computer.state === "stopped" || owned.computer.state === "suspended");
+
+  // Local change (David, 2026-11-23): no Take control button. A tap on the screen, or opening it full
+  // screen, takes control; a bot that is working on it is asked about first.
+  const controlling = Boolean(hasControl && showing);
+  const [taking, setTaking] = useState(false);
+  const [confirmTakeover, setConfirmTakeover] = useState(false);
+  const tapTimer = useRef<number | undefined>(undefined);
+  const takeControl = useCallback(async () => {
+    if (!onTakeControl) return;
+    setConfirmTakeover(false);
+    setTaking(true);
+    try {
+      await onTakeControl();
+    } finally {
+      setTaking(false);
+    }
+  }, [onTakeControl]);
+  const requestControl = useCallback(() => {
+    if (!onTakeControl || !showing || controlling || taking) return;
+    if (owned.computer?.controlHolder === "bot") {
+      setConfirmTakeover(true);
+      return;
+    }
+    void takeControl();
+  }, [onTakeControl, showing, controlling, taking, owned.computer?.controlHolder, takeControl]);
+  const requestControlRef = useRef(requestControl);
+  requestControlRef.current = requestControl;
+  useEffect(() => () => window.clearTimeout(tapTimer.current), []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new bot, lost screen, or taking control drops pending tap/confirm state.
+  useEffect(() => {
+    window.clearTimeout(tapTimer.current);
+    setConfirmTakeover(false);
+  }, [bot.id, showing, controlling]);
 
   const setHeight = useCallback(
     (next: number) => {
@@ -166,7 +208,11 @@ export function DockedScreen({
     }
   };
   const onZoomDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "mouse" || (event.target as HTMLElement).closest("button")) return;
+    if (controlling || (event.target as HTMLElement).closest("button")) return;
+    if (event.pointerType === "mouse") {
+      if (event.button === 0) requestControlRef.current();
+      return;
+    }
     pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     beginGesture();
   };
@@ -201,22 +247,26 @@ export function DockedScreen({
       const now = performance.now();
       if (last && now - last.t < 320 && Math.hypot(tap.x - last.x, tap.y - last.y) < 30) {
         lastTap.current = null;
+        window.clearTimeout(tapTimer.current);
         if (zoom.current.s > 1.05) applyZoom(1, 0, 0);
         else applyZoom(DOUBLE_TAP_ZOOM, tap.x - tap.x * DOUBLE_TAP_ZOOM, tap.y - tap.y * DOUBLE_TAP_ZOOM);
       } else {
         lastTap.current = { t: now, x: tap.x, y: tap.y };
+        // A single tap takes control once it is clear no second tap (zoom) follows.
+        window.clearTimeout(tapTimer.current);
+        tapTimer.current = window.setTimeout(() => requestControlRef.current(), 340);
       }
     }
     if (zoom.current.s < 1.02) applyZoom(1, 0, 0);
     beginGesture();
   };
-  // A new bot, full screen or not, or a screen that went away starts at 1x again.
+  // A new bot, full screen or not, entering control mode, or a screen that went away starts at 1x again.
   // biome-ignore lint/correctness/useExhaustiveDependencies: these only trigger the reset.
   useEffect(() => {
     pointers.current.clear();
     gesture.current = null;
     applyZoom(1, 0, 0);
-  }, [bot.id, full, showing, applyZoom]);
+  }, [bot.id, full, showing, controlling, applyZoom]);
 
   useEffect(() => {
     if (!full) return;
@@ -262,7 +312,7 @@ export function DockedScreen({
                 sandbox={screenIframeSandbox(frame.url)}
                 className={`h-full w-full border-0 bg-black${frame.held ? " absolute inset-0" : ""}`}
                 allow="clipboard-read; clipboard-write"
-                style={{ pointerEvents: "none" }}
+                style={{ pointerEvents: controlling ? "auto" : "none" }}
               />
             ),
           )}
@@ -298,6 +348,72 @@ export function DockedScreen({
             </div>
           </div>
         )}
+        {controlling ? (
+          <div
+            aria-hidden="true"
+            data-testid="docked-screen-control-ring"
+            className="pointer-events-none absolute inset-0 z-[5] rounded-[inherit] ring-2 ring-inset ring-emerald-400/80"
+          />
+        ) : null}
+        {showing && !controlling && !taking && !confirmTakeover && onTakeControl ? (
+          <div
+            data-testid="docked-screen-control-hint"
+            className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center"
+            style={full ? { bottom: 88 } : undefined}
+          >
+            <span className="rounded-full bg-black/60 px-3 py-1 text-[11px] text-white ring-1 ring-white/20">
+              Tap the screen to control
+            </span>
+          </div>
+        ) : null}
+        {taking ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center" style={full ? { bottom: 88 } : undefined}>
+            <span className="rounded-full bg-black/60 px-3 py-1 text-[11px] text-white ring-1 ring-white/20">
+              Taking control…
+            </span>
+          </div>
+        ) : null}
+        {controlling ? (
+          <div
+            data-testid="docked-screen-control-tag"
+            className={`absolute flex items-center gap-2 rounded-full bg-black/65 py-1 pe-1 ps-3 text-[11px] text-white ring-1 ring-white/20 ${full ? "start-1/2 -translate-x-1/2" : "start-2"}`}
+            style={full ? { top: "calc(env(safe-area-inset-top) + 12px)" } : { bottom: 8 }}
+          >
+            <span aria-hidden="true" className="size-[7px] rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.95)]" />
+            You're in control
+            <button
+              type="button"
+              data-testid="docked-screen-release"
+              onClick={() => void onRelease?.()}
+              className="rounded-full bg-white/20 px-2.5 py-0.5 font-semibold active:bg-white/30"
+            >
+              Release
+            </button>
+          </div>
+        ) : null}
+        {confirmTakeover ? (
+          <div className="absolute inset-0 z-10 grid place-items-center bg-black/55 px-4">
+            <div
+              role="dialog"
+              aria-label="Take over from the bot"
+              data-testid="docked-screen-takeover"
+              className="w-full max-w-[300px] rounded-2xl border border-white/15 bg-neutral-900 p-4 text-white shadow-xl"
+            >
+              <div className="text-body font-semibold">Bot is working on this screen</div>
+              <div className="mt-1 text-body-sm text-white/70">
+                Taking over pauses it. It can continue when you release.
+              </div>
+              <div className="mt-3 flex gap-2">
+                <Button size="sm" onClick={() => void takeControl()}>
+                  Take over
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => setConfirmTakeover(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {zoomed ? (
           <button
             type="button"
@@ -353,7 +469,10 @@ export function DockedScreen({
               type="button"
               aria-label="Full screen"
               data-testid="docked-screen-full"
-              onClick={() => setFull(true)}
+              onClick={() => {
+                setFull(true);
+                requestControl();
+              }}
               className={roundButton}
             >
               <Maximize2 className="size-4" aria-hidden="true" />

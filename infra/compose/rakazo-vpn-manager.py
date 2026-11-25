@@ -53,6 +53,7 @@ STARTUP_GRACE = 25
 
 COUNTRY_NAMES = {
     "AU": "Australia",
+    "BR": "Brazil",
     "CA": "Canada",
     "CH": "Switzerland",
     "DE": "Germany",
@@ -81,6 +82,7 @@ PROBE_CACHE: dict[str, dict] = {}
 # a down tunnel still shows blocked at once, and the kill switch (iptables) is untouched.
 PROBE_FAILS: dict[str, int] = {}
 LAST_GOOD: dict[str, dict] = {}
+LAST_RUNNING: dict[str, str] = {}
 FAIL_TOLERANCE = 3
 LAST_GOOD_MAX_AGE = 120
 HOST_IP_CACHE: dict[str, object] = {"ip": None, "country": None, "at": 0.0}
@@ -301,20 +303,34 @@ def ensure_tunnel_up(profile: dict) -> None:
         raise RuntimeError(f"wg setconf {iface} failed: {err}")
 
     sh(["ip", "addr", "flush", "dev", iface])
-    sh(["ip", "addr", "add", addr, "dev", iface])
-    sh(["ip", "link", "set", iface, "mtu", "1420", "up"])
+    rc, _, err = sh(["ip", "addr", "add", addr, "dev", iface])
+    if rc != 0:
+        raise RuntimeError(f"ip addr add {addr} dev {iface} failed: {err}")
+    rc, _, err = sh(["ip", "link", "set", iface, "mtu", "1420", "up"])
+    if rc != 0:
+        raise RuntimeError(f"ip link set {iface} up failed: {err}")
     sh(["sysctl", "-qw", f"net.ipv4.conf.{iface}.rp_filter=2"])
 
-    sh(["ip", "route", "replace", "blackhole", "default", "table", table, "metric", "4000"])
-    sh(["ip", "route", "replace", "default", "dev", iface, "table", table])
+    rc, _, err = sh(["ip", "route", "replace", "blackhole", "default", "table", table, "metric", "4000"])
+    if rc != 0:
+        raise RuntimeError(f"ip route blackhole table {table} failed: {err}")
+    rc, _, err = sh(["ip", "route", "replace", "default", "dev", iface, "table", table])
+    if rc != 0:
+        raise RuntimeError(f"ip route default dev {iface} table {table} failed: {err}")
     while sh(["ip", "rule", "del", "fwmark", f"{mark}/0xffff", "lookup", table, "priority", RULE_PRIO])[0] == 0:
         pass
-    sh(["ip", "rule", "add", "fwmark", f"{mark}/0xffff", "lookup", table, "priority", RULE_PRIO])
+    rc, _, err = sh(["ip", "rule", "add", "fwmark", f"{mark}/0xffff", "lookup", table, "priority", RULE_PRIO])
+    if rc != 0:
+        raise RuntimeError(f"ip rule add fwmark {mark} table {table} failed: {err}")
 
     if sh([*IPT, "-t", "nat", "-C", "POSTROUTING", "-o", iface, "-j", "MASQUERADE"])[0] != 0:
-        sh([*IPT, "-t", "nat", "-A", "POSTROUTING", "-o", iface, "-j", "MASQUERADE"])
+        rc, _, err = sh([*IPT, "-t", "nat", "-A", "POSTROUTING", "-o", iface, "-j", "MASQUERADE"])
+        if rc != 0:
+            raise RuntimeError(f"iptables MASQUERADE for {iface} failed: {err}")
     if sh([*IPT, "-t", "mangle", "-C", "FORWARD", "-o", iface, "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"])[0] != 0:
-        sh([*IPT, "-t", "mangle", "-A", "FORWARD", "-o", iface, "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"])
+        rc, _, err = sh([*IPT, "-t", "mangle", "-A", "FORWARD", "-o", iface, "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"])
+        if rc != 0:
+            log(f"TCPMSS clamp for {iface} failed: {err}")
 
 
 def tunnel_status(profile: dict) -> dict:
@@ -354,6 +370,70 @@ def tunnel_status(profile: dict) -> dict:
         "handshakeAgeSec": age,
         "endpoint": endpoint,
     }
+
+
+_DEFAULT_TUNNEL_STATUS = tunnel_status
+
+
+def collect_tunnel_statuses(profiles: list[dict]) -> list[dict]:
+    """Query all WireGuard tunnels in 2 batched commands instead of 3*N, outside LOCK."""
+    if not profiles:
+        return []
+    if tunnel_status is not _DEFAULT_TUNNEL_STATUS:
+        return [tunnel_status(p) for p in profiles]
+
+    rc_wg, wg_out, _ = sh(["wg", "show", "all", "dump"], timeout=8)
+    rc_link, link_out, _ = sh(["ip", "link", "show"], timeout=8)
+    if rc_wg != 0 or rc_link != 0:
+        return [tunnel_status(p) for p in profiles]
+
+    handshakes: dict[str, int] = {}
+    endpoints: dict[str, str] = {}
+    for line in wg_out.splitlines():
+        cols = line.split("\t")
+        # Peer rows have 9 tab-separated fields: iface, pubkey, psk, endpoint, allowed-ips, handshake, rx, tx, keepalive
+        if len(cols) >= 6:
+            iface = cols[0]
+            ep = cols[3]
+            if ep and ep != "(none)":
+                endpoints[iface] = ep
+            try:
+                ts = int(cols[5])
+                if ts > 0:
+                    handshakes[iface] = max(handshakes.get(iface, 0), ts)
+            except ValueError:
+                pass
+
+    up_ifaces: set[str] = set()
+    for line in link_out.splitlines():
+        m = re.match(r"^\d+:\s+([^:@\s]+)(?:@[^:\s]+)?:\s+<([^>]*)>", line)
+        if m and "UP" in m.group(2).split(","):
+            up_ifaces.add(m.group(1))
+
+    now = time.time()
+    out: list[dict] = []
+    for profile in profiles:
+        iface = profile["iface"]
+        ts = handshakes.get(iface)
+        age = max(0, int(now - ts)) if ts else None
+        link_up = iface in up_ifaces
+        if not link_up:
+            up = False
+        elif age is not None:
+            up = age < STALE_AFTER
+        else:
+            up = (now - STARTED_AT) < STARTUP_GRACE
+        out.append({
+            "id": profile["id"],
+            "countryCode": profile["countryCode"],
+            "countryName": profile["countryName"],
+            "serverLabel": profile["serverLabel"],
+            "iface": iface,
+            "up": up,
+            "handshakeAgeSec": age,
+            "endpoint": endpoints.get(iface),
+        })
+    return out
 
 
 def ensure_jump(base: list[str], chain: str, jump: str) -> None:
@@ -431,7 +511,10 @@ def apply_iptables_policies() -> dict[str, dict]:
     Raises RuntimeError if a table could not be applied; that table then keeps its previous rules.
     """
     with LOCK:
-        tunnels = {pid: tunnel_status(p) for pid, p in PROFILES.items()}
+        profile_list = list(PROFILES.values())
+    tunnel_list = collect_tunnel_statuses(profile_list)
+    tunnels = {t["id"]: t for t in tunnel_list}
+    with LOCK:
         filter_payload, mangle_payload = build_policy_payloads(tunnels)
 
         # Kill switch first: a newly locked bridge is dropped before its traffic is marked.
@@ -455,9 +538,12 @@ def refresh_host_ip() -> tuple[str | None, str | None]:
     return HOST_IP_CACHE["ip"], HOST_IP_CACHE["country"]  # type: ignore[return-value]
 
 
-def list_bot_containers() -> dict[str, str]:
-    """Return mapping of bridge_name -> container_name for running bot containers."""
-    _, out, _ = sh(["docker", "ps", "--format", "{{.Names}}"], timeout=6)
+def list_bot_containers_checked() -> tuple[bool, dict[str, str]]:
+    """Return (ok, mapping of bridge_name -> container_name) for running bot containers."""
+    rc, out, err = sh(["docker", "ps", "--format", "{{.Names}}"], timeout=6)
+    if rc != 0:
+        log(f"docker ps failed (rc={rc}): {err}")
+        return False, {}
     mapping: dict[str, str] = {}
     for name in out.split():
         m = BOT_CONTAINER_RE.match(name)
@@ -466,6 +552,12 @@ def list_bot_containers() -> dict[str, str]:
         home_key = m.group(1)
         bridge = bridge_for_home_key(home_key)
         mapping[bridge] = name
+    return True, mapping
+
+
+def list_bot_containers() -> dict[str, str]:
+    """Return mapping of bridge_name -> container_name for running bot containers."""
+    _, mapping = list_bot_containers_checked()
     return mapping
 
 
@@ -499,7 +591,13 @@ def probe_one_container(bridge: str, container_name: str) -> tuple[str, dict]:
 
 
 def probe_bridges(target_bridges: set[str] | None = None) -> None:
-    containers = list_bot_containers()
+    ok, containers = list_bot_containers_checked()
+    if not ok:
+        # docker ps failed/timed out: keep existing PROBE_CACHE instead of flipping bots to blocked.
+        return
+    with LOCK:
+        LAST_RUNNING.clear()
+        LAST_RUNNING.update(containers)
     to_probe = [
         (b, c)
         for b, c in containers.items()
@@ -549,9 +647,17 @@ def probe_bridges(target_bridges: set[str] | None = None) -> None:
 def build_snapshot() -> dict:
     host_ip, host_country = refresh_host_ip()
     with LOCK:
-        tunnels = [tunnel_status(p) for p in PROFILES.values()]
+        profile_list = list(PROFILES.values())
+    tunnels = collect_tunnel_statuses(profile_list)
+    docker_ok, running_fresh = list_bot_containers_checked()
+    with LOCK:
+        if docker_ok:
+            LAST_RUNNING.clear()
+            LAST_RUNNING.update(running_fresh)
+            running = running_fresh
+        else:
+            running = dict(LAST_RUNNING)
         tunnel_map = {t["id"]: t for t in tunnels}
-        running = list_bot_containers()
         all_bridges = set(STATE["bridges"].keys()) | set(running.keys()) | set(PROBE_CACHE.keys())
 
         bridges_out: dict[str, dict] = {}

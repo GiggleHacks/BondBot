@@ -135,7 +135,12 @@ import {
   STEERING_RESETS_MAX_PER_RUN,
   USER_PROGRESS_MESSAGE_MAX_LENGTH,
 } from "./user-progress.js";
-import { appendReasoningBlock, reasoningEnabledFor, takeReasoningChunk } from "./reasoning-capture.js";
+import {
+  appendReasoningBlock,
+  clearReasoningBuffer,
+  reasoningEnabledFor,
+  takeReasoningChunk,
+} from "./reasoning-capture.js";
 import { wakeRun } from "./wake-run.js";
 
 type RuntimeEvent<T extends AgentRuntimeEvent["type"]> = Extract<AgentRuntimeEvent, { type: T }>;
@@ -174,6 +179,7 @@ export async function consumeRunEvents(
   };
   // Local addition (David, 2026-11-20): stream the model's reasoning into the live message as it is written.
   let reasoningChain: Promise<void> = Promise.resolve();
+  let reasoningTimer: ReturnType<typeof setInterval> | null = null;
   const publishReasoning = async (final: boolean) => {
     if (ctx.scripted || isBackgroundRunTrigger(run.trigger) || run.trigger === "routine") return;
     if (!reasoningEnabledFor(bot.id)) return;
@@ -196,8 +202,17 @@ export async function consumeRunEvents(
     reasoningChain = reasoningChain.then(() => publishReasoning(final)).catch(() => {});
     return reasoningChain;
   };
-  const reasoningTimer = setInterval(() => void queueReasoning(false), 350);
-  reasoningTimer.unref?.();
+  const startReasoningTimer = () => {
+    if (reasoningTimer || ctx.scripted || isBackgroundRunTrigger(run.trigger) || run.trigger === "routine") return;
+    if (!reasoningEnabledFor(bot.id)) return;
+    reasoningTimer = setInterval(() => void queueReasoning(false), 350);
+    reasoningTimer.unref?.();
+  };
+  const stopReasoningTimer = () => {
+    if (!reasoningTimer) return;
+    clearInterval(reasoningTimer);
+    reasoningTimer = null;
+  };
   // A quiet model call or a long tool streams no events, so Stop would otherwise go unseen
   // until the next event or heartbeat. The shared throttle keeps this at one read a second.
   let watching = true;
@@ -210,8 +225,9 @@ export async function consumeRunEvents(
       .catch(() => {});
   }, 1_000);
   watch.unref?.();
-  try {
-    for await (const event of withRuntimeCleanup(events, ctx.abortController)) {
+    let finishedNormally = false;
+    try {
+      for await (const event of withRuntimeCleanup(events, ctx.abortController)) {
       if (ctx.state.approval.pausePending) return true;
       if (!ctx.state.lease.valid) return true;
       if (await runLeaseLost(ctx)) return true;
@@ -224,7 +240,12 @@ export async function consumeRunEvents(
       }
       if (event.type === "thinking") {
         await publishThinking(event.active);
-        if (!event.active) await queueReasoning(true);
+        if (event.active) {
+          startReasoningTimer();
+        } else {
+          stopReasoningTimer();
+          await queueReasoning(true);
+        }
         continue;
       }
       if (
@@ -285,14 +306,17 @@ export async function consumeRunEvents(
         }
       }
     }
-    return false;
-  } finally {
-    watching = false;
-    clearInterval(watch);
-    clearInterval(reasoningTimer);
-    // Run completion clears thinking too; never let this replace the turn's own outcome.
-    await publishThinking(false).catch(() => {});
-  }
+      finishedNormally = true;
+      return false;
+    } finally {
+      watching = false;
+      clearInterval(watch);
+      stopReasoningTimer();
+      await reasoningChain;
+      if (!finishedNormally) clearReasoningBuffer(runId);
+      // Run completion clears thinking too; never let this replace the turn's own outcome.
+      await publishThinking(false).catch(() => {});
+    }
 }
 
 /**

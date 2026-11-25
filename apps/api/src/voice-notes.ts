@@ -1,6 +1,6 @@
 import {
-  appendFile,
   mkdir,
+  open,
   readdir,
   readFile,
   rename,
@@ -176,6 +176,62 @@ function publicNote(row: {
  * interrupted upload resumes), then the server converts it, transcribes it in pieces with
  * the member's voice connections, and sends the audio plus its transcript as their message.
  */
+
+const CompanionBody = z.object({
+  companionArtifactIds: z.array(z.string().min(1).max(80)).max(8).optional(),
+});
+
+async function readCompanionIds(dir: string): Promise<string[]> {
+  try {
+    const parsed = JSON.parse(await readFile(path.join(dir, "companions.json"), "utf8")) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string").slice(0, 8) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveCompanionIds(
+  deps: VoiceNoteDeps,
+  actor: { userId: string; spaceId: string },
+  row: { id: string; botId: string | null; groupId: string | null },
+  request: Request,
+) {
+  const raw = await readBoundedBody(request, 8_000);
+  if (raw === null) throw new VoiceNoteRequestError(413, "Request body is too large.");
+  if (!raw.trim()) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new VoiceNoteRequestError(400, "Invalid companion attachment payload.");
+  }
+  const validated = CompanionBody.safeParse(parsed);
+  if (!validated.success) {
+    throw new VoiceNoteRequestError(400, "Invalid companion attachment payload.");
+  }
+  const ids = [...new Set(validated.data.companionArtifactIds ?? [])];
+  if (!ids.length) return;
+  if (
+    deps.env.maxAttachmentsPerMessage !== undefined &&
+    ids.length + 1 > deps.env.maxAttachmentsPerMessage
+  ) {
+    throw new VoiceNoteRequestError(400, "Too many files attached to this voice note.");
+  }
+  const found = await deps.prisma.artifact.findMany({
+    where: { id: { in: ids }, spaceId: actor.spaceId, userId: actor.userId },
+    select: { id: true, botId: true, groupId: true },
+  });
+  const ok = ids.every((id) => {
+    const artifact = found.find((item) => item.id === id);
+    if (!artifact) return false;
+    return row.groupId ? artifact.groupId === row.groupId : artifact.botId === row.botId;
+  });
+  if (!ok) throw new VoiceNoteRequestError(400, "Those files cannot be sent with this voice note.");
+  const dir = noteDir(deps, row.id);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, "companions.json"), JSON.stringify(ids));
+}
+
 export function createVoiceNotes(deps: VoiceNoteDeps) {
   const log = getLogger();
   const tries = new Map<string, number>();
@@ -272,7 +328,7 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
     throw lastError;
   }
 
-  /** Joins the first `parts` parts into one file, one part in memory at a time. */
+  /** Joins the first `parts` parts into one file using a single file handle, one part in memory at a time. */
   async function assemble(
     id: string,
     parts: number,
@@ -281,15 +337,19 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
   ): Promise<string> {
     const dir = noteDir(deps, id);
     const source = path.join(dir, name);
-    await writeFile(source, "");
-    let total = 0;
-    for (let part = 0; part < parts; part += 1) {
-      const chunk = await readFile(path.join(dir, `${part}.part`));
-      total += chunk.byteLength;
-      if (total > maxBytes) {
-        throw new NoteRejectedError("This voice note is larger than it was declared to be.");
+    const handle = await open(source, "w");
+    try {
+      let total = 0;
+      for (let part = 0; part < parts; part += 1) {
+        const chunk = await readFile(path.join(dir, `${part}.part`));
+        total += chunk.byteLength;
+        if (total > maxBytes) {
+          throw new NoteRejectedError("This voice note is larger than it was declared to be.");
+        }
+        await handle.write(chunk);
       }
-      await appendFile(source, chunk);
+    } finally {
+      await handle.close();
     }
     return source;
   }
@@ -304,7 +364,7 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
   async function transcribeRange(
     actor: Actor,
     id: string,
-    options: { final: boolean; signal: AbortSignal; update: Update },
+    options: { final: boolean; signal: AbortSignal; update: Update; sourcePath?: string },
   ): Promise<string[]> {
     const row = await deps.prisma.voiceNote.findUniqueOrThrow({ where: { id } });
     const texts = readJsonColumn(
@@ -340,7 +400,8 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
       }
     }
     const dir = noteDir(deps, id);
-    const source = await assemble(id, parts, row.bytes, "speech-source");
+    const source =
+      options.sourcePath ?? (await assemble(id, parts, row.bytes, "speech-source"));
     const wav = path.join(dir, "speech.wav");
     const duration = await decodeForSpeech(source, wav, options.signal);
     if (options.final && exceedsDeclaredDuration(duration, row.durationMs)) {
@@ -453,10 +514,11 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
       const dir = noteDir(deps, id);
       const playable = path.join(dir, "note.m4a");
       let artifactId = row.artifactId;
+      let assembledSource: string | undefined;
       if (!artifactId) {
         await update({ status: "transcribing", error: null });
-        const source = await assemble(id, row.parts, row.bytes);
-        const decoded = await toPlayableAudio(source, playable, signal);
+        assembledSource = await assemble(id, row.parts, row.bytes);
+        const decoded = await toPlayableAudio(assembledSource, playable, signal);
         if (decoded !== null && exceedsDeclaredDuration(decoded, row.durationMs)) {
           throw new NoteRejectedError("This voice note is longer than it was said to be.");
         }
@@ -478,8 +540,13 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
       let transcript = row.transcript;
       if (row.status !== "sending" || transcript === null) {
         await update({ status: "transcribing" });
-        // Pieces already transcribed while the note was still recording are kept.
-        const texts = await transcribeRange(actor, id, { final: true, signal, update });
+        // Reuse the assembled source file from above instead of concatenating all parts twice.
+        const texts = await transcribeRange(actor, id, {
+          final: true,
+          signal,
+          update,
+          sourcePath: assembledSource,
+        });
         transcript = texts.filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
         if (transcript.length > MAX_TRANSCRIPT_CHARS) {
           transcript = `${transcript.slice(0, MAX_TRANSCRIPT_CHARS)}…`;
@@ -493,7 +560,7 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
         target,
         {
           text: transcript || undefined,
-          artifactIds: [artifactId],
+          artifactIds: [artifactId, ...(await readCompanionIds(dir))],
           imageHandling: "file",
           clientNonce: `voice-note:${id}`,
         },
@@ -861,7 +928,6 @@ export function mountVoiceNoteRoutes(
         if (!left) await rm(dir, { recursive: true, force: true });
         return c.body(null, 204);
       }
-      void notes.advance(row.id);
       return c.body(null, 204);
     }),
   );
@@ -879,13 +945,17 @@ export function mountVoiceNoteRoutes(
             `Parts still missing: ${missing.slice(0, 10).join(", ")}`,
           );
         }
+        // Validate and persist companions before queuing so processing never races or ships without them.
+        await saveCompanionIds(deps, actor, row, c.req.raw);
         await deps.prisma.voiceNote.update({
           where: { id: row.id },
           data: { status: "queued", error: null },
         });
         await changed(actor.spaceId);
       }
-      void notes.process(row.id);
+      if (row.status !== "done") {
+        void notes.process(row.id);
+      }
       return c.json(
         { id: row.id, status: row.status === "uploading" ? "queued" : row.status },
         202,

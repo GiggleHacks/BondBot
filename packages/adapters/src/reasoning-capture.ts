@@ -72,7 +72,12 @@ export function takeReasoningChunk(runId: string, final: boolean): string {
   return pending.slice(0, cut);
 }
 
-/** The final blocks plus a trailing reasoning block when the turn produced any and the bot is listed. */
+/** Removes any buffered reasoning for a run that ended abnormally before completion. */
+export function clearReasoningBuffer(runId: string): void {
+  buffers.delete(runId);
+}
+
+/** The final blocks plus a leading reasoning block when the turn produced any and the bot is listed. */
 export function appendReasoningBlock<T>(
   blocks: T[],
   runId: string,
@@ -82,23 +87,29 @@ export function appendReasoningBlock<T>(
   const entry = buffers.get(runId);
   buffers.delete(runId);
   if (blocks.length === 0 || !reasoningEnabledFor(botId)) return blocks;
-  let text = entry?.text.trim() ?? "";
-  let shown = blocks;
-  if (!text) {
-    // Some endpoints write their thinking inline as <think>...</think> in the reply: move it out of the text.
-    const inline: string[] = [];
-    shown = blocks.map((block) => {
-      const candidate = block as unknown as { kind?: string; text?: unknown };
-      if (candidate.kind !== "text" || typeof candidate.text !== "string") return block;
-      const stripped = candidate.text.replace(/<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/gi, (_match, inner: string) => {
-        if (inner.trim()) inline.push(inner.trim());
-        return "";
-      });
-      return stripped === candidate.text ? block : ({ ...candidate, text: stripped.trim() } as unknown as T);
+  const captured = entry?.text.trim() ?? "";
+  // Always strip inline <think>...</think> blocks from text replies (even if streamed reasoning also arrived).
+  const inline: string[] = [];
+  const shown: T[] = [];
+  for (const block of blocks) {
+    const candidate = block as unknown as { kind?: string; text?: unknown };
+    if (candidate.kind !== "text" || typeof candidate.text !== "string") {
+      shown.push(block);
+      continue;
+    }
+    const stripped = candidate.text.replace(/<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/gi, (_match, inner: string) => {
+      if (inner.trim()) inline.push(inner.trim());
+      return "";
     });
-    text = inline.join("\n\n");
-    if (!text) return blocks;
+    if (stripped === candidate.text) {
+      shown.push(block);
+    } else {
+      const cleaned = stripped.trim();
+      if (cleaned) shown.push({ ...candidate, text: cleaned } as unknown as T);
+    }
   }
+  const combined = [captured, ...inline].filter(Boolean).join("\n\n");
+  if (!combined) return blocks;
   // The reasoning comes first, as it streamed live above the reply.
-  return [{ kind: "reasoning", reasoning: redact(text) } as unknown as T, ...shown];
+  return [{ kind: "reasoning", reasoning: redact(combined) } as unknown as T, ...shown];
 }

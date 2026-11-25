@@ -653,6 +653,71 @@ class ProbeTests(Base):
         self.assertEqual(run("<b>"), ("9.9.9.9", None))
         self.assertEqual(run("th"), ("9.9.9.9", None))
 
+    def test_docker_ps_failure_preserves_probe_cache_and_running(self):
+        mgr.PROBE_CACHE[BR_A] = {
+            "containerName": "rakazo-bot-a",
+            "exitIp": "1.1.1.2",
+            "exitCountry": "SG",
+            "reachable": True,
+            "probedAt": 9999999999,
+        }
+        mgr.LAST_RUNNING.clear()
+        mgr.LAST_RUNNING[BR_A] = "rakazo-bot-a"
+
+        def fail_docker(args, timeout=12, input_text=None):
+            if args[0] == "docker":
+                return 1, "", "Cannot connect to Docker daemon"
+            return self.host(args, timeout=timeout, input_text=input_text)
+
+        with mock.patch.object(mgr, "sh", fail_docker):
+            mgr.probe_bridges(None)
+            self.assertIn(BR_A, mgr.PROBE_CACHE)
+            self.assertTrue(mgr.PROBE_CACHE[BR_A]["reachable"])
+            mgr.HOST_IP_CACHE.update(ip="9.9.9.9", country="TH", at=9999999999)
+            snap = mgr.build_snapshot()
+            self.assertTrue(snap["bridges"][BR_A]["running"])
+
+    def test_collect_tunnel_statuses_batched(self):
+        p1 = profile("p1", 0x7101)
+        p2 = profile("p2", 0x7102)
+        now = int(mgr.time.time())
+        wg_dump = (
+            f"{p1['iface']}\tpriv\tpub\t51820\toff\n"
+            f"{p1['iface']}\tpeerpub\t(none)\t1.2.3.4:51820\t0.0.0.0/0\t{now - 15}\t100\t200\t25\n"
+        )
+        link_out = (
+            f"1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536\n"
+            f"2: {p1['iface']}: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1420\n"
+            f"3: {p2['iface']}: <POINTOPOINT,NOARP> mtu 1420\n"
+        )
+
+        def fake_sh(args, timeout=12, input_text=None):
+            if args == ["wg", "show", "all", "dump"]:
+                return 0, wg_dump, ""
+            if args == ["ip", "link", "show"]:
+                return 0, link_out, ""
+            return 1, "", "unexpected"
+
+        with mock.patch.object(mgr, "sh", fake_sh):
+            statuses = mgr.collect_tunnel_statuses([p1, p2])
+        by_id = {s["id"]: s for s in statuses}
+        self.assertTrue(by_id["p1"]["up"])
+        self.assertEqual(by_id["p1"]["endpoint"], "1.2.3.4:51820")
+        self.assertIsNotNone(by_id["p1"]["handshakeAgeSec"])
+        self.assertFalse(by_id["p2"]["up"])
+
+    def test_ensure_tunnel_up_checks_return_codes(self):
+        p1 = profile("p1", 0x7101)
+
+        def fail_route(args, timeout=12, input_text=None):
+            if args[:3] == ["ip", "route", "replace"]:
+                return 2, "", "RTNETLINK answers: Network is down"
+            return self.host(args, timeout=timeout, input_text=input_text)
+
+        with mock.patch.object(mgr, "sh", fail_route):
+            with self.assertRaises(RuntimeError):
+                mgr.ensure_tunnel_up(p1)
+
 
 class DashboardTests(unittest.TestCase):
     def test_no_innerhtml_or_template_interpolation(self):

@@ -212,6 +212,7 @@ export function injectNovncStorageShim(html: string, { viewOnly = false } = {}) 
       el.append(dot, label);
       document.body.appendChild(el);
       const paint = () => {
+        if (document.hidden) return;
         const now = performance.now();
         while (frames.length && now - frames[0] > 1000) frames.shift();
         const root = document.documentElement;

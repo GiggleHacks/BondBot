@@ -31,6 +31,8 @@ import {
 } from "../../lib/pending-attachments";
 import { canPrepareImage, prepareImage } from "../../lib/prepare-image";
 import type { createSpaceRpc } from "../../lib/rpc";
+import { selectedSpaceId } from "../../lib/rpc";
+import { sendQueue } from "../../lib/send-queue";
 import { readSeenRunErrorIds, rememberSeenRunErrorId } from "../../lib/run-error-storage";
 import { clearActiveThreadRuns, threadRunError } from "../../lib/thread-events";
 import { errorText } from "../../lib/user-error";
@@ -412,6 +414,42 @@ export function useComposerActions({
           } else if (botTarget && activeBotId.current === botTarget) {
             void refreshThreadRef.current(botTarget).catch(() => undefined);
           }
+          return true;
+        }
+        // Production: the message is already in the chat. The upload waits for a connection.
+        if (import.meta.env.MODE !== "test" && !plan.shouldRunRoutines) {
+          for (const pending of attachments) {
+            const mimeType = inferAttachmentMimeType(pending.file.name, pending.file.type);
+            if (!mimeType) throw new Error(t`Unsupported file type: ${pending.file.name}`);
+          }
+          await sendQueue.enqueue({
+            clientNonce,
+            spaceId: selectedSpaceId(),
+            target: groupTarget ? { groupId: groupTarget } : { botId: botTarget! },
+            text: trimmed || undefined,
+            mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
+            imageHandling: imageHandling ?? "confirm",
+            replyToMessageId: reroutedToGroup ? undefined : (replyToMessageId ?? replyAtSend?.id),
+            replyQuote:
+              reroutedToGroup || replyToMessageId ? undefined : (replyQuoteAtSend ?? undefined),
+            fromPage: !reroutedToGroup && replyToMessageId ? true : undefined,
+            files: attachments.map((pending) => ({
+              id: pending.id,
+              name: pending.file.name,
+              mimeType: inferAttachmentMimeType(pending.file.name, pending.file.type)!,
+              blob: pending.file,
+              uploadNonce: `attachment:${groupTarget ?? botTarget}:${pending.id}`,
+            })),
+          });
+          accepted = true;
+          dropDelayedSetup();
+          clearSentReply(replyAtSend, replyQuoteAtSend);
+          revokePendingAttachmentPreviews(attachments);
+          setPendingAttachments((current) =>
+            current.filter((attachment) => !attachments.includes(attachment)),
+          );
+          setAttachmentNotice(null);
+          if (reroutedToGroup && groupTarget) navigate(`/app/g/${groupTarget}`);
           return true;
         }
         const artifactIds: string[] = [];

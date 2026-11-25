@@ -25,9 +25,12 @@ type Recording = { locked: boolean; startedAt: number } | null;
 export function useHoldToTalk({
   target,
   disabled,
+  onBeforeStop,
 }: {
   target: ArtifactTarget;
   disabled?: boolean;
+  /** Runs before the recording is queued or discarded, so photos can ride along. */
+  onBeforeStop?: (send: boolean) => void;
 }) {
   const [recording, setRecording] = useState<Recording>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -35,6 +38,8 @@ export function useHoldToTalk({
   const targetRef = useRef(target);
   targetRef.current = target;
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const beforeStop = useRef(onBeforeStop);
+  beforeStop.current = onBeforeStop;
 
   const showNotice = useCallback((text: string) => {
     setNotice(text);
@@ -66,7 +71,10 @@ export function useHoldToTalk({
     () => () => {
       if (noticeTimer.current) clearTimeout(noticeTimer.current);
       // Leaving mid-recording keeps what was said: it is sent like a release.
-      if (recordingRef.current) void voiceNotes.stop(true);
+      if (recordingRef.current) {
+        beforeStop.current?.(true);
+        void voiceNotes.stop(true);
+      }
     },
     [],
   );
@@ -96,12 +104,14 @@ export function useHoldToTalk({
     // A double tap's second half lands on the stop button; that is not "stop".
     if (Date.now() - recordingRef.current.startedAt < STRAY_TAP_MS) return;
     clear();
+    beforeStop.current?.(true);
     void voiceNotes.stop(true);
   }, [clear]);
 
   const cancel = useCallback(() => {
     if (!recordingRef.current) return;
     clear();
+    beforeStop.current?.(false);
     void voiceNotes.stop(false);
   }, [clear]);
 

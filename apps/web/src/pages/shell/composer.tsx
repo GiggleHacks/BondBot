@@ -50,7 +50,7 @@ import { hasOpenDialog } from "../../lib/has-open-dialog";
 import { usePageSession } from "../../lib/pages";
 import { isFilePaste } from "../../lib/pending-attachments";
 import { useEventListener } from "../../lib/use-event-listener";
-import { voiceNotesSupported } from "../../lib/voice-notes/voice-notes";
+import { voiceNotes, voiceNotesSupported } from "../../lib/voice-notes/voice-notes";
 import { ComposerReplyPreview } from "./chat-context";
 import type { PendingAttachment } from "./chat-shared";
 import { previewMessageText } from "./chat-shared";
@@ -241,9 +241,29 @@ const ComposerBody = memo(function Composer({
     onSlashAction,
   });
   const onCall = useCallSession() !== null;
+  const attachmentsRef = useRef(pendingAttachments);
+  attachmentsRef.current = pendingAttachments;
+  const removeAttachmentRef = useRef(onRemoveAttachment);
+  removeAttachmentRef.current = onRemoveAttachment;
   const talk = useHoldToTalk({
     target: artifactTarget,
     disabled: disabled || onCall || !voiceNotesSupported(),
+    onBeforeStop: (send) => {
+      if (!send) {
+        voiceNotes.stageCompanions([]);
+        return;
+      }
+      const files = attachmentsRef.current;
+      if (!files.length) return;
+      voiceNotes.stageCompanions(
+        files.map((attachment) => ({
+          name: attachment.file.name,
+          mimeType: attachment.file.type,
+          file: attachment.file,
+        })),
+      );
+      for (const attachment of files) removeAttachmentRef.current(attachment);
+    },
   });
 
   const editRevision = useRef(0);

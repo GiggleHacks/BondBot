@@ -5,9 +5,11 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import { formatVoiceTime, placeholderPeaks, VOICE_NOTE_BARS } from "../lib/voice-note";
 import type { VoiceNoteTarget } from "../lib/voice-notes/store";
+import { sendQueue } from "../lib/send-queue";
 import { voiceNotes } from "../lib/voice-notes/voice-notes";
+import { UploadMeter } from "./UploadMeter";
 
-type Phase = "waiting" | "sending" | "transcribing" | "failed";
+type Phase = "waiting" | "sending" | "posting" | "transcribing" | "failed";
 
 type Row = {
   key: string;
@@ -35,7 +37,9 @@ const STYLES = `
 /** Voice notes of this chat that are not in it yet, drawn as the bubbles they are about to become. */
 export function PendingVoiceNotes({ target }: { target: ArtifactTarget }) {
   const state = useSyncExternalStore(voiceNotes.subscribe, voiceNotes.getSnapshot);
+  const queued = useSyncExternalStore(sendQueue.subscribe, sendQueue.getSnapshot);
   useEffect(() => voiceNotes.start(), []);
+  useEffect(() => sendQueue.start(), []);
 
   const rows: Row[] = [];
   const seen = new Set<string>();
@@ -70,7 +74,7 @@ export function PendingVoiceNotes({ target }: { target: ArtifactTarget }) {
     rows.push({
       key: note.clientId,
       durationMs: note.durationMs,
-      phase: failed || stalled ? "failed" : note.status === "sending" ? "sending" : "transcribing",
+      phase: failed || stalled ? "failed" : note.status === "sending" ? "posting" : "transcribing",
       status: failed
         ? (note.error ?? "Could not transcribe")
         : stalled
@@ -113,7 +117,7 @@ export function PendingVoiceNotes({ target }: { target: ArtifactTarget }) {
     <div data-testid="pending-voice-notes" className="flex flex-col gap-2">
       <style>{STYLES}</style>
       {rows.map((row, at) => {
-        const live = row.phase === "sending" || row.phase === "transcribing";
+        const live = row.phase === "sending" || row.phase === "posting" || row.phase === "transcribing";
         const peaks = placeholderPeaks(row.key, VOICE_NOTE_BARS);
         return (
           <div
@@ -154,6 +158,21 @@ export function PendingVoiceNotes({ target }: { target: ArtifactTarget }) {
                 </div>
               </div>
             </div>
+            {queued.voicePreviews[row.key]?.filter(Boolean).length ? (
+              <div className="flex flex-wrap justify-end gap-1">
+                {queued.voicePreviews[row.key]?.filter(Boolean).map((url) => (
+                  <img key={url} src={url} alt="" className="size-16 rounded-xl object-cover" />
+                ))}
+              </div>
+            ) : null}
+            {row.phase === "sending" || row.phase === "waiting" ? (
+              <UploadMeter
+                fraction={state.meters[row.key]?.fraction ?? 0}
+                bps={row.phase === "sending" ? state.meters[row.key]?.bps : 0}
+                label={row.phase === "waiting" ? "Waiting for connection" : row.status}
+                onCancel={row.onDelete}
+              />
+            ) : (
             <div
               data-testid="pending-voice-status"
               aria-live="polite"
@@ -192,6 +211,7 @@ export function PendingVoiceNotes({ target }: { target: ArtifactTarget }) {
                 </button>
               ) : null}
             </div>
+            )}
           </div>
         );
       })}

@@ -144,7 +144,7 @@ it("opens integrations and keeps the existing account actions and links", async 
     "Skills",
     "Artifacts",
     "Board",
-    "Get the mobile app",
+    "Download Windows app",
     "Docs",
     "Log out",
   ]);
@@ -159,13 +159,13 @@ it("omits Board when unavailable", async () => {
   );
 });
 
-it("offers Google Play on Android", async () => {
-  vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Android");
+it("links to the standalone Windows BondBot.exe download outside the desktop app", async () => {
   await render();
-  const mobile = [...document.querySelectorAll("a")].find(
-    (link) => link.textContent === "Get the mobile app",
+  const winLink = [...document.querySelectorAll("a")].find(
+    (link) => link.textContent === "Download Windows app",
   )!;
-  expect(mobile.href).toBe("https://play.google.com/store/apps/details?id=com.rakazo.app");
+  expect(winLink.getAttribute("href")).toBe("/api/desktop/windows");
+  expect(winLink.getAttribute("download")).toBe("BondBot.exe");
 });
 
 it("falls back when app artwork fails and accepts replacement artwork", async () => {

@@ -18,7 +18,8 @@ export function peaksFromSamples(samples: ArrayLike<number>, bars: number): numb
     let sum = 0;
     let count = 0;
     for (let at = start; at < end; at += step) {
-      sum += samples[at] * samples[at];
+      const sample = samples[at] ?? 0;
+      sum += sample * sample;
       count += 1;
     }
     return count ? Math.sqrt(sum / count) : 0;

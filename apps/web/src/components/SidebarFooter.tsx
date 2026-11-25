@@ -1,6 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { NavLink } from "@rakazo/contracts";
-import { ANDROID_APP_STORE_URL, IOS_APP_STORE_URL } from "@rakazo/contracts";
 import {
   AppMarkStack,
   Button,
@@ -17,15 +16,16 @@ import {
   Gauge,
   Link2,
   LogOut,
+  MonitorDown,
   Plug,
   ScrollText,
   Settings,
-  Smartphone,
   SquareKanban,
   UserPlus,
   UserRound,
 } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
+import { desktopBridge } from "../lib/desktop";
 import type { Organization } from "../lib/organizations";
 import { useSidebarUpdate } from "./DesktopUpdates";
 import { IconTooltip } from "./IconTooltip";
@@ -245,17 +245,17 @@ export function SidebarFooter({
               </Button>
             ))}
             <div className="my-1 border-t border-border" />
-            <a
-              className={`${buttonVariants({ variant: "ghost" })} h-9 w-full justify-start gap-2.5 font-normal`}
-              href={
-                /Android/i.test(navigator.userAgent) ? ANDROID_APP_STORE_URL : IOS_APP_STORE_URL
-              }
-              target="_blank"
-              rel="noreferrer"
-            >
-              <Smartphone className="text-muted-foreground" strokeWidth={1.75} />
-              <Trans>Get the mobile app</Trans>
-            </a>
+            {!desktopBridge() ? (
+              <a
+                className={`${buttonVariants({ variant: "ghost" })} h-9 w-full justify-start gap-2.5 font-normal`}
+                href="/api/desktop/windows"
+                download="BondBot.exe"
+                data-testid="download-windows-app-link"
+              >
+                <MonitorDown className="text-muted-foreground" strokeWidth={1.75} />
+                <span>Download Windows app</span>
+              </a>
+            ) : null}
             {onInvite ? (
               <Button
                 variant="ghost"

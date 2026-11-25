@@ -56,6 +56,7 @@ export function useComputerControls({
   state,
   panel,
   active,
+  docked = false,
   bots,
   botsRef,
   activeBotId,
@@ -70,6 +71,7 @@ export function useComputerControls({
   state: ComputerState;
   panel: Panel;
   active: Bot | undefined;
+  docked?: boolean;
   bots: Bot[];
   botsRef: RefObject<Bot[]>;
   activeBotId: RefObject<string | undefined>;
@@ -281,9 +283,16 @@ export function useComputerControls({
   });
 
   const hasControl = userHoldsComputerControl(computer, computerBot?.id);
+  // Local change (David, 2026-11-23): control taken from the docked screen, which never opens the
+  // full window. It keeps the same check-ins and hand-back as the window does, and releases when the dock closes.
+  const [dockedControlBotId, setDockedControlBotId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!docked) setDockedControlBotId(null);
+  }, [docked]);
+  const dockedControl = Boolean(docked && hasControl && dockedControlBotId === computerBot?.id);
   useEffect(() => {
     const heartbeatBotId = computerBot?.id ?? active?.id;
-    if (!computerOpen || !heartbeatBotId || computer?.state !== "running") return;
+    if ((!computerOpen && !dockedControl) || !heartbeatBotId || computer?.state !== "running") return;
     // Only a visible page checks in: a forgotten tab neither keeps the computer awake nor holds
     // control, which lapses about a minute and a half after it was hidden.
     const ping = () => {
@@ -303,12 +312,12 @@ export function useComputerControls({
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", ping);
     };
-  }, [computerOpen, computerBot?.id, active?.id, computer?.state, hasControl]);
+  }, [computerOpen, dockedControl, computerBot?.id, active?.id, computer?.state, hasControl]);
 
   // Control ends with the screen: closing it, switching chats, or leaving the page hands it back.
   // The server tells the holder their lease, from Take control or teaching alike; the hand back
   // names it, so a late one from an old page never ends newer control.
-  const heldBotId = hasControl && computerOpen ? computerBot?.id : undefined;
+  const heldBotId = hasControl && (computerOpen || dockedControl) ? computerBot?.id : undefined;
   const heldLeaseId = heldBotId ? computer?.controlLeaseId : undefined;
   useEffect(() => {
     if (!heldBotId || !heldLeaseId) return;
@@ -405,9 +414,20 @@ export function useComputerControls({
     await refreshComputerScreen(id).catch(() => undefined);
   }
 
+  /** Local change: one tap on the docked screen takes control of it, without opening the window. */
+  async function takeDockedControl() {
+    const id = active?.id;
+    if (!id) return false;
+    setDockedControlBotId(id);
+    const ok = await openComputer(id, true, true);
+    if (!ok) setDockedControlBotId(null);
+    return ok;
+  }
+
   async function releaseComputer(reason?: ComputerReleaseReason) {
     const botId = computerBotIdRef.current ?? activeBotId.current;
     if (!botId) return;
+    setDockedControlBotId(null);
     // Hand back and I'm done end whatever control this person holds on the bot's screen. Nothing
     // changes here until the server answers; the screen then follows its state.
     try {
@@ -579,6 +599,7 @@ export function useComputerControls({
     computerBot,
     openComputer,
     refreshDockedComputer,
+    takeDockedControl,
     onOpenComputer,
     onReleaseComputer,
     releaseComputer,

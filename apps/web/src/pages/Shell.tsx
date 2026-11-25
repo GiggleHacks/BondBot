@@ -713,6 +713,7 @@ function SpaceShell() {
     state: computerState,
     panel,
     active,
+    docked: screenDockActive,
     bots,
     botsRef,
     activeBotId,
@@ -1154,6 +1155,9 @@ function SpaceShell() {
               booting={booting}
               onWake={() => void openComputer(undefined, false, true)}
               onRefresh={computerControls.refreshDockedComputer}
+              hasControl={computerControls.hasControl}
+              onTakeControl={computerControls.takeDockedControl}
+              onRelease={() => computerControls.releaseComputer()}
               onClose={() => screenDockPreference.set(false)}
             />
           ) : null}

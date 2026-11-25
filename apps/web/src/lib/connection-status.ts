@@ -206,12 +206,10 @@ export class ConnectionMonitor {
   private schedule() {
     clearTimeout(this.timer);
     if (this.users === 0) return;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
     const delay = nextCheckDelayMs(this.snapshot.failures, this.intervalMs, this.retryMs);
     this.timer = setTimeout(() => {
-      if (document.visibilityState === "hidden") {
-        this.schedule();
-        return;
-      }
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       void this.check().finally(() => {
         if (this.users > 0) this.schedule();
       });

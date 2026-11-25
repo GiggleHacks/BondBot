@@ -60,6 +60,7 @@ async function uploadParts(
   send: VoiceNoteFetch,
   parts: number,
   onSent?: (sent: number) => void | Promise<void>,
+  signal?: AbortSignal,
 ): Promise<void> {
   const base = `/api/voice-notes/${encodeURIComponent(note.clientId)}`;
   await stillQueued(store, note.clientId);
@@ -68,6 +69,7 @@ async function uploadParts(
       method: "PUT",
       spaceId: note.spaceId,
       headers: { "content-type": "application/json" },
+      signal,
       body: JSON.stringify({
         target: note.target,
         mimeType: note.mimeType,
@@ -96,6 +98,7 @@ async function uploadParts(
         method: "PUT",
         spaceId: note.spaceId,
         headers: { "content-type": "application/octet-stream" },
+        signal,
         body,
       }),
     );
@@ -110,21 +113,34 @@ export async function uploadNote(
   note: LocalVoiceNote,
   send: VoiceNoteFetch,
   onProgress?: (fraction: number) => void,
+  completeBody?: () => Promise<BodyInit | undefined>,
+  signal?: AbortSignal,
 ): Promise<void> {
   const parts = partCount(note.chunkCount);
-  await uploadParts(store, note, send, parts, async (sent) => {
-    // Re-read the row: a copy from before a delete must not bring the note back.
-    if (sent > 0) {
-      const current = await stillQueued(store, note.clientId);
-      await store.putNote({ ...current, state: "uploading", uploadedParts: sent });
-    }
-    onProgress?.(sent / parts);
-  });
+  await uploadParts(
+    store,
+    note,
+    send,
+    parts,
+    async (sent) => {
+      // Re-read the row: a copy from before a delete must not bring the note back.
+      if (sent > 0) {
+        const current = await stillQueued(store, note.clientId);
+        await store.putNote({ ...current, state: "uploading", uploadedParts: sent });
+      }
+      onProgress?.(sent / parts);
+    },
+    signal,
+  );
   await stillQueued(store, note.clientId);
+  const body = await completeBody?.();
   await check(
     await send(`/api/voice-notes/${encodeURIComponent(note.clientId)}/complete`, {
       method: "POST",
       spaceId: note.spaceId,
+      headers: body ? { "content-type": "application/json" } : undefined,
+      signal,
+      body,
     }),
   );
 }
@@ -158,6 +174,10 @@ export async function drainQueue(
     now?: () => number;
     onChange?: () => void;
     onProgress?: (clientId: string, fraction: number) => void;
+    beforeUpload?: (note: LocalVoiceNote, signal?: AbortSignal) => Promise<void>;
+    completeBody?: (note: LocalVoiceNote) => Promise<BodyInit | undefined>;
+    signalFor?: (clientId: string) => AbortSignal | undefined;
+    onDone?: (clientId: string) => void;
   } = {},
 ): Promise<DrainResult> {
   const now = options.now ?? Date.now;
@@ -170,14 +190,28 @@ export async function drainQueue(
     if (!waiting || (note.retryAt !== undefined && note.retryAt > now())) continue;
     await store.putNote({ ...note, state: "uploading", error: undefined });
     options.onChange?.();
+    const signal = options.signalFor?.(note.clientId);
     try {
-      await uploadNote(store, note, send, (f) => options.onProgress?.(note.clientId, f));
+      await options.beforeUpload?.(note, signal);
+      await uploadNote(
+        store,
+        note,
+        send,
+        (f) => options.onProgress?.(note.clientId, f),
+        () => options.completeBody?.(note) ?? Promise.resolve(undefined),
+        signal,
+      );
       // The server has the audio now; the device copy is no longer needed.
       await store.deleteNote(note.clientId);
       result.sent.push(note.clientId);
     } catch (error) {
       // Deleted meanwhile: nothing to record, and nothing to bring back.
-      if (error instanceof VoiceNoteCancelled || !(await store.getNote(note.clientId))) {
+      if (
+        error instanceof VoiceNoteCancelled ||
+        (error instanceof DOMException && error.name === "AbortError") ||
+        !(await store.getNote(note.clientId))
+      ) {
+        options.onDone?.(note.clientId);
         options.onChange?.();
         continue;
       }
@@ -193,10 +227,12 @@ export async function drainQueue(
       result.failed.push(note.clientId);
       // Offline: the rest would fail the same way.
       if (!rejected) {
+        options.onDone?.(note.clientId);
         options.onChange?.();
         break;
       }
     }
+    options.onDone?.(note.clientId);
     options.onChange?.();
   }
   return result;

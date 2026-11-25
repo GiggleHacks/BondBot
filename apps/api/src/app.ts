@@ -1,4 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import path from "node:path";
+import { Readable } from "node:stream";
 import { onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import type {
@@ -840,7 +844,10 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
   app.onError(handleHttpError);
   const inFlight = trackInFlightRequests();
   app.use("*", inFlight.middleware);
-  app.use("*", requestLogging(logger, { quietWhenOk: ["/health", "/internal/health"] }));
+  app.use(
+    "*",
+    requestLogging(logger, { quietWhenOk: ["/health", "/internal/health", "/api/auth/ok"] }),
+  );
   app.use("*", clientIpMiddleware(clientIp, env.clientIpHeader));
   app.use(
     "*",
@@ -1089,6 +1096,25 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     return actor;
   });
   voiceNotes.start();
+  app.get("/api/desktop/windows", async (c) => {
+    const actor = await sessionActor(c.req.raw);
+    if (!actor) return c.json({ error: "Unauthorized" }, 401);
+    const exePath = path.join(env.dataDir, "downloads", "BondBot.exe");
+    const info = await stat(exePath).catch(() => null);
+    if (!info?.isFile()) {
+      return c.json({ error: "Windows desktop build is not available yet." }, 404);
+    }
+    const stream = Readable.toWeb(createReadStream(exePath)) as ReadableStream;
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        "content-type": "application/vnd.microsoft.portable-executable",
+        "content-disposition": 'attachment; filename="BondBot.exe"',
+        "content-length": String(info.size),
+        "cache-control": "no-store",
+      },
+    });
+  });
   mountAccountImportRoute(
     app,
     {

@@ -1,7 +1,7 @@
 {
   "name": "@rakazo/desktop",
-  "productName": "Rakazo",
-  "version": "0.11.0",
+  "productName": "BondBot",
+  "version": "0.1.22",
   "author": {
     "name": "Rakazo"
   },
@@ -13,6 +13,7 @@
     "build": "node scripts/build.mjs && node scripts/copy-static.mjs && node scripts/build-speech.mjs",
     "pack": "pnpm --filter @rakazo/web build && pnpm build && electron-builder --mac --win --linux",
     "pack:dir": "pnpm --filter @rakazo/web build && pnpm build && electron-builder --dir",
+    "pack:win": "node scripts/build.mjs && node scripts/copy-static.mjs && electron-builder --win portable --x64 --publish never",
     "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.jsdom.json && tsc --noEmit -p e2e/tsconfig.json && tsc --noEmit -p scripts/tsconfig.json",
     "test": "vitest run --root ../.. apps/desktop/src",
     "test:e2e": "pnpm build && playwright test --config e2e/playwright.config.ts",
@@ -38,7 +39,7 @@
     "yaml": "2.9.1"
   },
   "build": {
-    "appId": "dev.rakazo.desktop",
+    "appId": "dev.bondbot.desktop",
     "directories": {
       "output": "out",
       "buildResources": "assets"
@@ -62,7 +63,7 @@
       }
     ],
     "extraMetadata": {
-      "name": "rakazo",
+      "name": "bondbot",
       "main": "dist/main.js"
     },
     "mac": {
@@ -123,12 +124,20 @@
     "nsis": {
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },
+    "portable": {
+      "artifactName": "BondBot.exe"
+    },
     "win": {
       "icon": "assets/icon.ico",
       "target": [
-        "nsis"
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
-      "verifyUpdateCodeSignature": true
+      "verifyUpdateCodeSignature": false
     },
     "linux": {
       "executableName": "rakazo",
@@ -137,12 +146,6 @@
         "AppImage"
       ]
     },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "elie222",
-        "repo": "rakazo"
-      }
-    ]
+    "publish": []
   }
 }

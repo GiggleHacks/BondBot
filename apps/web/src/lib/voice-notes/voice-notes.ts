@@ -1,17 +1,12 @@
 import { selectedSpaceId, withSpaceHeaders } from "../rpc";
+import { sendQueue } from "../send-queue";
+import { SpeedTracker, xhrSend } from "../upload-progress";
 import { timeoutSignal } from "../timeout-signal";
 import { recoverInterruptedNotes, VoiceNoteRecorder, voiceNotesSupported } from "./recorder";
 import type { LocalVoiceNote, VoiceNoteStore, VoiceNoteTarget } from "./store";
 import { failoverVoiceNoteStore, indexedDbVoiceNoteStore, memoryVoiceNoteStore } from "./store";
 import type { VoiceNoteFetch } from "./uploader";
-import {
-  drainQueue,
-  retryDelayMs,
-  SLICES_PER_PART,
-  uploadFinishedParts,
-  VoiceNoteCancelled,
-  VoiceNoteRejected,
-} from "./uploader";
+import { drainQueue, VoiceNoteRejected } from "./uploader";
 
 /** Queued notes are tried again this often while the app is open, on top of `online`. */
 const SWEEP_MS = 30_000;
@@ -21,6 +16,8 @@ export type VoiceNotesSnapshot = {
   /** Notes on this device that the server does not have yet. */
   queue: LocalVoiceNote[];
   progress: Record<string, number>;
+  /** Byte progress for the bar and speed under a note that is still going out. */
+  meters: Record<string, { fraction: number; loaded: number; total: number; bps: number }>;
   online: boolean;
   /** Notes the server has and is still working on (or that failed there). */
   server: ServerVoiceNote[];
@@ -68,10 +65,6 @@ const send_ = makeSend((path) =>
   /\/parts\/\d+$/.test(path) ? PART_TIMEOUT_MS : REQUEST_TIMEOUT_MS,
 );
 
-/** Uploads while recording give up on a dead connection (an elevator) instead of hanging. */
-const LIVE_REQUEST_TIMEOUT_MS = 90_000;
-const liveSend = makeSend(() => LIVE_REQUEST_TIMEOUT_MS);
-
 function newClientId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -88,6 +81,7 @@ export class VoiceNotes {
     recording: null,
     queue: [],
     progress: {},
+    meters: {},
     online: typeof navigator === "undefined" ? true : navigator.onLine,
     server: [],
     finishing: [],
@@ -97,7 +91,14 @@ export class VoiceNotes {
   private draining: Promise<void> | null = null;
   private again = false;
   private started = false;
-  private starting: { stop: boolean | null } | null = null;
+  private starting: { clientId: string; stop: boolean | null } | null = null;
+  private stagedWrite: Promise<void> = Promise.resolve();
+  private readonly speeds = new Map<string, SpeedTracker>();
+  private readonly uploadAborts = new Map<string, AbortController>();
+  private readonly uploadProgress = new Map<
+    string,
+    { compLoaded: number; compTotal: number; audioLoaded: number; audioTotal: number }
+  >();
   private serverReading = false;
   private serverAgain = false;
   private readonly noticeListeners = new Set<(text: string) => void>();
@@ -106,7 +107,7 @@ export class VoiceNotes {
     this.recorder = new VoiceNoteRecorder(
       store,
       () => void this.stop(true),
-      (note) => this.liveSlice(note),
+      undefined,
       {
         // The microphone was taken away or storage failed: keep and send what exists.
         onInterrupted: (message) => {
@@ -156,8 +157,7 @@ export class VoiceNotes {
     window.addEventListener("online", () => {
       this.set({ online: true });
       this.kick(true);
-      // Back from an elevator mid-recording: catch up on the parts that waited.
-      this.liveUpload(true);
+      // Recording stays on the device. Coming back online only drains what was already sent.
     });
     window.addEventListener("offline", () => this.set({ online: false }));
     document.addEventListener("visibilitychange", () => {
@@ -166,20 +166,20 @@ export class VoiceNotes {
       this.serverChanged();
     });
     setInterval(() => {
-      // A hidden tab with nothing waiting has nothing to send and nothing to ask the server.
-      if (document.visibilityState === "hidden" && this.snapshot.queue.length === 0) return;
+      // Nothing waiting locally: no need to poll IndexedDB or /api/voice-notes on a timer.
+      if (this.snapshot.queue.length === 0) return;
       this.kick();
     }, SWEEP_MS);
     void recoverInterruptedNotes(this.store, null)
       .then(() => this.refresh())
       .then(() => {
-        this.kick();
+        if (this.snapshot.queue.length > 0) this.kick();
         this.serverChanged();
       });
   }
 
   private recordingClientId(): string | null {
-    return this.snapshot.recording?.clientId ?? null;
+    return this.snapshot.recording?.clientId ?? this.starting?.clientId ?? null;
   }
 
   /** Starting: the microphone prompt may still be open. */
@@ -190,11 +190,14 @@ export class VoiceNotes {
   async record(input: { spaceId: string | null; target: VoiceNoteTarget }) {
     if (this.recorder.active || this.starting) return;
     const clientId = newClientId();
-    this.starting = { stop: null };
+    this.starting = { clientId, stop: null };
     const starting = this.starting;
     try {
       const note = await this.recorder.start({ clientId, ...input });
       this.set({ recording: { clientId, startedAt: note.startedAt, target: note.target } });
+    } catch (error) {
+      await sendQueue.clearVoiceCompanions(clientId).catch(() => undefined);
+      throw error;
     } finally {
       this.starting = null;
     }
@@ -229,16 +232,10 @@ export class VoiceNotes {
     });
     try {
       await this.recorder.finish(send);
-      // The queue takes over from here; let a part already on its way land first.
-      await this.live;
-      this.liveParts = 0;
-      if (!send && clientId && this.liveDeclared.has(clientId)) {
-        // Parts went up while recording; the server drops its copy too.
-        this.liveDeclared.delete(clientId);
-        await send_(`/api/voice-notes/${encodeURIComponent(clientId)}`, {
-          method: "DELETE",
-          spaceId: selectedSpaceId(),
-        }).catch(() => undefined);
+      await this.stagedWrite;
+      this.stagedWrite = Promise.resolve();
+      if (!send && clientId) {
+        await sendQueue.clearVoiceCompanions(clientId);
       }
       await this.refresh();
       dropFinishing();
@@ -246,14 +243,44 @@ export class VoiceNotes {
     } catch {
       // Callers fire and forget; a storage failure ends here as a message, not a rejection.
       dropFinishing();
-      this.liveParts = 0;
       this.notify("Could not save the recording");
       void this.refresh().catch(() => undefined);
     }
   }
 
+  /** Photos the person picked before tapping send on this recording. */
+  stageCompanions(files: { name: string; mimeType: string; file: Blob }[]) {
+    const clientId = this.recordingClientId();
+    if (!clientId) return;
+    this.stagedWrite = sendQueue.previewCompanions(clientId, files);
+  }
+
+  private noteMeter(clientId: string, loaded: number, total: number) {
+    const tracker = this.speeds.get(clientId) ?? new SpeedTracker();
+    this.speeds.set(clientId, tracker);
+    const meter = tracker.sample(loaded, total);
+    this.set({ meters: { ...this.snapshot.meters, [clientId]: meter } });
+  }
+
+  private clearNoteTracking(clientId: string) {
+    this.uploadAborts.delete(clientId);
+    this.uploadProgress.delete(clientId);
+    this.speeds.delete(clientId);
+    if (clientId in this.snapshot.meters || clientId in this.snapshot.progress) {
+      const meters = { ...this.snapshot.meters };
+      const progress = { ...this.snapshot.progress };
+      delete meters[clientId];
+      delete progress[clientId];
+      this.set({ meters, progress });
+    }
+  }
+
   async discard(clientId: string) {
+    this.uploadAborts.get(clientId)?.abort();
+    sendQueue.abortVoice(clientId);
     await this.store.deleteNote(clientId);
+    await sendQueue.clearVoiceCompanions(clientId);
+    this.clearNoteTracking(clientId);
     await this.refresh();
   }
 
@@ -263,60 +290,6 @@ export class VoiceNotes {
     await this.store.putNote({ ...note, state: "pending", retryAt: undefined, error: undefined });
     await this.refresh();
     this.kick(true);
-  }
-
-  private live: Promise<void> = Promise.resolve();
-  private liveParts = 0;
-  private liveBusy = false;
-  private liveAgain = false;
-  private readonly liveDeclared = new Set<string>();
-  /** Failed live uploads wait (with backoff); a refused one is not tried again for this note. */
-  private liveFail = { clientId: null as string | null, failures: 0, retryAt: 0, refused: false };
-
-  /** A slice of the current recording was stored; upload any part it just completed. */
-  private liveSlice(note: LocalVoiceNote) {
-    if (Math.floor(note.chunkCount / SLICES_PER_PART) > this.liveParts) this.liveUpload();
-  }
-
-  /** Uploads the current recording's finished parts. Offline or failing, it simply waits. */
-  private liveUpload(now = false) {
-    const clientId = this.snapshot.recording?.clientId;
-    if (!clientId || typeof navigator === "undefined" || !navigator.onLine) return;
-    if (this.liveFail.clientId !== clientId) {
-      this.liveFail = { clientId, failures: 0, retryAt: 0, refused: false };
-    }
-    if (this.liveFail.refused || (!now && Date.now() < this.liveFail.retryAt)) return;
-    if (this.liveBusy) {
-      this.liveAgain = true;
-      return;
-    }
-    this.liveBusy = true;
-    this.live = (async () => {
-      try {
-        do {
-          this.liveAgain = false;
-          const note = await this.store.getNote(clientId);
-          if (!note || note.state !== "recording") break;
-          this.liveParts = await uploadFinishedParts(this.store, note, liveSend);
-          if (this.liveParts > 0) this.liveDeclared.add(clientId);
-          this.liveFail = { clientId, failures: 0, retryAt: 0, refused: false };
-        } while (this.liveAgain && this.snapshot.recording?.clientId === clientId);
-      } catch (error) {
-        // No signal or a server hiccup: the parts stay on the device and go up later, after
-        // a wait that grows. A refusal will not change, so the finished note carries everything.
-        if (!(error instanceof VoiceNoteCancelled)) {
-          const failures = this.liveFail.failures + 1;
-          this.liveFail = {
-            clientId,
-            failures,
-            retryAt: Date.now() + retryDelayMs(failures),
-            refused: error instanceof VoiceNoteRejected,
-          };
-        }
-      } finally {
-        this.liveBusy = false;
-      }
-    })();
   }
 
   /** Re-reads the server's notes; called when the live stream says they changed. */
@@ -383,15 +356,99 @@ export class VoiceNotes {
         this.again = false;
         // Picks up a note another tab was recording when it closed.
         await recoverInterruptedNotes(this.store, this.recordingClientId());
-        await this.withLock(() =>
-          drainQueue(this.store, send_, {
+        let sentAny = false;
+        await this.withLock(async () => {
+          const send: VoiceNoteFetch = async (path, init) => {
+            const match = path.match(/\/api\/voice-notes\/([^/]+)\/parts\//);
+            if (!(init.body instanceof Blob) || !match?.[1]) return send_(path, init);
+            const clientId = decodeURIComponent(match[1]);
+            const track = this.uploadProgress.get(clientId);
+            const audioBase = track?.audioLoaded ?? 0;
+            const partSize = init.body.size;
+            return xhrSend({
+              url: path,
+              method: init.method ?? "PUT",
+              headers: withSpaceHeaders(init.headers, init.spaceId),
+              body: init.body,
+              signal: init.signal ?? undefined,
+              onProgress: (loaded, total) => {
+                const current = this.uploadProgress.get(clientId);
+                if (!current) return;
+                const combinedTotal = Math.max(
+                  current.compTotal + current.audioTotal,
+                  current.compTotal + audioBase + total,
+                );
+                this.noteMeter(clientId, current.compLoaded + audioBase + loaded, combinedTotal || 1);
+              },
+            }).then((res) => {
+              const current = this.uploadProgress.get(clientId);
+              if (current && res.ok) {
+                current.audioLoaded = Math.min(current.audioTotal, audioBase + partSize);
+              }
+              return res;
+            });
+          };
+          const drained = await drainQueue(this.store, send, {
             onChange: () => void this.refresh(),
-            onProgress: (clientId, fraction) =>
-              this.set({ progress: { ...this.snapshot.progress, [clientId]: fraction } }),
-          }),
-        );
+            signalFor: (clientId) => {
+              const controller = new AbortController();
+              this.uploadAborts.set(clientId, controller);
+              return controller.signal;
+            },
+            beforeUpload: async (note) => {
+              this.uploadProgress.set(note.clientId, {
+                compLoaded: 0,
+                compTotal: 0,
+                audioLoaded: 0,
+                audioTotal: note.bytes,
+              });
+              try {
+                await sendQueue.uploadVoiceCompanions(
+                  note.clientId,
+                  note.target,
+                  note.spaceId,
+                  (loaded, total) => {
+                    const current = this.uploadProgress.get(note.clientId);
+                    if (!current) return;
+                    current.compLoaded = loaded;
+                    current.compTotal = total;
+                    this.noteMeter(note.clientId, loaded, total + current.audioTotal || 1);
+                  },
+                );
+              } catch (error) {
+                const status = (error as { status?: number }).status;
+                if (status !== undefined && status >= 400 && status < 500 && status !== 401 && status !== 403 && status !== 408 && status !== 429) {
+                  throw new VoiceNoteRejected(error instanceof Error ? error.message : "Could not upload attached files.");
+                }
+                throw error;
+              }
+            },
+            onProgress: (clientId, fraction) => {
+              const current = this.uploadProgress.get(clientId);
+              if (current) {
+                current.audioLoaded = fraction * current.audioTotal;
+                const total = current.compTotal + current.audioTotal;
+                this.noteMeter(clientId, current.compLoaded + current.audioLoaded, total || 1);
+              }
+              this.set({ progress: { ...this.snapshot.progress, [clientId]: fraction } });
+            },
+            completeBody: async (note) => {
+              const ids = sendQueue.companionArtifactIds(note.clientId);
+              return ids.length ? JSON.stringify({ companionArtifactIds: ids }) : undefined;
+            },
+            onDone: (clientId) => {
+              this.uploadAborts.delete(clientId);
+              this.uploadProgress.delete(clientId);
+            },
+          });
+          sentAny = drained.sent.length > 0;
+          for (const clientId of drained.sent) {
+            await sendQueue.clearVoiceCompanions(clientId);
+            this.clearNoteTracking(clientId);
+          }
+        });
         await this.refresh();
-        this.serverChanged();
+        if (sentAny) this.serverChanged();
       } while (this.again);
     })().finally(() => {
       this.draining = null;

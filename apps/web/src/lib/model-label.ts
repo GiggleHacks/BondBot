@@ -50,5 +50,5 @@ export function glowShadow(color: string): string {
     color === "currentColor"
       ? `color-mix(in srgb, currentColor ${percent}%, transparent)`
       : `color-mix(in srgb, ${color} ${percent}%, transparent)`;
-  return `inset 0 0 0 1px ${mix(38)}, inset 0 0 34px ${mix(16)}`;
+  return `inset 0 0 0 1px ${mix(24)}, inset 0 0 34px ${mix(10)}`;
 }

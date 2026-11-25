@@ -40,6 +40,28 @@ export type PendingVpnChoice = {
   label: string;
 };
 
+const COUNTRY_LABELS: Record<string, string> = {
+  AU: "Australia",
+  BR: "Brazil",
+  CA: "Canada",
+  CH: "Switzerland",
+  DE: "Germany",
+  FR: "France",
+  GB: "United Kingdom",
+  HK: "Hong Kong",
+  JP: "Japan",
+  KR: "South Korea",
+  NL: "Netherlands",
+  SG: "Singapore",
+  TH: "Thailand",
+  TW: "Taiwan",
+  US: "United States",
+};
+
+function countryLabelFor(code: string): string {
+  return COUNTRY_LABELS[code.toUpperCase()] ?? code.toUpperCase();
+}
+
 export function resolveBotVpnDisplay(
   botVpn: BotVpnStatus | undefined,
   overview: ComputerVpnOverview | null,
@@ -89,9 +111,10 @@ export function resolveBotVpnDisplay(
     };
   }
   if (state === "fallback") {
+    const fallbackCode = botVpn.exitCountry ?? hostCountry;
     return {
-      countryCode: botVpn.exitCountry ?? hostCountry,
-      countryName: "Thailand (Fallback)",
+      countryCode: fallbackCode,
+      countryName: `${countryLabelFor(fallbackCode)} (Fallback)`,
       serverLabel: profile?.serverLabel ?? null,
       state,
       locked: false,
@@ -101,7 +124,7 @@ export function resolveBotVpnDisplay(
   const directCode = botVpn.exitCountry ?? hostCountry;
   return {
     countryCode: directCode,
-    countryName: directCode === "TH" ? "Thailand (Direct)" : `${directCode} (Direct)`,
+    countryName: `${countryLabelFor(directCode)} (Direct)`,
     serverLabel: null,
     state,
     locked: false,
@@ -448,7 +471,7 @@ export function ComputerVpnPopover({
               >
                 <CountryFlag code={overview.hostCountry ?? "TH"} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate">Direct (Thailand)</div>
+                  <div className="truncate">{`Direct (${countryLabelFor(overview.hostCountry ?? "TH")})`}</div>
                   <div className="text-label text-muted-foreground">
                     {locked ? "Unlock Kill Switch to switch to Direct" : "Your host IP"}
                   </div>

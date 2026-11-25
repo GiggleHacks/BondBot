@@ -124,7 +124,7 @@ const app = new Hono();
 
 export { app as supervisorApp };
 
-app.use("*", requestLogging());
+app.use("*", requestLogging(undefined, { quietWhenOk: ["/health"] }));
 
 /** The bot, Space, and screen a request acts for, as the API sends them. */
 function identityHeaders(c: Context) {

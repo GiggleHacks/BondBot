@@ -1,4 +1,5 @@
 import { Globe } from "lucide-react";
+import { useId } from "react";
 
 /**
  * Crisp inline SVG country flags so Windows/Linux browsers render real colorful flags
@@ -11,6 +12,7 @@ export function CountryFlag({
   code: string | null | undefined;
   className?: string;
 }) {
+  const clipId = useId();
   const cc = (code ?? "").toUpperCase();
   switch (cc) {
     case "TH":
@@ -64,6 +66,18 @@ export function CountryFlag({
         <svg viewBox="0 0 24 18" className={className} aria-hidden="true">
           <rect width="24" height="18" fill="#FFFFFF" />
           <circle cx="12" cy="9" r="4.6" fill="#BC002D" />
+        </svg>
+      );
+    case "BR":
+      return (
+        <svg viewBox="0 0 24 18" className={className} aria-hidden="true">
+          <rect width="24" height="18" fill="#009C3B" />
+          <path d="M12 1.8L21.6 9L12 16.2L2.4 9Z" fill="#FFDF00" />
+          <circle cx="12" cy="9" r="3.9" fill="#002776" />
+          <clipPath id={clipId}>
+            <circle cx="12" cy="9" r="3.9" />
+          </clipPath>
+          <circle cx="7" cy="15" r="7.8" fill="none" stroke="#FFFFFF" strokeWidth="1" clipPath={`url(#${clipId})`} />
         </svg>
       );
     case "US":

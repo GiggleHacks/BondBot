@@ -14,6 +14,7 @@ import {
 } from "@rakazo/core";
 import {
   Button,
+  buttonVariants,
   Field,
   FieldLabel,
   Input,
@@ -50,6 +51,7 @@ import { PasskeySettings } from "../components/PasskeySettings";
 import { SettingsGroup, SettingsRow } from "../components/SettingsRows";
 import { TrustedLinkSitesSettings } from "../components/TrustedLinkSitesSettings";
 import { authClient } from "../lib/auth";
+import { desktopBridge } from "../lib/desktop";
 import { fetchAuthCapabilities } from "../lib/auth-capabilities";
 import type { BotsSidebarDensity } from "../lib/bots-sidebar-density-pref";
 import { botsSidebarDensityPreference } from "../lib/bots-sidebar-density-pref";
@@ -529,6 +531,33 @@ export function GeneralSettingsPanels({
 
       <TrustedLinkSitesSettings />
       <ComputerDeviceSettings />
+
+      {!desktopBridge() ? (
+        <SettingsGroup title="Windows app" data-testid="windows-desktop-download">
+          <div className="flex items-center justify-between gap-4 px-4 py-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <img
+                src="/brand/bondbot-robot.png"
+                alt="BondBot"
+                className="size-10 shrink-0 rounded-lg border border-border object-cover [image-rendering:pixelated]"
+              />
+              <div className="min-w-0">
+                <div className="text-body font-medium text-foreground">BondBot for Windows</div>
+                <div className="text-body-sm text-muted-foreground">
+                  Portable desktop app with its own icon and window — drop it anywhere and run.
+                </div>
+              </div>
+            </div>
+            <a
+              href="/api/desktop/windows"
+              download="BondBot.exe"
+              className={`${buttonVariants({ variant: "secondary", size: "sm" })} shrink-0`}
+            >
+              Download BondBot.exe
+            </a>
+          </div>
+        </SettingsGroup>
+      ) : null}
 
       {showPassword || canLinkSso || passkeysSupported || unlinkedProviders.length > 0 ? (
         <SettingsGroup title={<Trans>Security</Trans>}>

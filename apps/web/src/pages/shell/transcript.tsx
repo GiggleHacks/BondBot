@@ -51,6 +51,7 @@ import { TRANSCRIPT_CONTENT_PADDING } from "../../lib/transcript-layout";
 import { transcriptIsNearEnd, transcriptMovedDown } from "../../lib/transcript-scroll";
 import { TimeSeparator, UnreadDivider } from "./chat-context";
 import type { ImportSetupTarget } from "./import-setup-card";
+import { PendingOutbox } from "../../components/PendingOutbox";
 import { PendingVoiceNotes } from "../../components/PendingVoiceNotes";
 import { MessageView } from "./message-view";
 import { QuoteSelectionButton } from "./quote-selection-button";
@@ -723,6 +724,7 @@ export const Transcript = memo(function Transcript({
           );
         })}
         <PendingVoiceNotes target={artifactTarget} />
+        <PendingOutbox target={artifactTarget} />
         {running &&
         !messages.some(
           (message) => message.id.startsWith("progress:") && liveMessageComposing(message.blocks),

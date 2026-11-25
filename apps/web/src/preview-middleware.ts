@@ -529,12 +529,78 @@ export type WebServerSettings = ReturnType<typeof webServerSettings>;
  * Everything the built app's server adds before its proxy and static files, in order. Returns
  * what runs after the SPA fallback has resolved the page.
  */
+
+
+let hostCpuSample: { total: number; idle: number } | null = null;
+let hostStatsCache: {
+  at: number;
+  value: { cpu: number | null; ramUsed: number; ramTotal: number; ramAvailable: number };
+} | null = null;
+const HOST_STATS_CACHE_MS = 1500;
+const SESSION_COOKIE_RE = /(?:^|;\s*)(?:__Secure-)?[a-z0-9_.-]*session_token=[^;]+/i;
+
+function readHostStats() {
+  const now = Date.now();
+  if (hostStatsCache && now - hostStatsCache.at < HOST_STATS_CACHE_MS) {
+    return hostStatsCache.value;
+  }
+  try {
+    const mem = readFileSync("/proc/meminfo", "utf8");
+    const kb = (key: string) => {
+      const match = mem.match(new RegExp("^" + key + ":\\s+(\\d+)", "m"));
+      return match ? Number(match[1]) * 1024 : 0;
+    };
+    const total = kb("MemTotal");
+    const available = kb("MemAvailable");
+    const parts = readFileSync("/proc/stat", "utf8")
+      .split("\n")[0]!
+      .trim()
+      .split(/\s+/)
+      .slice(1)
+      .map(Number);
+    const idle = (parts[3] ?? 0) + (parts[4] ?? 0);
+    const sum = parts.reduce((a, b) => a + b, 0);
+    let cpu: number | null = hostStatsCache?.value.cpu ?? null;
+    if (hostCpuSample && sum > hostCpuSample.total) {
+      const dTotal = sum - hostCpuSample.total;
+      const dIdle = idle - hostCpuSample.idle;
+      cpu = Math.max(0, Math.min(1, 1 - dIdle / dTotal));
+    }
+    hostCpuSample = { total: sum, idle };
+    const value = {
+      cpu,
+      ramUsed: Math.max(0, total - available),
+      ramTotal: total,
+      ramAvailable: available,
+    };
+    hostStatsCache = { at: now, value };
+    return value;
+  } catch {
+    return { cpu: null, ramUsed: 0, ramTotal: 0, ramAvailable: 0 };
+  }
+}
+
 export function attachPreviewMiddleware(
   server: WebServerHost,
   settings: WebServerSettings,
   site: { root: string; outDir: string; assetsDir: string; assetsUrl: string },
 ): () => void {
   const { middlewares } = server;
+  middlewares.use((req, res, next) => {
+    const pathname = req.url?.split("?", 1)[0] ?? "/";
+    if (pathname !== "/host-stats") return next();
+    const cookie = typeof req.headers.cookie === "string" ? req.headers.cookie : "";
+    if (!SESSION_COOKIE_RE.test(cookie)) {
+      res.statusCode = 401;
+      res.setHeader("content-type", "application/json; charset=utf-8");
+      res.setHeader("cache-control", "no-store");
+      res.end(JSON.stringify({ error: "Unauthorized" }));
+      return;
+    }
+    res.setHeader("content-type", "application/json; charset=utf-8");
+    res.setHeader("cache-control", "no-store");
+    res.end(JSON.stringify(readHostStats()));
+  });
   middlewares.use((req, res, next) => {
     const pathname = req.url?.split("?", 1)[0] ?? "/";
     if (pathname !== COMPUTER_SCREEN_RUNTIME_PATH) res.setHeader("x-frame-options", "SAMEORIGIN");

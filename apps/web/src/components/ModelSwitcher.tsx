@@ -48,7 +48,13 @@ function PixelDots() {
 }
 
 function PixelCross() {
-  const cells = [[0, 0], [1, 1], [2, 2], [2, 0], [0, 2]];
+  const cells: readonly (readonly [number, number])[] = [
+    [0, 0],
+    [1, 1],
+    [2, 2],
+    [2, 0],
+    [0, 2],
+  ];
   return (
     <span aria-hidden="true" className="relative block size-[15px] text-red-400" data-testid="model-row-error">
       {cells.map(([x, y]) => (
@@ -75,6 +81,8 @@ export function ModelSwitcherView({
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const chipRef = useRef<HTMLButtonElement>(null);
+  const errorTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(errorTimerRef.current), []);
   const currentKey =
     bot.modelProvider && bot.modelId ? modelOptionKey(bot.modelProvider, bot.modelId) : "";
 
@@ -103,7 +111,11 @@ export function ModelSwitcherView({
     } catch {
       setPendingKey(null);
       setErrorKey(choice.key);
-      window.setTimeout(() => setErrorKey((key) => (key === choice.key ? null : key)), 2500);
+      window.clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = window.setTimeout(
+        () => setErrorKey((key) => (key === choice.key ? null : key)),
+        2500,
+      );
       return;
     }
     // The server has saved it: only now does anything celebrate.

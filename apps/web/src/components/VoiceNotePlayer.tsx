@@ -20,20 +20,49 @@ const AUTOLOAD_MAX_BYTES = 8 * 1024 * 1024;
 let current: { pause: () => void } | null = null;
 let sharedSpeed = 1;
 
-async function analyse(bytes: Uint8Array): Promise<{ peaks: number[]; duration: number } | null> {
-  if (typeof AudioContext === "undefined") return null;
-  const context = new AudioContext();
-  try {
-    const decoded = await context.decodeAudioData(bytes.slice().buffer);
-    return {
-      peaks: peaksFromSamples(decoded.getChannelData(0), VOICE_NOTE_BARS),
-      duration: decoded.duration,
-    };
-  } catch {
-    return null;
-  } finally {
-    void context.close().catch(() => {});
+// Reuse one AudioContext and cap concurrent waveform decodes so scrolling a long chat
+// never hits browser AudioContext limits or spikes mobile memory.
+let decodeCtx: AudioContext | null = null;
+const MAX_CONCURRENT_DECODES = 2;
+let activeDecodes = 0;
+const decodeWaiters: Array<() => void> = [];
+
+async function withDecodeSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (activeDecodes >= MAX_CONCURRENT_DECODES) {
+    await new Promise<void>((resolve) => decodeWaiters.push(resolve));
   }
+  activeDecodes += 1;
+  try {
+    return await task();
+  } finally {
+    const next = decodeWaiters.shift();
+    if (next) next();
+    else activeDecodes -= 1;
+  }
+}
+
+function getDecodeContext(): AudioContext | null {
+  if (typeof AudioContext === "undefined") return null;
+  if (!decodeCtx || decodeCtx.state === "closed") {
+    decodeCtx = new AudioContext();
+  }
+  return decodeCtx;
+}
+
+async function analyse(bytes: Uint8Array): Promise<{ peaks: number[]; duration: number } | null> {
+  const context = getDecodeContext();
+  if (!context) return null;
+  return withDecodeSlot(async () => {
+    try {
+      const decoded = await context.decodeAudioData(bytes.slice().buffer);
+      return {
+        peaks: peaksFromSamples(decoded.getChannelData(0), VOICE_NOTE_BARS),
+        duration: decoded.duration,
+      };
+    } catch {
+      return null;
+    }
+  });
 }
 
 export function VoiceNotePlayer({
@@ -62,27 +91,38 @@ export function VoiceNotePlayer({
   const [src, setSrc] = useState<string>();
   const [peaks, setPeaks] = useState<number[]>(() => placeholderPeaks(artifactId, VOICE_NOTE_BARS));
   const [analysed, setAnalysed] = useState<number | null>(null);
+  const [metaDuration, setMetaDuration] = useState(0);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [started, setStarted] = useState(false);
   const [speed, setSpeed] = useState(sharedSpeed);
 
-  const duration = (() => {
-    const element = audio.current?.duration;
-    if (analysed !== null && Number.isFinite(analysed) && analysed > 0) return analysed;
-    return element !== undefined && Number.isFinite(element) ? element : 0;
-  })();
+  const duration =
+    analysed !== null && Number.isFinite(analysed) && analysed > 0 ? analysed : metaDuration;
   const fraction = duration > 0 ? Math.min(1, time / duration) : 0;
 
   useEffect(() => {
     const state = life.current;
     state.gone = false;
+    state.loading = false;
+    playWhenReady.current = false;
+    setStatus("idle");
+    setSrc(undefined);
+    setPeaks(placeholderPeaks(artifactId, VOICE_NOTE_BARS));
+    setAnalysed(null);
+    setMetaDuration(0);
+    setTime(0);
+    setPlaying(false);
+    setStarted(false);
     return () => {
       state.gone = true;
-      if (state.url) URL.revokeObjectURL(state.url);
+      if (state.url) {
+        URL.revokeObjectURL(state.url);
+        state.url = undefined;
+      }
       if (current === controller.current) current = null;
     };
-  }, []);
+  }, [artifactId]);
 
   const load = useCallback(
     async (thenPlay: boolean) => {
@@ -152,6 +192,7 @@ export function VoiceNotePlayer({
     if (current && current !== controller.current) current.pause();
     current = controller.current;
     element.playbackRate = sharedSpeed;
+    setSpeed(sharedSpeed);
     try {
       await element.play();
     } catch {
@@ -311,7 +352,10 @@ export function VoiceNotePlayer({
           if (audio.current) audio.current.currentTime = 0;
         }}
         onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)}
-        onLoadedMetadata={() => setTime((value) => value)}
+        onLoadedMetadata={(event) => {
+          const d = event.currentTarget.duration;
+          if (Number.isFinite(d) && d > 0) setMetaDuration(d);
+        }}
         onError={() => setStatus("error")}
         className="hidden"
       />
