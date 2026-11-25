@@ -103,3 +103,4 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Type-check and build pass. Unit tests still failing are ones that already failed before the merge or on upstream, or that expect behaviour BondBot changes on purpose (always-high effort, forced thinking, separate Copy button, hidden Voice tab, untranslated Thai strings). Not checked in a browser; no Docker image built.
 - Before deploying: back up the database (upstream drops some computer execution columns). cccbox's patch-in-place recipe in LOCAL-PATCHES.md does not fit a base change; build a full image from infra/compose/Dockerfile.
 - Ported the file Share button (phone share sheet) that was live on cccbox but built from an older tree, so it was missing from the 0.1.22 sync.
+- Moved the sidebar CPU/RAM widget (host-stats.js) into the source; on cccbox it had only been hand-added to the built page.
