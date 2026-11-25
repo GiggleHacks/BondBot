@@ -89,10 +89,10 @@ export const PL_MESSAGES: Record<string, string> = {
   "You can close this tab and return to Rakazo.": "Możesz zamknąć tę kartę i wrócić do Rakazo.",
 
   // Setup window
-  "Set up Rakazo": "Skonfiguruj Rakazo",
-  "Quit Rakazo": "Zakończ Rakazo",
-  "Welcome to Rakazo": "Witaj w Rakazo",
-  "Choose where Rakazo runs.": "Wybierz, gdzie działa Rakazo.",
+  "Set up BondBot": "Skonfiguruj BondBot",
+  "Quit BondBot": "Zakończ BondBot",
+  "Welcome to BondBot": "Witaj w BondBot",
+  "Choose where BondBot runs.": "Wybierz, gdzie działa BondBot.",
   Instance: "Instancja",
   "This computer": "Ten komputer",
   "Existing instance": "Istniejąca instancja",

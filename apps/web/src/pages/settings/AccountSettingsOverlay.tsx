@@ -12,7 +12,7 @@ import {
   displayName,
   localTimezone,
   MAX_PASSWORD_LENGTH,
-  MIN_PASSWORD_LENGTH,
+  PIN_LENGTH,
   sameTimeZone,
 } from "@rakazo/core";
 import {
@@ -30,6 +30,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { AccountAccess, LinkSsoRow } from "../../components/account/AccountAccess";
+import { AccountPhoto } from "../../components/account/AccountPhoto";
 import { PasskeySettings } from "../../components/account/PasskeySettings";
 import { SuccessPop } from "../../components/ai/primitives";
 import { ComputerProviderSettings } from "../../components/computers/ComputerProviderSettings";
@@ -46,6 +47,7 @@ import { fetchAuthCapabilities } from "../../lib/auth/auth-capabilities";
 import { usePasskeysSupported } from "../../lib/auth/passkeys";
 import { toolActivityPreference } from "../../lib/chat/tool-activity-preference";
 import { composerEnterToSendPreference } from "../../lib/composer/composer-enter-to-send-pref";
+import { pixelFxPreference } from "../../lib/fx/pixel-fx-pref";
 import { getActiveUiLocale, setUiLocale } from "../../lib/locale/i18n";
 import { keepTimezone } from "../../lib/locale/kept-timezone";
 import { timezoneOptions } from "../../lib/locale/local-timezone";
@@ -71,6 +73,7 @@ import { reasoningPreference } from "../../lib/reasoning-preference";
 export type SettingsGeneralProps = {
   email?: string | null;
   name: string;
+  image?: string | null;
   onNameSaved?: () => Promise<void>;
   /** The user's saved IANA timezone, or null before one is set. */
   timezone?: string | null;
@@ -85,6 +88,7 @@ export type SettingsGeneralProps = {
 export function GeneralSettingsPanels({
   email,
   name,
+  image,
   onNameSaved,
   timezone = null,
   onTimezoneChange,
@@ -147,6 +151,7 @@ export function GeneralSettingsPanels({
   const showToolActivityId = useId();
   const showReasoning = reasoningPreference.use();
   const modelGlow = modelGlowPreference.use();
+  const pixelFx = pixelFxPreference.use();
   const showReasoningId = useId();
   const enterToSend = composerEnterToSendPreference.use();
   const enterToSendId = useId();
@@ -234,6 +239,10 @@ export function GeneralSettingsPanels({
   return (
     <div className="space-y-8">
       <SettingsGroup title={<Trans>Account</Trans>} data-testid="account-card">
+        <SettingsRow
+          label="Photo"
+          control={<AccountPhoto image={image} initials={account.initial} onSaved={onNameSaved} />}
+        />
         {editingName ? (
           <form
             className="space-y-3 px-4 py-4"
@@ -323,6 +332,24 @@ export function GeneralSettingsPanels({
               onChange={(next) => {
                 setAppearance(next);
                 setUiAppearance(next);
+              }}
+            />
+          }
+        />
+        <SettingsRow
+          label={
+            <Label htmlFor="pixel-fx-toggle" className="text-body font-normal text-foreground">
+              Pixel effects
+            </Label>
+          }
+          control={
+            <Switch
+              id="pixel-fx-toggle"
+              data-testid="pixel-fx-toggle"
+              checked={pixelFx}
+              onCheckedChange={(checked) => {
+                pixelFxPreference.set(checked);
+                document.documentElement.dataset.pixelFx = checked ? "on" : "off";
               }}
             />
           }
@@ -833,7 +860,7 @@ function SettingsPasswordInput({
         type="password"
         autoComplete={autoComplete}
         autoFocus={autoFocus}
-        minLength={autoComplete === "new-password" ? MIN_PASSWORD_LENGTH : undefined}
+        minLength={autoComplete === "new-password" ? PIN_LENGTH : undefined}
         maxLength={MAX_PASSWORD_LENGTH}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -854,30 +881,18 @@ function AppearancePicker({
     { value: "system", label: t`System` },
     { value: "light", label: t`Light` },
     { value: "dark", label: t`Dark` },
+    { value: "dark-blue", label: "Dark blue" },
+    { value: "dark-purple", label: "Dark purple" },
   ];
-
   return (
-    <ToggleGroup
-      aria-label={t`Appearance`}
+    <OptionSelect
+      className="w-56 max-w-full"
       data-testid="ui-appearance-select"
-      value={[value]}
-      onValueChange={([next]) => {
-        if (next) onChange(next as AppearancePreference);
-      }}
-      spacing={1}
-      className="grid min-w-0 grid-cols-3 rounded-lg bg-muted p-1"
-    >
-      {options.map((option) => (
-        <ToggleGroupItem
-          key={option.value}
-          value={option.value}
-          data-testid={`ui-appearance-${option.value}`}
-          className="text-body-sm aria-pressed:bg-background aria-pressed:shadow-sm"
-        >
-          {option.label}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
+      aria-label={t`Appearance`}
+      options={options}
+      value={value}
+      onValueChange={onChange}
+    />
   );
 }
 

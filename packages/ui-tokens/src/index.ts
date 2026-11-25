@@ -1,8 +1,17 @@
-export const APPEARANCE_PREFERENCES = ["system", "light", "dark"] as const;
+export const APPEARANCE_PREFERENCES = [
+  "system",
+  "light",
+  "dark",
+  "dark-blue",
+  "dark-purple",
+] as const;
 
 export type AppearancePreference = (typeof APPEARANCE_PREFERENCES)[number];
 
 export type ResolvedAppearance = "light" | "dark";
+
+/** A tinted variant of the dark palette. `default` is the plain ink palette. */
+export type ThemePalette = "default" | "blue" | "purple";
 
 export const UI_APPEARANCE_STORAGE_KEY = "rakazo.uiAppearance";
 
@@ -272,6 +281,76 @@ export const webLightOverrides = {
 } as const satisfies Partial<WebColorTokens>;
 
 export const webDarkTokens: WebColorTokens = { ...darkTokens, ...webDarkOverrides };
+
+/** Surfaces, ink and accent for the tinted dark palettes. Status colors stay shared. */
+export const darkPaletteOverrides = {
+  blue: {
+    background: "#0B1220",
+    dialog: "#121B2C",
+    foreground: "#E8EEF9",
+    card: "#18233A",
+    cardForeground: "#E8EEF9",
+    popover: "#18233A",
+    popoverForeground: "#E8EEF9",
+    primary: "#3B82F6",
+    primaryHover: "#5B97F8",
+    primaryDisabled: "#3B82F640",
+    primaryForeground: "#FFFFFF",
+    secondary: "#E8EEF90D",
+    secondaryForeground: "#E8EEF9",
+    chatUser: "#1F3A66",
+    chatUserForeground: "#FFFFFF",
+    muted: "#18233A",
+    mutedForeground: "#E8EEF9A8",
+    faintForeground: "#E8EEF98A",
+    accent: "#8DB4FF1F",
+    accentForeground: "#E8EEF9",
+    border: "#8DB4FF1F",
+    input: "#8DB4FF3D",
+    ring: "#3B82F6",
+    sidebar: "#0E1626",
+    sidebarForeground: "#E8EEF9",
+    sidebarBorder: "#8DB4FF14",
+    sidebarAccent: "#8DB4FF1A",
+    sidebarAccentForeground: "#E8EEF9",
+    link: "#6EA8FF",
+    scrollbar: "#8DB4FF38",
+    scrollbarHover: "#8DB4FF80",
+  },
+  purple: {
+    background: "#16141C",
+    dialog: "#1F1C27",
+    foreground: "#EEEAF7",
+    card: "#24212E",
+    cardForeground: "#EEEAF7",
+    popover: "#24212E",
+    popoverForeground: "#EEEAF7",
+    primary: "#6D4AFF",
+    primaryHover: "#8064FF",
+    primaryDisabled: "#6D4AFF40",
+    primaryForeground: "#FFFFFF",
+    secondary: "#EEEAF70D",
+    secondaryForeground: "#EEEAF7",
+    chatUser: "#3B2F6B",
+    chatUserForeground: "#FFFFFF",
+    muted: "#24212E",
+    mutedForeground: "#EEEAF7A8",
+    faintForeground: "#EEEAF78A",
+    accent: "#B9A7FF1F",
+    accentForeground: "#EEEAF7",
+    border: "#B9A7FF1F",
+    input: "#B9A7FF3D",
+    ring: "#8A6EFF",
+    sidebar: "#1B1823",
+    sidebarForeground: "#EEEAF7",
+    sidebarBorder: "#B9A7FF14",
+    sidebarAccent: "#B9A7FF1A",
+    sidebarAccentForeground: "#EEEAF7",
+    link: "#A994FF",
+    scrollbar: "#B9A7FF38",
+    scrollbarHover: "#B9A7FF80",
+  },
+} as const satisfies Record<Exclude<ThemePalette, "default">, Partial<WebColorTokens>>;
 export const webLightTokens: WebColorTokens = { ...lightTokens, ...webLightOverrides };
 
 /** Dark palette. Prefer `tokensForAppearance` when theme-aware. */
@@ -422,7 +501,7 @@ export const botColors = [
 export function isAppearancePreference(
   value: string | null | undefined,
 ): value is AppearancePreference {
-  return value === "system" || value === "light" || value === "dark";
+  return (APPEARANCE_PREFERENCES as readonly string[]).includes(value ?? "");
 }
 
 export function normalizeAppearancePreference(
@@ -471,16 +550,38 @@ export function resolveAppearance(
   system: ResolvedAppearance = "dark",
 ): ResolvedAppearance {
   if (preference === "system") return system;
-  return preference;
+  return preference === "light" ? "light" : "dark";
 }
 
-export function tokensForAppearance(appearance: ResolvedAppearance): ColorTokens {
-  return appearance === "light" ? lightTokens : darkTokens;
+/** The tint a preference picks; only the tinted dark preferences have one. */
+export function paletteForPreference(preference: AppearancePreference): ThemePalette {
+  if (preference === "dark-blue") return "blue";
+  if (preference === "dark-purple") return "purple";
+  return "default";
+}
+
+export function tokensForAppearance(
+  appearance: ResolvedAppearance,
+  palette: ThemePalette = "default",
+): ColorTokens {
+  if (appearance === "light") return lightTokens;
+  if (palette === "default") return darkTokens;
+  const {
+    primaryHover: _hover,
+    primaryDisabled: _disabled,
+    ...overrides
+  } = darkPaletteOverrides[palette];
+  return { ...darkTokens, ...overrides };
 }
 
 /** The web and Electron palette; `tokensForAppearance` is the mobile one. */
-export function webTokensForAppearance(appearance: ResolvedAppearance): WebColorTokens {
-  return appearance === "light" ? webLightTokens : webDarkTokens;
+export function webTokensForAppearance(
+  appearance: ResolvedAppearance,
+  palette: ThemePalette = "default",
+): WebColorTokens {
+  if (appearance === "light") return webLightTokens;
+  if (palette === "default") return webDarkTokens;
+  return { ...webDarkTokens, ...darkPaletteOverrides[palette] };
 }
 
 function readStoredAppearance(storage: Pick<Storage, "getItem"> | null | undefined): string | null {
@@ -497,11 +598,17 @@ export function cssVariableName(token: keyof WebColorTokens): string {
   return `--${token.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
 }
 
-function renderBlock(selector: string, colorScheme: ResolvedAppearance, palette: WebColorTokens) {
+function renderBlock(
+  selector: string,
+  colorScheme: ResolvedAppearance,
+  palette: Partial<WebColorTokens>,
+  radius = true,
+) {
   const lines = (Object.keys(palette) as (keyof WebColorTokens)[]).map(
-    (token) => `  ${cssVariableName(token)}: ${palette[token].toLowerCase()};`,
+    (token) => `  ${cssVariableName(token)}: ${palette[token]?.toLowerCase()};`,
   );
-  return `${selector} {\n  color-scheme: ${colorScheme};\n${lines.join("\n")}\n  --radius: ${RADIUS};\n}`;
+  const tail = radius ? `\n  --radius: ${RADIUS};` : "";
+  return `${selector} {\n  color-scheme: ${colorScheme};\n${lines.join("\n")}${tail}\n}`;
 }
 
 /** The CSS in `tokens.css` (web and Electron). Generated from the web palettes so both stay in sync. */
@@ -510,5 +617,13 @@ export function renderTokensCss(): string {
     "/* Generated by `pnpm --filter @rakazo/ui-tokens generate`. Edit src/index.ts instead. */",
     renderBlock(':root,\n[data-theme="dark"]', "dark", webDarkTokens),
     renderBlock('[data-theme="light"]', "light", webLightTokens),
+    ...(["blue", "purple"] as const).map((palette) =>
+      renderBlock(
+        `[data-theme="dark"][data-palette="${palette}"]`,
+        "dark",
+        darkPaletteOverrides[palette],
+        false,
+      ),
+    ),
   ].join("\n\n")}\n`;
 }

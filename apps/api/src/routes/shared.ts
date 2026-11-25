@@ -42,6 +42,7 @@ export async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
       select: {
         email: true,
         name: true,
+        image: true,
         timezone: true,
         locale: true,
         botAvatarSet: true,
@@ -71,6 +72,7 @@ export async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     userId: actor.userId,
     email: user.email,
     name: user.name,
+    image: user.image,
     spaceId: actor.spaceId,
     isDeploymentOwner: false,
     isAdmin: admin,

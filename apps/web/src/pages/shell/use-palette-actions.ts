@@ -110,6 +110,8 @@ export function usePaletteActions({
         { value: "system", label: t`System`, icon: Monitor },
         { value: "light", label: t`Light`, icon: Sun },
         { value: "dark", label: t`Dark`, icon: Moon },
+        { value: "dark-blue", label: "Dark blue", icon: Moon },
+        { value: "dark-purple", label: "Dark purple", icon: Moon },
       ] satisfies { value: AppearancePreference; label: string; icon: typeof Sun }[]
     ).map(({ value, label, icon }) => ({
       id: `appearance-${value}`,

@@ -5,13 +5,18 @@ import type {
   ProductAnalytics,
   TransactionalEmailProvider,
 } from "@rakazo/adapter-kit";
-import { LAST_SIGN_IN_COOKIE, PartnerClickId, SignupAttribution } from "@rakazo/contracts";
+import {
+  isUserImageValue,
+  LAST_SIGN_IN_COOKIE,
+  PartnerClickId,
+  SignupAttribution,
+} from "@rakazo/contracts";
 import {
   displayName,
   emailAllowed,
   isMessagingEmail,
   MAX_PASSWORD_LENGTH,
-  MIN_PASSWORD_LENGTH,
+  PIN_LENGTH,
   parseEnvFlag,
   partnerClickFromHeaders,
   signupAttributionFromHeaders,
@@ -57,6 +62,7 @@ import { hasRecentIdentityConfirmation, identityConfirmation } from "./identity-
 import type { OidcConfig } from "./oidc.js";
 import { isCurrentOidcAccount, oidcDiscovery } from "./oidc.js";
 import { passkeyRelyingParty } from "./passkey.js";
+import { pinPassword } from "./pin-password.js";
 import type { AppleProviderConfig, GoogleProviderConfig, SocialAuthConfig } from "./social.js";
 import {
   appleUserInfo,
@@ -195,6 +201,8 @@ export function authRateLimitOptions(
       "/request-account-deletion": { window: 600, max: 3 },
       "/request-identity-code": { window: 600, max: 3 },
       "/confirm-identity": rule,
+      // Takes the current password, which may be a short PIN.
+      "/change-password": rule,
       "/passkey/verify-authentication": rule,
       "/passkey/verify-registration": rule,
       // Sign-in pages request a challenge on load for passkey autofill.
@@ -331,7 +339,8 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
       // Signup policy is mutable deployment state, so the request hook below
       // enforces it instead of freezing an environment value at process start.
       disableSignUp: false,
-      minPasswordLength: MIN_PASSWORD_LENGTH,
+      // The length of a PIN. pin-password holds anything else to MIN_PASSWORD_LENGTH.
+      minPasswordLength: PIN_LENGTH,
       maxPasswordLength: MAX_PASSWORD_LENGTH,
       revokeSessionsOnPasswordReset: true,
       onPasswordReset: async ({ user }) => {
@@ -492,6 +501,7 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
         env.passwordAuth !== false,
       ),
       identityConfirmation(env.email, emailLocaleOf),
+      pinPassword(),
       ...(discovery ? [discovery.plugin] : []),
       ...(emailCodeSignIn
         ? [
@@ -905,6 +915,8 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
             if (isMessagingEmail(user.email)) {
               throw new APIError("BAD_REQUEST", { message: "Email is not available" });
             }
+            // A provider photo that is not a usable https image is dropped, not a failed signup.
+            if (!isUserImageValue(user.image)) user = { ...user, image: null };
             const callbackAttribution = SignupAttribution.safeParse(
               ctx?.path === "/callback/:id"
                 ? (await getOAuthState())?.serverContext?.signupAttribution
@@ -941,6 +953,9 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
           before: async (user) => {
             if (user.email && isMessagingEmail(user.email)) {
               throw new APIError("BAD_REQUEST", { message: "Email is not available" });
+            }
+            if (user.image !== undefined && !isUserImageValue(user.image)) {
+              throw new APIError("BAD_REQUEST", { message: "Photo is not a supported image" });
             }
             return {
               data: {

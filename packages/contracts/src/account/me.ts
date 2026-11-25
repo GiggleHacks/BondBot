@@ -28,6 +28,8 @@ export const MeSchema = z.object({
   userId: Id,
   email: z.string().email(),
   name: z.string(),
+  /** The account photo: an https URL or an uploaded data URL. Absent from older servers. */
+  image: z.string().nullable().optional(),
   spaceId: Id,
   /** Deprecated: app accounts never have server administrator privileges. Always false. */
   isDeploymentOwner: z.boolean(),

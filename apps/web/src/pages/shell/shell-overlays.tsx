@@ -149,7 +149,7 @@ export function SettingsOverlays({
   leftSpace: (spaceId: string, activeSpaceId: string) => Promise<void>;
   refreshSpaces: () => Promise<void>;
   alive: RefObject<boolean>;
-  user: { name?: string | null; email?: string } | undefined;
+  user: { name?: string | null; email?: string; image?: string | null } | undefined;
   refetchSession: () => Promise<unknown>;
   bootstrapMe: Me | null | undefined;
   setBootstrapMe: (update: (prev: Me | null | undefined) => Me | null | undefined) => void;
@@ -184,6 +184,7 @@ export function SettingsOverlays({
             openNewSpace();
           }}
           name={user?.name ?? ""}
+          image={user?.image}
           onNameSaved={async () => {
             await refetchSession();
           }}

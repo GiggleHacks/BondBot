@@ -4,7 +4,15 @@ import type { AccountSecurity, SignInProvider } from "@rakazo/contracts";
 import { accountDisplay, displayName } from "@rakazo/core";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Platform, ScrollView, Text } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAccountDeletion } from "../../components/settings/account-deletion";
 import {
@@ -14,11 +22,13 @@ import {
 } from "../../components/settings/settings-group";
 import { NameDialog } from "../../components/ui/name-dialog";
 import { createAccountNameEditor } from "../../lib/account/account-name-editor";
+import { pickAccountPhoto } from "../../lib/account/account-photo";
 import { errorText } from "../../lib/api/user-error";
 import { mobileTokens } from "../../lib/appearance/appearance";
 import {
   fetchAccountSecurity,
   passwordResetCapabilities,
+  updateAccountImage,
   updateAccountName,
 } from "../../lib/auth/api-auth";
 import type { MobilePasskey } from "../../lib/auth/passkey";
@@ -34,8 +44,9 @@ import { continueWithSso } from "../../lib/auth/sso";
 import { dateLocaleForUi, useUiLocale } from "../../lib/i18n/i18n";
 import { useSideInsets } from "../../lib/layout/side-insets";
 import { useResolvedAppearance, useThemedStyles } from "../../lib/native/native";
-import { accountRpcQuery, queryClient } from "../../lib/query/query";
+import { accountRpcQuery, queryClient, useSave } from "../../lib/query/query";
 import { useScreenQuery } from "../../lib/query/screen-query";
+import { ACCOUNT_SETTINGS } from "../../lib/query/settings-target";
 import { createSettingsPageStyles } from "../../lib/settings/settings-page-styles";
 import {
   loadTrustedLinkSites,
@@ -79,6 +90,31 @@ export default function Profile() {
     setNameError,
     setNameDialogOpen,
   });
+
+  // The photo is saved through the auth endpoint, like the name, then the account read refreshes.
+  const photoSave = useSave({
+    target: ACCOUNT_SETTINGS,
+    save: (image: string | null) => updateAccountImage(image),
+    stale: [meRead.queryKey],
+    onFailed: (cause) => Alert.alert("Could not update photo", errorText(cause, t`Try again.`)),
+  });
+  const photoPending = photoSave.pending;
+  const savePhoto = (image: string | null) => photoSave.run(image);
+  function editPhoto() {
+    const choose = () =>
+      void pickAccountPhoto()
+        .then((image) => (image ? savePhoto(image) : undefined))
+        .catch((cause) => Alert.alert("Could not update photo", errorText(cause, t`Try again.`)));
+    if (!me?.image) {
+      choose();
+      return;
+    }
+    Alert.alert("Photo", undefined, [
+      { text: "Choose photo", onPress: choose },
+      { text: "Remove photo", style: "destructive", onPress: () => savePhoto(null) },
+      { text: t`Cancel`, style: "cancel" },
+    ]);
+  }
 
   const [security, setSecurity] = useState<AccountSecurity | null>(null);
   const unlinkedProviders = security?.linkedProviderIds
@@ -170,6 +206,24 @@ export default function Profile() {
         contentInsetAdjustmentBehavior="automatic"
       >
         <SettingsGroup>
+          <SettingsRow
+            accessibilityRole="button"
+            accessibilityLabel={me?.image ? "Change photo" : "Add photo"}
+            chevron="right"
+            disabled={!me || photoPending}
+            dimmed={photoPending}
+            leading={
+              me?.image ? (
+                <Image
+                  accessibilityIgnoresInvertColors
+                  source={{ uri: me.image }}
+                  style={photoStyles.photo}
+                />
+              ) : undefined
+            }
+            title="Photo"
+            onPress={editPhoto}
+          />
           <SettingsRow
             accessibilityRole="button"
             accessibilityLabel={t`Edit name`}
@@ -347,3 +401,7 @@ export default function Profile() {
     </SafeAreaView>
   );
 }
+
+const photoStyles = StyleSheet.create({
+  photo: { width: 32, height: 32, borderRadius: 16 },
+});

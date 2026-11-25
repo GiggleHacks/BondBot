@@ -589,7 +589,7 @@ describe("setup", () => {
     const ui = await boot(null, { lang: "es", dir: "ltr", messages: ES_MESSAGES });
     expect(document.documentElement.lang).toBe("es");
     expect(document.documentElement.dir).toBe("ltr");
-    expect(document.querySelector("h1")?.textContent).toBe("Te damos la bienvenida a Rakazo");
+    expect(document.querySelector("h1")?.textContent).toBe("Te damos la bienvenida a BondBot");
     expect(document.querySelector('label[for="mode-new"] .choice-title')?.textContent).toBe(
       "Esta computadora",
     );
@@ -600,7 +600,7 @@ describe("setup", () => {
       "Rakazo Cloud",
     );
     expect(element("quit").textContent).toBe("Salir");
-    expect(element("quit").title).toBe("Salir de Rakazo");
+    expect(element("quit").title).toBe("Salir de BondBot");
     expect(element("stack-details").getAttribute("aria-label")).toBe("Detalles técnicos");
     expect(element<HTMLTextAreaElement>("server-headers").placeholder).toBe("Nombre: valor");
     expect(element("continue").textContent).toBe("Continuar");
@@ -661,7 +661,7 @@ describe("setup", () => {
     const ui = await boot(null, { lang: "pl", dir: "ltr", messages: PL_MESSAGES });
     expect(document.documentElement.lang).toBe("pl");
     expect(document.documentElement.dir).toBe("ltr");
-    expect(document.querySelector("h1")?.textContent).toBe("Witaj w Rakazo");
+    expect(document.querySelector("h1")?.textContent).toBe("Witaj w BondBot");
     expect(element("continue").textContent).toBe(PL_MESSAGES.Continue);
     expect(element("stack-details").getAttribute("aria-label")).toBe(
       PL_MESSAGES["Technical details"],

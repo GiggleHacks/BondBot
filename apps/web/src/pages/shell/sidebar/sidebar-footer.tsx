@@ -30,8 +30,8 @@ import {
 import { useLayoutEffect, useRef, useState } from "react";
 import { useSidebarUpdate } from "../../../components/DesktopUpdates";
 import { IconTooltip } from "../../../components/IconTooltip";
-import type { Organization } from "../../../lib/spaces/organizations";
 import { desktopBridge } from "../../../lib/platform/desktop";
+import type { Organization } from "../../../lib/spaces/organizations";
 
 type Props = {
   mini?: boolean;
@@ -153,15 +153,29 @@ export function SidebarFooter({
             align="start"
             className="max-h-(--available-height) w-[295px] max-w-[calc(100vw-69px)] gap-0 overflow-y-auto p-1 *:shrink-0 data-closed:animate-none"
           >
-            <div
+            <button
+              type="button"
               data-testid="account-menu-header"
-              className="mb-1 min-w-0 border-b border-border px-2.5 py-2.5"
+              aria-label={`Edit profile for ${name}`}
+              onClick={onSettings}
+              className="mb-1 flex w-full min-w-0 items-center gap-2.5 rounded-md border-b border-border px-2.5 py-2.5 text-start outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <p className="truncate text-body font-medium">{name}</p>
-              {email && email !== name ? (
-                <p className="truncate text-label text-muted-foreground">{email}</p>
-              ) : null}
-            </div>
+              <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-full bg-secondary text-body font-semibold text-secondary-foreground">
+                {image && failedImage !== image ? (
+                  <img src={image} alt="" className="size-full object-cover" />
+                ) : initials ? (
+                  initials
+                ) : (
+                  <UserRound size={16} aria-hidden="true" />
+                )}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-body font-medium">{name}</span>
+                {email && email !== name ? (
+                  <span className="block truncate text-label text-muted-foreground">{email}</span>
+                ) : null}
+              </span>
+            </button>
             <OrganizationRow
               organizations={organizations}
               activeOrganizationId={activeOrganizationId}

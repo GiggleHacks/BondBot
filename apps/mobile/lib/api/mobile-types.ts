@@ -47,6 +47,7 @@ export type MobileMe = Pick<
   | "userId"
   | "name"
   | "email"
+  | "image"
   | "spaceId"
   | "defaultProvider"
   | "defaultModel"

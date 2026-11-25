@@ -8,6 +8,7 @@ import {
   darkTokens,
   lightTokens,
   normalizeAppearancePreference,
+  paletteForPreference,
   persistAppearancePreference,
   renderTokensCss,
   resolveAppearance,
@@ -32,6 +33,17 @@ describe("appearance preference", () => {
     expect(resolveAppearance("system", "light")).toBe("light");
     expect(resolveAppearance("system", "dark")).toBe("dark");
     expect(resolveAppearance("dark", "light")).toBe("dark");
+  });
+
+  it("resolves the tinted dark themes to dark with their palette", () => {
+    expect(normalizeAppearancePreference("dark-purple")).toBe("dark-purple");
+    expect(resolveAppearance("dark-blue", "light")).toBe("dark");
+    expect(paletteForPreference("dark-blue")).toBe("blue");
+    expect(paletteForPreference("dark-purple")).toBe("purple");
+    expect(paletteForPreference("dark")).toBe("default");
+    expect(tokensForAppearance("dark", "purple").background).not.toBe(darkTokens.background);
+    expect(webTokensForAppearance("light", "blue")).toBe(webLightTokens);
+    expect(renderTokensCss()).toContain('[data-theme="dark"][data-palette="purple"]');
   });
 
   it("reads and writes storage", () => {

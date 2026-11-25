@@ -98,6 +98,11 @@ const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const SHAPE_SUFFIX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})::shape_\d+$/;
 const DATA_IMAGE = /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
 
+/** A base64 png, jpeg, webp or gif data URL. */
+export function isDataImageUrl(raw: string): boolean {
+  return DATA_IMAGE.test(raw);
+}
+
 export type ParsedBotAvatar =
   | { kind: "image"; imageUrl: string }
   | { kind: "shape"; color: string; shapeIndex: number }

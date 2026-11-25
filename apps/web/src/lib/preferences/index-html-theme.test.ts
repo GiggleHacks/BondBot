@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { webDarkTokens, webLightTokens } from "@rakazo/ui-tokens";
+import { darkPaletteOverrides, webDarkTokens, webLightTokens } from "@rakazo/ui-tokens";
 import { describe, expect, it } from "vitest";
 
 // index.html sets theme-color before any module loads, so it cannot import the
@@ -17,6 +17,9 @@ describe("index.html theme bootstrap", () => {
     );
     expect(script).toContain(
       `theme === "light" ? "${webLightTokens.background.toLowerCase()}" : "${webDarkTokens.background.toLowerCase()}"`,
+    );
+    expect(script).toContain(
+      `{ blue: "${darkPaletteOverrides.blue.background.toLowerCase()}", purple: "${darkPaletteOverrides.purple.background.toLowerCase()}" }`,
     );
   });
 

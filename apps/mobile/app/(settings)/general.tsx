@@ -1,6 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import type { ChatPreferencesPatch } from "@rakazo/contracts";
 import { APP_LOCALE_LABELS } from "@rakazo/core";
+import { normalizeAppearancePreference } from "@rakazo/ui-tokens";
 import * as Notifications from "expo-notifications";
 import { useFocusEffect, useIsFocused, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -14,6 +15,7 @@ import {
   SettingsSwitch,
   useStackedSettings,
 } from "../../components/settings/settings-group";
+import { MenuPicker } from "../../components/ui/menu-picker";
 import { currentApiBase, selectedSpaceId } from "../../lib/api/api";
 import type { MobileMe } from "../../lib/api/mobile-types";
 import { useLiveStream } from "../../lib/api/roster-signals";
@@ -22,6 +24,7 @@ import { errorText } from "../../lib/api/user-error";
 import {
   getCachedAppearancePreference,
   setAppearancePreference,
+  subscribeAppearance,
 } from "../../lib/appearance/appearance";
 import {
   getCachedComposerModelPicker,
@@ -97,7 +100,11 @@ export default function General() {
     stale: [meRead.queryKey],
     onFailed: () => Alert.alert(t`Could not save`),
   });
-  const appearance = getCachedAppearancePreference();
+  const appearance = useSyncExternalStore(
+    subscribeAppearance,
+    getCachedAppearancePreference,
+    getCachedAppearancePreference,
+  );
   const chatSaveDisabled = loadingAccount || chatSave.pending;
   const deviceStreamReplies = useSyncExternalStore(
     subscribeResponseStreaming,
@@ -224,19 +231,20 @@ export default function General() {
         contentContainerStyle={[styles.content, stacked && styles.compactContent]}
         contentInsetAdjustmentBehavior="automatic"
       >
-        <View accessibilityLabel={t`Appearance`} style={styles.section}>
-          <SettingsLabel>{t`Appearance`}</SettingsLabel>
-          <NativeSegmentedControl
-            accessibilityLabel={t`Appearance`}
-            onChange={(value) => void setAppearancePreference(value)}
-            options={[
-              { value: "system", label: t`System` },
-              { value: "light", label: t`Light` },
-              { value: "dark", label: t`Dark` },
+        <SettingsGroup>
+          <MenuPicker
+            label={t`Appearance`}
+            choices={[
+              { key: "system", label: t`System` },
+              { key: "light", label: t`Light` },
+              { key: "dark", label: t`Dark` },
+              { key: "dark-blue", label: "Dark blue" },
+              { key: "dark-purple", label: "Dark purple" },
             ]}
+            onChange={(value) => void setAppearancePreference(normalizeAppearancePreference(value))}
             value={appearance}
           />
-        </View>
+        </SettingsGroup>
 
         {me ? (
           <View accessibilityLabel={t`Bot style`} style={styles.section}>

@@ -181,6 +181,26 @@ export async function updateAccountName(name: string): Promise<void> {
       authResponseErrorText(response.status, body, invalidJson, t`Could not update name`),
     );
 }
+/** Sets the account photo to an uploaded data URL, or removes it with null. */
+export async function updateAccountImage(image: string | null): Promise<void> {
+  const { response, body, invalidJson } = await fetchMobileJson<unknown>(
+    `${currentApiBase()}/api/auth/update-user`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "rakazo://",
+        ...(await authHeaders()),
+      },
+      body: JSON.stringify({ image }),
+    },
+    {},
+  );
+  if (!response.ok)
+    throw new Error(
+      authResponseErrorText(response.status, body, invalidJson, "Could not update photo"),
+    );
+}
 /** A hash of the change whose new session is not saved yet; never the passwords themselves. */
 let unsavedPasswordChange: string | undefined;
 /** A 53-bit hash, so an unchanged form can be recognized without keeping its passwords. */

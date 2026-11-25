@@ -27,8 +27,8 @@ import { computersAreUnavailable } from "../../components/computers/ComputersUna
 import { ApprovalRulesSettings } from "../../components/settings/ApprovalRulesSettings";
 import { SETTINGS_CONTENT_WIDTH } from "../../components/settings/SettingsRows";
 import { VaultSettings } from "../../components/vault/VaultSettings";
-import { CLIENT_BUILD } from "../../lib/platform/client-build";
 import { canChooseOwnComputer } from "../../lib/computers/computer-sandbox";
+import { CLIENT_BUILD } from "../../lib/platform/client-build";
 import { desktopBridge } from "../../lib/platform/desktop";
 import { useQueryUserId } from "../../lib/query/query";
 import type { RpcClient } from "../../lib/query/rpc";
@@ -64,6 +64,7 @@ export function SettingsOverlay({
   onDeleteSpace,
   email,
   name,
+  image,
   section: requestedSection,
   onSectionChange,
   onNameSaved,
@@ -99,6 +100,7 @@ export function SettingsOverlay({
   onDeleteSpace?: (spaceId: string) => Promise<void>;
   email?: string | null;
   name: string;
+  image?: string | null;
   section: SettingsSection;
   onSectionChange: (section: SettingsSection) => void;
   onNameSaved?: () => Promise<void>;
@@ -423,6 +425,7 @@ export function SettingsOverlay({
                     <GeneralSettingsPanels
                       email={email}
                       name={name}
+                      image={image}
                       onNameSaved={onNameSaved}
                       timezone={timezone}
                       onTimezoneChange={onTimezoneChange}

@@ -4,15 +4,34 @@
   let preference = "system";
   try {
     const stored = localStorage.getItem(key);
-    if (stored === "system" || stored === "light" || stored === "dark") preference = stored;
+    if (["system", "light", "dark", "dark-blue", "dark-purple"].includes(stored))
+      preference = stored;
   } catch {}
   const systemLight =
     typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: light)").matches;
-  const theme = preference === "system" ? (systemLight ? "light" : "dark") : preference;
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
+  const theme =
+    preference === "system"
+      ? systemLight
+        ? "light"
+        : "dark"
+      : preference === "light"
+        ? "light"
+        : "dark";
+  const palette = { "dark-blue": "blue", "dark-purple": "purple" }[preference];
+  const root = document.documentElement;
+  root.dataset.theme = theme;
+  if (palette) root.dataset.palette = palette;
+  root.style.colorScheme = theme;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", theme === "light" ? "#ffffff" : "#0a0a0a");
+  const tinted = { blue: "#0b1220", purple: "#16141c" }[palette];
+  const plain = theme === "light" ? "#ffffff" : "#0a0a0a";
+  if (meta) meta.setAttribute("content", tinted || plain);
+  // Pixel cursor trail and hover effects: on unless turned off in Settings on this device.
+  let pixelFx = "on";
+  try {
+    if (localStorage.getItem("bondbot.pixelFx") === "off") pixelFx = "off";
+  } catch {}
+  root.dataset.pixelFx = pixelFx;
   // macOS draws regular text at 420 (see --font-weight-normal); iPads report a Mac platform too.
   const nav = typeof navigator === "object" ? navigator : undefined;
   if (nav && /^Mac/.test(nav.platform || "") && !(nav.maxTouchPoints > 1)) {

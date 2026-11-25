@@ -28,6 +28,7 @@ import { Button } from "@rakazo/ui-web/components/ui/button";
 import { Check, Pencil, Upload, X } from "lucide-react";
 import type { ClipboardEvent, DragEvent } from "react";
 import { useRef, useState } from "react";
+import { squareImageDataUrl } from "../../../lib/images/square-image";
 
 /**
  * The shape grid and color row for a bot's look. With `organicIdentities`, the grid also offers
@@ -190,35 +191,11 @@ export function AvatarStudioPopover({
   }
 
   function processImageFile(file: File) {
-    if (!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const src = event.target?.result as string;
-      if (!src) return;
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        const targetSize = 256;
-        canvas.width = targetSize;
-        canvas.height = targetSize;
-        if (!ctx) return;
-
-        ctx.beginPath();
-        ctx.arc(targetSize / 2, targetSize / 2, targetSize / 2, 0, Math.PI * 2);
-        ctx.clip();
-
-        const minDim = Math.min(img.width, img.height);
-        const sx = (img.width - minDim) / 2;
-        const sy = (img.height - minDim) / 2;
-        ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, targetSize, targetSize);
-
-        onChange(canvas.toDataURL("image/webp", 0.9));
-        setOpen(false);
-      };
-      img.src = src;
-    };
-    reader.readAsDataURL(file);
+    void squareImageDataUrl(file, 256, { round: true }).then((dataUrl) => {
+      if (!dataUrl) return;
+      onChange(dataUrl);
+      setOpen(false);
+    });
   }
 
   function handleDrop(event: DragEvent<HTMLButtonElement>) {

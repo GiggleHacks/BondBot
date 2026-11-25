@@ -1,5 +1,6 @@
-import type { AppearancePreference, ResolvedAppearance } from "@rakazo/ui-tokens";
+import type { AppearancePreference, ResolvedAppearance, ThemePalette } from "@rakazo/ui-tokens";
 import {
+  paletteForPreference,
   persistAppearancePreference,
   resolveAppearance,
   resolveAppearancePreference,
@@ -21,16 +22,19 @@ export function readSystemAppearance(
 export function applyResolvedAppearance(
   appearance: ResolvedAppearance,
   root: HTMLElement | null = typeof document !== "undefined" ? document.documentElement : null,
+  palette: ThemePalette = "default",
 ): void {
   if (!root) return;
   root.dataset.theme = appearance;
+  if (palette === "default") delete root.dataset.palette;
+  else root.dataset.palette = palette;
   root.style.colorScheme = appearance;
   if (typeof document === "undefined") return;
   const meta = document.querySelector(THEME_COLOR_META);
   if (meta) {
     // The applied background, so an instance theme's color reaches the browser chrome too.
     const applied = getComputedStyle(root).getPropertyValue("--background").trim();
-    meta.setAttribute("content", applied || webTokensForAppearance(appearance).background);
+    meta.setAttribute("content", applied || webTokensForAppearance(appearance, palette).background);
   }
 }
 
@@ -39,7 +43,7 @@ export function applyUiAppearance(
   system: ResolvedAppearance = readSystemAppearance(),
 ): ResolvedAppearance {
   const resolved = resolveAppearance(preference, system);
-  applyResolvedAppearance(resolved);
+  applyResolvedAppearance(resolved, undefined, paletteForPreference(preference));
   return resolved;
 }
 

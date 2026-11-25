@@ -1,6 +1,7 @@
 import type { AppearancePreference, ResolvedAppearance } from "@rakazo/ui-tokens";
 import {
   normalizeAppearancePreference,
+  paletteForPreference,
   resolveAppearance,
   tokensForAppearance,
   UI_APPEARANCE_STORAGE_KEY,
@@ -57,7 +58,10 @@ export function mobileTokens(
   preference: AppearancePreference = getCachedAppearancePreference(),
   scheme?: ColorSchemeName | null,
 ) {
-  return tokensForAppearance(resolveMobileAppearance(preference, scheme));
+  return tokensForAppearance(
+    resolveMobileAppearance(preference, scheme),
+    paletteForPreference(preference),
+  );
 }
 
 export function subscribeAppearance(listener: () => void): () => void {
@@ -90,7 +94,9 @@ async function persistAppearancePreference(
 // Native surfaces (alerts, action sheets, the keyboard, iOS platform colors) follow the
 // window's scheme, so an explicit app choice overrides it and System hands it back to the OS.
 function applyNativeColorScheme(preference: AppearancePreference) {
-  Appearance.setColorScheme(preference === "system" ? "unspecified" : preference);
+  Appearance.setColorScheme(
+    preference === "system" ? "unspecified" : resolveAppearance(preference),
+  );
 }
 
 Appearance.addChangeListener(() => {

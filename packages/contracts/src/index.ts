@@ -9,6 +9,7 @@ export * from "./account/security-events.js";
 export * from "./account/signup-attribution.js";
 export * from "./account/space-availability.js";
 export * from "./account/user-devices.js";
+export * from "./account/user-image.js";
 export * from "./artifacts/artifacts.js";
 export * from "./artifacts/board.js";
 export * from "./artifacts/page-collaboration.js";

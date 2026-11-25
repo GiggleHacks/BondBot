@@ -381,7 +381,7 @@ async function renderNameEditor(name = "Alex Rivera") {
   const button = (label: string) =>
     [...card.querySelectorAll("button")].find((b) => b.textContent === label)!;
   await act(async () => button("Edit").click());
-  const input = card.querySelector("input")!;
+  const input = card.querySelector<HTMLInputElement>('input[autocomplete="name"]')!;
   return {
     card,
     input,
@@ -420,7 +420,7 @@ it("saves a trimmed name and refreshes the account data", async () => {
     await editor.submit();
     expect(authClient.updateUser).toHaveBeenCalledWith({ name: "Sam Rivera" });
     expect(editor.onNameSaved).toHaveBeenCalledOnce();
-    expect(editor.card.querySelector("input")).toBeNull();
+    expect(editor.card.querySelector<HTMLInputElement>('input[autocomplete="name"]')).toBeNull();
   } finally {
     await editor.cleanup();
   }
@@ -452,7 +452,7 @@ it("closes an unchanged name without saving", async () => {
     await editor.submit();
     expect(authClient.updateUser).not.toHaveBeenCalled();
     expect(editor.onNameSaved).not.toHaveBeenCalled();
-    expect(editor.card.querySelector("input")).toBeNull();
+    expect(editor.card.querySelector<HTMLInputElement>('input[autocomplete="name"]')).toBeNull();
     expect(editor.card.querySelector('[role="alert"]')).toBeNull();
   } finally {
     await editor.cleanup();
@@ -469,11 +469,13 @@ it.each(["button", "Escape"])("cancels a name edit with %s without saving", asyn
       else
         editor.input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
-    expect(editor.card.querySelector("input")).toBeNull();
+    expect(editor.card.querySelector<HTMLInputElement>('input[autocomplete="name"]')).toBeNull();
     expect(editor.card.textContent).toContain("Alex Rivera");
     expect(authClient.updateUser).not.toHaveBeenCalled();
     await act(async () => editor.button("Edit").click());
-    expect(editor.card.querySelector("input")!.value).toBe("Alex Rivera");
+    expect(editor.card.querySelector<HTMLInputElement>('input[autocomplete="name"]')!.value).toBe(
+      "Alex Rivera",
+    );
   } finally {
     await editor.cleanup();
   }
@@ -495,11 +497,13 @@ it.each([{ isComposing: true }, { keyCode: 229 }])(
       window.addEventListener("keydown", onWindowKey);
       await pressEscape(composition);
       window.removeEventListener("keydown", onWindowKey);
-      expect(editor.card.querySelector("input")?.value).toBe("Sam Rivera");
+      expect(editor.card.querySelector<HTMLInputElement>('input[autocomplete="name"]')?.value).toBe(
+        "Sam Rivera",
+      );
       // The form keeps Escape from chat listeners behind Settings, as a plain Escape does.
       expect(onWindowKey).not.toHaveBeenCalled();
       await pressEscape({});
-      expect(editor.card.querySelector("input")).toBeNull();
+      expect(editor.card.querySelector<HTMLInputElement>('input[autocomplete="name"]')).toBeNull();
     } finally {
       await editor.cleanup();
     }
@@ -587,10 +591,10 @@ it("closes the name editor before refresh finishes and ignores a refresh failure
     await editor.submit();
     expect(authClient.updateUser).toHaveBeenCalledWith({ name: "Sam Rivera" });
     expect(editor.onNameSaved).toHaveBeenCalledOnce();
-    expect(editor.card.querySelector("input")).toBeNull();
+    expect(editor.card.querySelector<HTMLInputElement>('input[autocomplete="name"]')).toBeNull();
     expect(editor.button("Edit").disabled).toBe(false);
     await act(async () => rejectRefresh.reject(new Error("offline")));
-    expect(editor.card.querySelector("input")).toBeNull();
+    expect(editor.card.querySelector<HTMLInputElement>('input[autocomplete="name"]')).toBeNull();
     expect(editor.card.querySelector('[role="alert"]')).toBeNull();
   } finally {
     await editor.cleanup();

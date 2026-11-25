@@ -140,6 +140,7 @@ it("opens integrations and keeps the existing account actions and links", async 
   expect(onIntegrations).toHaveBeenCalledOnce();
   const menu = document.querySelector('[data-slot="popover-content"]')!;
   expect([...menu.querySelectorAll("button, a")].map((row) => row.textContent)).toEqual([
+    "DUDemo Useraccount@rakazo.test",
     "Settings",
     "Skills",
     "Artifacts",
@@ -303,14 +304,16 @@ async function openOrganizations() {
 
 it("shows the active organization as one row, even when it is the only one", async () => {
   const rows = await renderOrganizations([personal]);
-  expect(rows.map((row) => row.textContent).slice(0, 2)).toEqual(["Personal", "Settings"]);
+  // The profile header comes first, then the organization row.
+  expect(rows.map((row) => row.textContent).slice(1, 3)).toEqual(["Personal", "Settings"]);
 });
 
 it("lists organizations in a submenu with the active one checked, then New organization", async () => {
   const onSwitch = vi.fn();
   const onCreate = vi.fn();
   const rows = await renderOrganizations([personal, work], onSwitch, onCreate);
-  expect(rows.map((row) => row.textContent).slice(0, 2)).toEqual(["Personal", "Settings"]);
+  // The profile header comes first, then the organization row.
+  expect(rows.map((row) => row.textContent).slice(1, 3)).toEqual(["Personal", "Settings"]);
   const items = await openOrganizations();
   expect(items.map((item) => item.textContent)).toEqual(["Personal", "Work", "New organization"]);
   expect(items[0]!.getAttribute("aria-current")).toBe("true");

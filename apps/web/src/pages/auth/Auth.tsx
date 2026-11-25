@@ -1,26 +1,20 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { BOT_COLOR_LIST, signInProviders } from "@rakazo/contracts";
+import { signInProviders } from "@rakazo/contracts";
 import {
   credentialIssue,
   MAX_PASSWORD_LENGTH,
-  MIN_PASSWORD_LENGTH,
+  PIN_LENGTH,
   signupRequiresEmailVerification,
   suggestEmailCorrection,
 } from "@rakazo/core";
-import {
-  Button,
-  Input,
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-  Label,
-  LogoAvatar,
-} from "@rakazo/ui-web";
+import { Button, Input, InputOTP, InputOTPGroup, InputOTPSlot, Label } from "@rakazo/ui-web";
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { PasskeySignIn, usePasskeySignIn } from "../../components/account/PasskeySignIn";
+import { PinInput } from "../../components/account/PinInput";
 import { SocialSignInButtons } from "../../components/account/SocialSignInButtons";
+import { QuakeText } from "../../components/brand/QuakeText";
 import { WindowChrome } from "../../components/WindowChrome";
 import { authClient } from "../../lib/auth/auth";
 import type { AuthCapabilities } from "../../lib/auth/auth-capabilities";
@@ -30,6 +24,9 @@ import { runSsoFlow } from "../../lib/auth/sso-flow";
 import { desktopBridge } from "../../lib/platform/desktop";
 import { clearSpaceSelection } from "../../lib/query/rpc";
 import { authErrorText, credentialIssueText } from "../../lib/query/user-error";
+import "./landing/landing.css";
+import { CodeBackdrop } from "./landing/CodeBackdrop";
+import { RobotBackdrop } from "./landing/RobotBackdrop";
 
 type AuthMode = "in" | "up" | "forgot";
 
@@ -50,6 +47,8 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  // A 6-digit PIN in place of the password. It is sent and stored as the password.
+  const [usePin, setUsePin] = useState(false);
   const [emailBlurred, setEmailBlurred] = useState(false);
   const [warnedEmail, setWarnedEmail] = useState<string | null>(null);
   const emailSuggestion = mode === "up" ? suggestEmailCorrection(email) : null;
@@ -72,7 +71,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   const [code, setCode] = useState("");
   const useCode = Boolean(reset?.passwordAuth && reset.emailCode) && mode !== "forgot";
   // A blank password asks for an emailed code, so code-only accounts need no toggle.
-  const codeMode = useCode && !password;
+  const codeMode = useCode && !usePin && !password;
   const codeStep = useCode && codeSent;
   const providers = reset ? signInProviders(reset) : [];
   const chooser = Boolean(
@@ -89,7 +88,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
     ) : presented && mode === "in" ? (
       <Trans>Welcome back</Trans>
     ) : mode === "in" ? (
-      <Trans>Sign in to Rakazo</Trans>
+      "Sign in"
     ) : mode === "up" ? (
       <Trans>Create your account</Trans>
     ) : (
@@ -135,6 +134,10 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
     if (emailSuggestion && warnedEmail !== email) {
       setWarnedEmail(email);
       setEmailBlurred(true);
+      return;
+    }
+    if (usePin && mode !== "forgot" && password.length !== PIN_LENGTH) {
+      setError("A PIN is 6 digits");
       return;
     }
     setPending(true);
@@ -464,30 +467,52 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
               )}
               {mode !== "forgot" && !codeStep ? (
                 <div className="mt-4 w-full">
-                  <Label htmlFor={passwordFieldId} className="text-muted-foreground">
-                    <Trans>Password</Trans>
-                  </Label>
-                  <Input
-                    id={passwordFieldId}
-                    name="password"
-                    autoComplete={mode === "in" ? "current-password" : "new-password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder={t`Password`}
-                    type="password"
-                    required={!useCode}
-                    minLength={mode === "up" ? MIN_PASSWORD_LENGTH : undefined}
-                    maxLength={MAX_PASSWORD_LENGTH}
-                    size="xl"
-                    className={fieldClass}
-                  />
-                  {mode === "in" && reset?.passwordReset ? (
-                    <div className="mt-2 text-right text-body">
+                  {usePin ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <Label className="self-start text-muted-foreground">PIN</Label>
+                      <PinInput value={password} onChange={setPassword} label="PIN" autoFocus />
+                    </div>
+                  ) : (
+                    <>
+                      <Label htmlFor={passwordFieldId} className="text-muted-foreground">
+                        <Trans>Password</Trans>
+                      </Label>
+                      <Input
+                        id={passwordFieldId}
+                        name="password"
+                        autoComplete={mode === "in" ? "current-password" : "new-password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder={t`Password`}
+                        type="password"
+                        required={!useCode}
+                        // The server holds anything but a 6-digit PIN to the longer minimum.
+                        minLength={mode === "up" ? PIN_LENGTH : undefined}
+                        maxLength={MAX_PASSWORD_LENGTH}
+                        size="xl"
+                        className={fieldClass}
+                      />
+                    </>
+                  )}
+                  <div className="mt-2 flex items-center justify-between gap-3 text-body">
+                    <Button
+                      type="button"
+                      variant="text"
+                      size="sm"
+                      onClick={() => {
+                        setUsePin(!usePin);
+                        setPassword("");
+                        setError(null);
+                      }}
+                    >
+                      {usePin ? "Use a password" : "Use a 6-digit PIN"}
+                    </Button>
+                    {mode === "in" && reset?.passwordReset ? (
                       <Link to="/forgot-password" className="font-medium text-foreground">
                         <Trans>Forgot password?</Trans>
                       </Link>
-                    </div>
-                  ) : null}
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
               {error ? (
@@ -684,46 +709,44 @@ export function AuthFrame({
   children: React.ReactNode;
 }) {
   const server = desktopBridge()?.server;
+  const robotSlot = useRef<HTMLDivElement>(null);
   return (
+    // Always dark: the robot is drawn on black whatever the app theme is.
     <div
-      className="flex min-h-full flex-col bg-background text-foreground"
+      className="bb-landing relative isolate flex min-h-full flex-col bg-black text-foreground"
       data-rakazo-surface="auth"
+      data-theme="dark"
     >
-      <div className="app-drag flex items-center gap-2 px-5 py-[18px]">
+      <CodeBackdrop />
+      <RobotBackdrop slotRef={robotSlot} />
+      <div className="app-drag relative flex items-center gap-2 px-5 py-[18px]">
         <WindowChrome />
       </div>
-      <div className="flex flex-1 items-center justify-center px-6 pb-16">
+      <div className="relative flex flex-1 flex-col items-center px-6 pb-12">
+        {/* The robot's head is drawn into this space by the backdrop. */}
+        <div ref={robotSlot} className="h-[clamp(200px,40vh,440px)] w-full shrink-0" />
+        <div className="bb-wordmark mt-2 mb-6">
+          <QuakeText text="BOND BOT" zoom={4} className="sm:hidden" />
+          <QuakeText text="BOND BOT" zoom={5} className="hidden sm:flex" />
+        </div>
         <form
           onSubmit={onSubmit}
-          className={
-            surface
-              ? "flex w-full max-w-[520px] flex-col rounded-3xl border border-border bg-card px-8 pt-8 pb-9 shadow-sm"
-              : "flex w-full max-w-[460px] flex-col items-center"
-          }
+          className={`bb-auth-card flex w-full flex-col rounded-3xl border border-border bg-background/75 px-8 pt-8 pb-9 shadow-2xl backdrop-blur-md ${
+            surface ? "max-w-[520px]" : "max-w-[460px]"
+          }`}
         >
           {leading ? <div className="mb-4 self-start">{leading}</div> : null}
-          <div className={surface ? "flex w-full flex-col items-center" : "contents"}>
-            <LogoAvatar
-              size={74}
-              avatarValue={BOT_COLOR_LIST.find((color) => color.id === "orange")?.hex}
-              motion={false}
-            />
-            <h1
-              aria-live="polite"
-              className={
-                surface
-                  ? "mt-5 mb-6 text-balance text-center text-display font-medium tracking-tight"
-                  : "mt-7 mb-9 text-balance text-center text-display font-medium tracking-tight"
-              }
-            >
-              {title}
-            </h1>
-          </div>
-          {children}
+          <h1
+            aria-live="polite"
+            className="mb-6 text-balance text-center text-display font-medium tracking-tight"
+          >
+            {title}
+          </h1>
+          <div className="flex w-full flex-col items-center">{children}</div>
         </form>
       </div>
       {server ? (
-        <div className="flex justify-center pb-6">
+        <div className="relative flex justify-center pb-6">
           <Button type="button" variant="text" size="sm" onClick={() => void server.change()}>
             <Trans>Change server</Trans>
           </Button>
@@ -757,7 +780,7 @@ function PasswordField({
         autoComplete="new-password"
         type="password"
         required
-        minLength={MIN_PASSWORD_LENGTH}
+        minLength={PIN_LENGTH}
         maxLength={MAX_PASSWORD_LENGTH}
         value={value}
         onChange={(event) => onChange(event.target.value)}
