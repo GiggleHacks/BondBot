@@ -6,7 +6,11 @@
 
   /** Core's `translate`, which this plain page cannot import: English-keyed, `{name}` placeholders. */
   function t(message, values) {
-    const template = Object.hasOwn(messages, message) ? messages[message] : message;
+    // Local addition (BondBot): core's `rebrand`, applied before values are filled in.
+    const template = (Object.hasOwn(messages, message) ? messages[message] : message).replace(
+      /\bRakazo\b(?! Cloud)/g,
+      "BondBot",
+    );
     if (!values) return template;
     return template.replace(/\{([A-Za-z0-9_]+)\}/g, (match, key) =>
       Object.hasOwn(values, key) ? String(values[key]) : match,

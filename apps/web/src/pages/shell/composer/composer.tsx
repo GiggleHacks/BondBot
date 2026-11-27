@@ -62,7 +62,6 @@ import {
   PendingAttachmentChips,
   SlashPicker,
 } from "./composer-parts";
-import { recordMessageSent } from "./github-star-prompt";
 import { HoldToTalkStrip, useHoldToTalk } from "./hold-to-talk";
 import { useComposerFileDrop } from "./use-composer-file-drop";
 import { useComposerLayout } from "./use-composer-layout";
@@ -538,7 +537,6 @@ const ComposerBody = memo(function Composer({
           : onSend(text, mentions, clientNonce))) !== false;
       settleComposerDraftSubmission(draftKey, submission, accepted);
       if (accepted) {
-        recordMessageSent();
         return;
       }
     } catch {

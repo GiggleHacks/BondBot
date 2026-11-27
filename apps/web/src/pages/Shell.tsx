@@ -7,7 +7,7 @@ import { Button } from "@rakazo/ui-web";
 import { useIsMobile } from "@rakazo/ui-web/hooks/use-mobile";
 import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
-import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { IncomingCall } from "../components/call/IncomingCall";
 import { ComputerUpdateProgress } from "../components/computers/ComputerUpdateProgress";
@@ -24,6 +24,7 @@ import { desktopBridge } from "../lib/platform/desktop";
 import { usePreloadRecoveryState } from "../lib/platform/preload-recovery";
 import { botsSidebarDensityPreference } from "../lib/preferences/bots-sidebar-density-pref";
 import { chatPreferencesQuery, useChatPreferences } from "../lib/preferences/chat-preferences";
+import { multiviewOpenPreference } from "../lib/preferences/multiview-pref";
 import {
   lastChatKey,
   lastChatOf,
@@ -53,7 +54,8 @@ import { ChatComposerArea } from "./shell/composer/chat-composer-area";
 import { useComposerActions } from "./shell/composer/use-composer-actions";
 import { useComposerMentions } from "./shell/composer/use-composer-mentions";
 import { useComposerModelShortcuts } from "./shell/composer/use-composer-model-shortcuts";
-import { type PendingVpnChoice, TeamComputerVpnDialog } from "./shell/computer-vpn-control";
+import type { PendingVpnChoice } from "./shell/computer-vpn-control";
+import { TeamComputerVpnDialog } from "./shell/computer-vpn-control";
 import { ComputerOverlay } from "./shell/computers/computer-overlay";
 import { ComputerPanel } from "./shell/computers/computer-panel";
 import { useComputerControls, useComputerState } from "./shell/computers/use-computer";
@@ -95,6 +97,12 @@ import { useShellShortcutActions } from "./shell/use-shell-shortcut-actions";
 import { useShellStatus } from "./shell/use-shell-status";
 import { useSpaceActions } from "./shell/use-space-actions";
 import { useOpenSpaceChat } from "./shell/use-space-switch";
+
+const MultiviewWorkspace = lazy(() =>
+  import("./shell/multiview/MultiviewWorkspace").then((module) => ({
+    default: module.MultiviewWorkspace,
+  })),
+);
 
 export function ShellPage() {
   // A new key per space switch, so nothing from the previous space survives it.
@@ -219,10 +227,16 @@ function SpaceShell() {
   const selectBot = useCallback(
     (id: string) => {
       setMobileSidebarOpen(false);
+      multiviewOpenPreference.set(false);
       navigate(`/app/${id}`);
     },
     [navigate, setMobileSidebarOpen],
   );
+  const multiviewOpen = multiviewOpenPreference.use();
+  const toggleMultiview = useCallback(() => {
+    setMobileSidebarOpen(false);
+    multiviewOpenPreference.set(!multiviewOpenPreference.get());
+  }, [setMobileSidebarOpen]);
   const screenDockOn = screenDockPreference.use();
   const screenDockActive = screenDockOn && isMobileSidebar && !inGroup && Boolean(active);
   const computerState = useComputerState({
@@ -240,6 +254,7 @@ function SpaceShell() {
   });
   const [teamVpnChoice, setTeamVpnChoice] = useState<PendingVpnChoice | null>(null);
   // On a phone, the Back gesture closes the newest open layer instead of leaving the app.
+  useBackLayer(multiviewOpen, () => multiviewOpenPreference.set(false), isMobileSidebar);
   useBackLayer(mobileSidebarOpen, () => setMobileSidebarOpen(false), isMobileSidebar);
   useBackLayer(Boolean(panel), () => setPanel(null), isMobileSidebar);
   useBackLayer(computerOpen, () => setComputerOpen(false), isMobileSidebar);
@@ -578,7 +593,13 @@ function SpaceShell() {
     setSendError: composer.setSendError,
   });
 
-  const openBot = useCallback((id: string) => navigate(`/app/${id}`), [navigate]);
+  const openBot = useCallback(
+    (id: string) => {
+      multiviewOpenPreference.set(false);
+      navigate(`/app/${id}`);
+    },
+    [navigate],
+  );
   const { replyToMessage, quoteMessage, markMessageUnread } = useMessageActions({
     activeId: active?.id,
     groupId,
@@ -760,159 +781,201 @@ function SpaceShell() {
         openIntegrations={() => setOverlay({ kind: "integrations" })}
         openSkills={() => setOverlay({ kind: "skills" })}
         openAgentImport={() => setOverlay({ kind: "import" })}
-        openSpaceChat={openSpaceChat}
+        openSpaceChat={(targetSpaceId, path) => {
+          multiviewOpenPreference.set(false);
+          openSpaceChat(targetSpaceId, path);
+        }}
+        multiviewOpen={multiviewOpen}
+        onToggleMultiview={toggleMultiview}
       />
 
-      <ChatColumn
-        drawerOpen={mobileSidebarOpen}
-        covered={panelCoversChat}
-        findOpen={findOpen}
-        findInputRef={findInputRef}
-        onCloseFind={() => {
-          setFindOpen(false);
-          focusComposer();
-        }}
-        header={
-          <>
-            {active && !inGroup ? (
-              <ModelEdgeGlow provider={active.modelProvider} modelId={active.modelId} />
-            ) : null}
-            <ChatHeader
+      {multiviewOpen ? (
+        <Suspense fallback={null}>
+          <MultiviewWorkspace
+            spaceId={bootstrapMe?.spaceId ?? shellSpaceId ?? "default"}
+            isMobile={isMobileSidebar}
+            drawerOpen={mobileSidebarOpen}
+            covered={panelCoversChat}
+            bots={bots}
+            botsRef={botsRef}
+            archivedBots={archivedBots}
+            activeBotId={active?.id}
+            rpc={rpc}
+            queries={queries}
+            meId={userId}
+            streamReplies={chatPreferences.streamReplies}
+            showToolActivity={showToolActivity}
+            sandboxProvider={bootstrapMe?.sandboxProvider}
+            vpn={vpn}
+            maximizedBotId={computerOpen ? (computerBot?.id ?? null) : null}
+            onOpenNavigation={() => setMobileSidebarOpen(true)}
+            onMaximize={(targetBotId) => void openComputer(targetBotId)}
+            onOpenFullChat={openBot}
+            onOpenBot={openBot}
+            onCreateBot={() => dialogs.setCreateBotOpen(true)}
+            onExit={() => multiviewOpenPreference.set(false)}
+            refreshBots={refreshBots}
+            onBotUpdated={(updated) =>
+              setBots((current) => current.map((bot) => (bot.id === updated.id ? updated : bot)))
+            }
+            onUpgrade={() => openSettings("billing")}
+            onSendError={(message) => composer.setSendError(message)}
+          />
+        </Suspense>
+      ) : (
+        <ChatColumn
+          drawerOpen={mobileSidebarOpen}
+          covered={panelCoversChat}
+          findOpen={findOpen}
+          findInputRef={findInputRef}
+          onCloseFind={() => {
+            setFindOpen(false);
+            focusComposer();
+          }}
+          header={
+            <>
+              {active && !inGroup ? (
+                <ModelEdgeGlow provider={active.modelProvider} modelId={active.modelId} />
+              ) : null}
+              <ChatHeader
+                inGroup={inGroup}
+                active={active}
+                activeGroup={activeGroup}
+                activeSnapshot={activeSnapshot}
+                phoneCallsEnabled={false}
+                meetingsEnabled={Boolean(bootstrapMe?.meetingsEnabled)}
+                voiceReady={false}
+                inCall={Boolean(active) && call?.botId === active?.id}
+                panelOpen={chatPanelOpen}
+                onOpenNavigation={() => setMobileSidebarOpen(true)}
+                onTogglePanel={toggleChatPanel}
+                onCall={openCall}
+                vpn={vpn}
+                screenDocked={screenDockActive}
+                onToggleScreenDock={() => screenDockPreference.set(!screenDockOn)}
+                multiviewOpen={multiviewOpen}
+                onToggleMultiview={toggleMultiview}
+                onSwitchModel={async (choice) => {
+                  if (!active) return undefined;
+                  // Resolves only once the server has saved the switch; a failure throws.
+                  const updated = await rpc.bots.update({
+                    botId: active.id,
+                    modelProvider: choice.provider,
+                    modelId: choice.modelId,
+                  });
+                  setBots((current) =>
+                    current.map((bot) => (bot.id === updated.id ? updated : bot)),
+                  );
+                  void refreshBots().catch(() => undefined);
+                  return {
+                    provider: updated.modelProvider ?? choice.provider,
+                    modelId: updated.modelId ?? choice.modelId,
+                  };
+                }}
+              />
+              {screenDockActive && active ? (
+                <DockedScreen
+                  bot={active}
+                  computer={computerState.computer}
+                  embeddedScreenUrl={computerControls.embeddedScreenUrl}
+                  screenBotId={computerState.screenBotId ?? null}
+                  screenFrameKey={computerState.screenFrameKey}
+                  heldScreen={computerState.heldScreen}
+                  screenFrameRef={chatPanelOpen ? undefined : computerState.setScreenFrame}
+                  computerScreenError={computerControls.computerScreenError}
+                  computerBooting={computerControls.computerBooting}
+                  booting={computerState.booting}
+                  onWake={() => void openComputer(undefined, false, true)}
+                  onRefresh={computerControls.refreshDockedComputer}
+                  hasControl={computerControls.hasControl}
+                  onTakeControl={computerControls.takeDockedControl}
+                  onRelease={() => computerControls.releaseComputer()}
+                  onClose={() => screenDockPreference.set(false)}
+                />
+              ) : null}
+            </>
+          }
+          composer={
+            <ChatComposerArea
+              composer={composer}
               inGroup={inGroup}
+              groupId={groupId}
               active={active}
               activeGroup={activeGroup}
               activeSnapshot={activeSnapshot}
-              phoneCallsEnabled={false}
-              meetingsEnabled={Boolean(bootstrapMe?.meetingsEnabled)}
-              voiceReady={false}
-              inCall={Boolean(active) && call?.botId === active?.id}
-              panelOpen={chatPanelOpen}
-              onOpenNavigation={() => setMobileSidebarOpen(true)}
-              onTogglePanel={toggleChatPanel}
-              onCall={openCall}
-              vpn={vpn}
-              screenDocked={screenDockActive}
-              onToggleScreenDock={() => screenDockPreference.set(!screenDockOn)}
-              onSwitchModel={async (choice) => {
-                if (!active) return undefined;
-                // Resolves only once the server has saved the switch; a failure throws.
-                const updated = await rpc.bots.update({
-                  botId: active.id,
-                  modelProvider: choice.provider,
-                  modelId: choice.modelId,
-                });
-                setBots((current) =>
-                  current.map((bot) => (bot.id === updated.id ? updated : bot)),
-                );
-                void refreshBots().catch(() => undefined);
-                return {
-                  provider: updated.modelProvider ?? choice.provider,
-                  modelId: updated.modelId ?? choice.modelId,
-                };
-              }}
-            />
-            {screenDockActive && active ? (
-              <DockedScreen
-                bot={active}
-                computer={computerState.computer}
-                embeddedScreenUrl={computerControls.embeddedScreenUrl}
-                screenBotId={computerState.screenBotId ?? null}
-                screenFrameKey={computerState.screenFrameKey}
-                heldScreen={computerState.heldScreen}
-                screenFrameRef={chatPanelOpen ? undefined : computerState.setScreenFrame}
-                computerScreenError={computerControls.computerScreenError}
-                computerBooting={computerControls.computerBooting}
-                booting={computerState.booting}
-                onWake={() => void openComputer(undefined, false, true)}
-                onRefresh={computerControls.refreshDockedComputer}
-                hasControl={computerControls.hasControl}
-                onTakeControl={computerControls.takeDockedControl}
-                onRelease={() => computerControls.releaseComputer()}
-                onClose={() => screenDockPreference.set(false)}
-              />
-            ) : null}
-          </>
-        }
-        composer={
-          <ChatComposerArea
-            composer={composer}
-            inGroup={inGroup}
-            groupId={groupId}
-            active={active}
-            activeGroup={activeGroup}
-            activeSnapshot={activeSnapshot}
-            meId={userId}
-            memberName={view.resolveMemberName}
-            recordingSkill={Boolean(recordingSkill)}
-            running={composerRunning}
-            enterToSend={enterToSend}
-            sendColors={userBubble}
-            modelPicker={chatPreferences.composerModelPicker ? modelShortcuts.pickerProps : null}
-            onBotSaved={(updated) =>
-              setBots((current) => current.map((bot) => (bot.id === updated.id ? updated : bot)))
-            }
-            phoneCallsEnabled={false}
-            dictationTranscribe={false}
-            artifactTarget={view.artifactTarget}
-            mentionTargets={composerMentionTargets}
-            agentSkills={agentSkills}
-            onSlashOpen={refreshAgentSkills}
-            openSettings={openSettings}
-            openChatSettings={openChatSettings}
-            setPanel={setPanel}
-            setModelFocusRequest={setModelFocusRequest}
-          />
-        }
-      >
-        {showNewBotPrompt ? (
-          <div className="grid flex-1 place-items-center">
-            <Button onClick={() => dialogs.setCreateBotOpen(true)}>
-              <Plus size={16} aria-hidden="true" />
-              <Trans>New bot</Trans>
-            </Button>
-          </div>
-        ) : (
-          <div className={`flex min-h-0 flex-1 flex-col ${screenDockActive ? "-mt-20" : ""}`}>
-            <Transcript
-              key={activeSnapshot?.threadId}
               meId={userId}
-              scrollRef={thread.messageScroll}
-              scrollRequest={scrollRequest}
-              onScrollRequestHandled={clearScrollRequest}
-              {...view.transcriptProps}
-              {...composer.transcriptProps}
-              markedUnreadMessageId={read.markedUnreadMessageId}
-              showToolActivity={showToolActivity}
-              unreadAfterSeq={read.unreadAfterSeq}
-              loadingOlder={loadingOlder}
-              userBubble={userBubble}
-              onCallBack={undefined}
-              onLoadOlder={loadOlder}
-              onOpenBot={openBot}
-              onAnswer={composer.answerMessage}
-              onReply={replyToMessage}
-              onMarkUnread={markMessageUnread}
-              onQuote={quoteMessage}
-              onQuoteShortcutChange={registerQuoteShortcut}
-              onReact={composer.reactToMessage}
-              onJumpToMessage={jumpToReplyMessage}
-              onOpenPeerMessages={openPeerMessages}
-              onRefresh={refreshActiveThread}
-              onBotChanged={refreshBots}
-              onAddRoutine={addSkillRoutine}
-              voiceReady={false}
-              speakingMessageId={speakingMessageId}
-              callHoldsSpeaker={callHoldsSpeaker}
-              onSpeak={speakMessage}
-              onOpenComputer={computerControls.onOpenComputer}
-              onReleaseComputer={computerControls.onReleaseComputer}
-              onOpenImportSetup={openImportSetup}
-              onOpenAgentImport={openAgentImport}
-              rpc={rpc}
+              memberName={view.resolveMemberName}
+              recordingSkill={Boolean(recordingSkill)}
+              running={composerRunning}
+              enterToSend={enterToSend}
+              sendColors={userBubble}
+              modelPicker={chatPreferences.composerModelPicker ? modelShortcuts.pickerProps : null}
+              onBotSaved={(updated) =>
+                setBots((current) => current.map((bot) => (bot.id === updated.id ? updated : bot)))
+              }
+              phoneCallsEnabled={false}
+              dictationTranscribe={false}
+              artifactTarget={view.artifactTarget}
+              mentionTargets={composerMentionTargets}
+              agentSkills={agentSkills}
+              onSlashOpen={refreshAgentSkills}
+              openSettings={openSettings}
+              openChatSettings={openChatSettings}
+              setPanel={setPanel}
+              setModelFocusRequest={setModelFocusRequest}
             />
-          </div>
-        )}
-      </ChatColumn>
+          }
+        >
+          {showNewBotPrompt ? (
+            <div className="grid flex-1 place-items-center">
+              <Button onClick={() => dialogs.setCreateBotOpen(true)}>
+                <Plus size={16} aria-hidden="true" />
+                <Trans>New bot</Trans>
+              </Button>
+            </div>
+          ) : (
+            <div className={`flex min-h-0 flex-1 flex-col ${screenDockActive ? "-mt-20" : ""}`}>
+              <Transcript
+                key={activeSnapshot?.threadId}
+                meId={userId}
+                scrollRef={thread.messageScroll}
+                scrollRequest={scrollRequest}
+                onScrollRequestHandled={clearScrollRequest}
+                {...view.transcriptProps}
+                {...composer.transcriptProps}
+                markedUnreadMessageId={read.markedUnreadMessageId}
+                showToolActivity={showToolActivity}
+                unreadAfterSeq={read.unreadAfterSeq}
+                loadingOlder={loadingOlder}
+                userBubble={userBubble}
+                onCallBack={undefined}
+                onLoadOlder={loadOlder}
+                onOpenBot={openBot}
+                onAnswer={composer.answerMessage}
+                onReply={replyToMessage}
+                onMarkUnread={markMessageUnread}
+                onQuote={quoteMessage}
+                onQuoteShortcutChange={registerQuoteShortcut}
+                onReact={composer.reactToMessage}
+                onJumpToMessage={jumpToReplyMessage}
+                onOpenPeerMessages={openPeerMessages}
+                onRefresh={refreshActiveThread}
+                onBotChanged={refreshBots}
+                onAddRoutine={addSkillRoutine}
+                voiceReady={false}
+                speakingMessageId={speakingMessageId}
+                callHoldsSpeaker={callHoldsSpeaker}
+                onSpeak={speakMessage}
+                onOpenComputer={computerControls.onOpenComputer}
+                onReleaseComputer={computerControls.onReleaseComputer}
+                onOpenImportSetup={openImportSetup}
+                onOpenAgentImport={openAgentImport}
+                rpc={rpc}
+              />
+            </div>
+          )}
+        </ChatColumn>
+      )}
 
       <PageViewHost />
       <IncomingCall

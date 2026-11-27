@@ -699,7 +699,7 @@ describe.skipIf(process.platform === "win32")("Claude Code CLI provider", () => 
     const cli = fakeClaude("reply");
     configureProvider(undefined);
     expect((await run(hello)).message.errorMessage).toMatch(
-      /only inside the Rakazo API and worker/,
+      /only inside the BondBot API and worker/,
     );
     configureProvider(async () => PERSONAL_CLI_SHARED_REFUSAL);
     expect((await run(hello)).message.errorMessage).toBe(PERSONAL_CLI_SHARED_REFUSAL);

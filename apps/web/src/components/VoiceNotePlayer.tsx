@@ -238,11 +238,13 @@ export function VoiceNotePlayer({
   };
 
   const playedBars = Math.round(fraction * peaks.length);
-  const label = started ? `${formatVoiceTime(time)} / ${formatVoiceTime(duration)}` : formatVoiceTime(duration);
-  const colors = fromUser
-    ? "bg-chat-user text-chat-user-foreground"
-    : "bg-muted text-foreground";
-  const buttonColors = fromUser ? "bg-chat-user-foreground text-chat-user" : "bg-foreground text-muted";
+  const label = started
+    ? `${formatVoiceTime(time)} / ${formatVoiceTime(duration)}`
+    : formatVoiceTime(duration);
+  const colors = fromUser ? "bg-chat-user text-chat-user-foreground" : "bg-muted text-foreground";
+  const buttonColors = fromUser
+    ? "bg-chat-user-foreground text-chat-user"
+    : "bg-foreground text-muted";
   const pillColors = fromUser ? "bg-chat-user-foreground/25" : "bg-foreground/15";
 
   return (
@@ -250,24 +252,24 @@ export function VoiceNotePlayer({
       ref={root}
       title={name}
       data-testid="voice-note"
-      className={`flex w-[260px] max-w-full select-none items-center gap-2.5 rounded-2xl px-2.5 py-1.5 ${colors}`}
+      className={`flex w-[188px] max-w-full select-none items-center gap-1.5 rounded-full px-1.5 py-0.5 ${colors}`}
     >
       <button
         type="button"
         aria-label={playing ? `Pause voice note` : `Play voice note`}
         aria-busy={status === "loading"}
         onClick={toggle}
-        className={`grid size-8 shrink-0 place-items-center rounded-full ${buttonColors}`}
+        className={`grid size-5 shrink-0 place-items-center rounded-full ${buttonColors}`}
       >
         {status === "loading" && !src ? (
           <Spinner aria-label={`Loading voice note…`} />
         ) : playing ? (
-          <Pause className="size-4 fill-current" aria-hidden="true" />
+          <Pause className="size-2.5 fill-current" aria-hidden="true" />
         ) : (
-          <Play className="ms-0.5 size-4 fill-current" aria-hidden="true" />
+          <Play className="ms-0.5 size-2.5 fill-current" aria-hidden="true" />
         )}
       </button>
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="flex min-w-0 flex-1 flex-col gap-0">
         {/* biome-ignore lint/a11y/useSemanticElements: a draggable waveform is a custom slider. */}
         <div
           role="slider"
@@ -277,7 +279,7 @@ export function VoiceNotePlayer({
           aria-valuemax={Math.round(duration)}
           aria-valuenow={Math.round(time)}
           aria-valuetext={label}
-          className="flex h-5 cursor-pointer items-center gap-[2px] [touch-action:none]"
+          className="flex h-3 cursor-pointer items-center gap-[1px] [touch-action:none]"
           onPointerDown={(event) => {
             if (status !== "ready") {
               toggle();
@@ -291,7 +293,8 @@ export function VoiceNotePlayer({
           }}
           onKeyDown={(event) => {
             if (event.key === "ArrowRight") seekTo(Math.min(1, (time + 5) / Math.max(duration, 1)));
-            else if (event.key === "ArrowLeft") seekTo(Math.max(0, (time - 5) / Math.max(duration, 1)));
+            else if (event.key === "ArrowLeft")
+              seekTo(Math.max(0, (time - 5) / Math.max(duration, 1)));
             else if (event.key === " " || event.key === "Enter") toggle();
             else return;
             event.preventDefault();
@@ -309,7 +312,7 @@ export function VoiceNotePlayer({
             />
           ))}
         </div>
-        <div className="flex items-center justify-between text-[11px] leading-none tabular-nums">
+        <div className="flex items-center justify-between text-[9px] leading-none tabular-nums">
           <span className="opacity-80">
             {status === "error" ? `Could not load. Tap play to retry.` : label}
           </span>
@@ -330,7 +333,7 @@ export function VoiceNotePlayer({
               onClick={() => void onDownload()}
               className="opacity-70 hover:opacity-100"
             >
-              <Download className="size-3.5" strokeWidth={2} aria-hidden="true" />
+              <Download className="size-2.5" strokeWidth={2} aria-hidden="true" />
             </button>
           </span>
         </div>

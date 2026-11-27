@@ -88,6 +88,8 @@ export function ShellSidebar({
   openIntegrations,
   openSkills,
   openSpaceChat,
+  multiviewOpen = false,
+  onToggleMultiview,
 }: {
   isMobile: boolean;
   mobileOpen: boolean;
@@ -119,6 +121,8 @@ export function ShellSidebar({
   openIntegrations: () => void;
   openSkills: () => void;
   openSpaceChat: (spaceId: string, path: string) => void;
+  multiviewOpen?: boolean;
+  onToggleMultiview?: () => void;
 }) {
   const { t } = useLingui();
   const rail = useAppRail();
@@ -177,6 +181,8 @@ export function ShellSidebar({
           setCreateMenuOpen={setCreateMenuOpen}
           activityMode={activityMode}
           toggleActivityMode={toggleActivityMode}
+          multiviewOpen={multiviewOpen}
+          onToggleMultiview={onToggleMultiview}
           searchOpen={searchOpen}
           onSearch={() => {
             if (searchOpen) {

@@ -23,7 +23,7 @@ import { readUiLocale, writeUiLocale } from "./setup/setup-store.js";
 const srcDir = path.resolve(import.meta.dirname, "..");
 /** Product and vendor names the setup page shows as they are. */
 const UNTRANSLATED = new Set([
-  "Rakazo",
+  "BondBot",
   "Rakazo Cloud",
   "Docker Desktop",
   "OrbStack",
@@ -81,7 +81,7 @@ describe("desktop language", () => {
     expect(startDesktopLocale("es-MX", "en-US")).toBe("es");
     expect(t("Check for Updates…")).toBe("Buscar actualizaciones…");
     expect(t("Rakazo {version} is ready to install.", { version: "1.2.0" })).toBe(
-      "Rakazo 1.2.0 está listo para instalarse.",
+      "BondBot 1.2.0 está listo para instalarse.",
     );
     expect(desktopMessages()).toBe(ES_MESSAGES);
 
@@ -95,7 +95,7 @@ describe("desktop language", () => {
     expect(desktopMessages()).toBe(PL_MESSAGES);
     expect(t("Check for Updates…")).toBe("Sprawdź aktualizacje…");
     expect(t("Rakazo {version} is ready to install.", { version: "1.2.0" })).toBe(
-      "Rakazo 1.2.0 jest gotowe do zainstalowania.",
+      "BondBot 1.2.0 jest gotowe do zainstalowania.",
     );
   });
 
@@ -104,7 +104,7 @@ describe("desktop language", () => {
     expect(desktopMessages()).toBe(TH_MESSAGES);
     expect(t("Check for Updates…")).toBe("ตรวจสอบการอัปเดต…");
     expect(t("Rakazo {version} is ready to install.", { version: "1.2.0" })).toBe(
-      "Rakazo 1.2.0 พร้อมติดตั้งแล้ว",
+      "BondBot 1.2.0 พร้อมติดตั้งแล้ว",
     );
   });
 

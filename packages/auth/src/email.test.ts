@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { INVITED_TRIAL_WEEKS } from "@rakazo/contracts";
+import { rebrand } from "@rakazo/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { agentImportEmail } from "./agent-import-email.js";
 import {
@@ -185,7 +186,7 @@ describe("email languages", () => {
     for (const message of messages) {
       expect(message.html).toContain('lang="pl"');
       expect(message.html).toContain('dir="ltr"');
-      expect(Object.values(CATALOGS.pl!)).toContain(message.subject);
+      expect(Object.values(CATALOGS.pl!).map(rebrand)).toContain(message.subject);
       expect(message.text).not.toMatch(/\{\w+\}/);
     }
     for (const index of [0, 2]) {
@@ -237,9 +238,9 @@ describe("email languages", () => {
 
   it("writes a code email in Spanish", async () => {
     const message = await signInCodeEmail("user@example.test", "123456", "es");
-    expect(message.subject).toBe("Tu código para iniciar sesión en Rakazo");
+    expect(message.subject).toBe("Tu código para iniciar sesión en BondBot");
     expect(message.html).toContain('lang="es"');
-    expect(message.text).toContain("Introduce este código para iniciar sesión en Rakazo:");
+    expect(message.text).toContain("Introduce este código para iniciar sesión en BondBot:");
     expect(message.html).toContain('dir="ltr"');
   });
 
@@ -263,11 +264,11 @@ describe("email languages", () => {
   it("names a Space invitation's Space, never an organization, in every language", async () => {
     const invitation = { spaceName: "Clients", inviterName: "Ana", url: "https://example.test/i" };
     const english = await spaceInvitationEmail("guest@example.test", invitation);
-    expect(english.subject).toBe("Ana invited you to Clients on Rakazo");
+    expect(english.subject).toBe("Ana invited you to Clients on BondBot");
     expect(english.text).toContain("This invitation expires in 7 days.");
     expect(english.text).not.toContain("Sign in with this email address");
     const turkish = await spaceInvitationEmail("guest@example.test", invitation, "tr");
-    expect(turkish.subject).toBe("Ana sizi Rakazo'da Clients alanına davet etti");
+    expect(turkish.subject).toBe("Ana sizi BondBot'da Clients alanına davet etti");
     expect(turkish.text).not.toContain("kuruluş");
   });
 

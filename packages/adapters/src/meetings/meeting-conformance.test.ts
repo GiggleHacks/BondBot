@@ -314,12 +314,12 @@ it("preserves Teams meeting context and rejects look-alike or non-meeting links"
 it.each([
   {
     voice: false,
-    notice: "Rakazo is capturing audio to create a meeting transcript.",
+    notice: "BondBot is capturing audio to create a meeting transcript.",
   },
   {
     voice: true,
     notice:
-      "Rakazo is capturing audio to create a meeting transcript. It also processes speech in real time with AI services and may reply aloud when addressed by name.",
+      "BondBot is capturing audio to create a meeting transcript. It also processes speech in real time with AI services and may reply aloud when addressed by name.",
   },
 ])("discloses whether the branded camera has live voice ($voice)", async ({ voice, notice }) => {
   const emulator = new RecallMeetingEmulator();

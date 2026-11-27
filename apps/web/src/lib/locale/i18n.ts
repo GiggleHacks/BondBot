@@ -1,4 +1,5 @@
 import { i18n } from "@lingui/core";
+import { rebrandCatalog } from "@rakazo/core";
 import { desktopBridge } from "../platform/desktop";
 import { importChunk } from "../platform/preload-recovery";
 import { applyUiDirection } from "./apply-ui-direction";
@@ -51,7 +52,7 @@ async function loadCatalog(locale: UiLocale): Promise<CatalogMessages> {
 }
 
 function activateLoaded(locale: UiLocale, messages: CatalogMessages): UiLocale {
-  i18n.load(locale, messages);
+  i18n.load(locale, rebrandCatalog(messages));
   i18n.activate(locale);
   activeLocale = locale;
   applyUiDirection(locale);
