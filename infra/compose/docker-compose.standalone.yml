@@ -450,7 +450,9 @@ services:
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
       WEB_PROVIDER:
       KEENABLE_API_KEY:
+      PARALLEL_API_KEY:
       COMPOSIO_API_KEY:
+      PLUGIN_GITHUB_TOKEN:
       PIPEDREAM_CLIENT_ID:
       PIPEDREAM_CLIENT_SECRET:
       PIPEDREAM_PROJECT_ID:
@@ -554,8 +556,12 @@ services:
       RAKAZO_MIN_CLIENT_BUILD:
       RAKAZO_NAV_LINKS:
       RAKAZO_ADMIN_EMAILS:
+      CREDIT_CODES:
       DEPLOYMENT_VOICE:
       VOICE_SUMMARY_MIN_CHARS:
+      BONDBOT_UPDATER_URL:
+      BONDBOT_UPDATER_TOKEN:
+      BONDBOT_ANY_MEMBER_UPDATE:
     ports:
       - 127.0.0.1:${RAKAZO_API_PORT:-3100}:3100
     volumes:
@@ -565,6 +571,7 @@ services:
     networks:
       - app
       - data
+      - control
     depends_on:
       postgres:
         condition: service_healthy
@@ -886,7 +893,9 @@ services:
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
       WEB_PROVIDER:
       KEENABLE_API_KEY:
+      PARALLEL_API_KEY:
       COMPOSIO_API_KEY:
+      PLUGIN_GITHUB_TOKEN:
       PIPEDREAM_CLIENT_ID:
       PIPEDREAM_CLIENT_SECRET:
       PIPEDREAM_PROJECT_ID:

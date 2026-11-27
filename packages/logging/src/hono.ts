@@ -36,7 +36,7 @@ export function requestLogging(
         const level =
           status >= 500 && !c.req.raw.signal.aborted && !context["error.expected"]
             ? "error"
-            : status >= 400
+            : status >= 400 || context.error !== undefined
               ? "warn"
               : "info";
         const quiet = status === 200 && !failure && options.quietWhenOk?.includes(c.req.path);
@@ -61,6 +61,14 @@ export function requestLogging(
  */
 export function markExpectedFailure(): void {
   enrichLogContext({ "error.expected": true });
+}
+
+/**
+ * The handler caught this failure and answers it itself, so nothing throws to the request log.
+ * The request's completion line then carries the failure, and is a warning at least.
+ */
+export function markRequestFailure(error: unknown): void {
+  enrichLogContext({ error });
 }
 
 function matchedRoute(path: string, routePath: string): string {

@@ -81,6 +81,7 @@ import {
   removeUnusedComputerNetwork,
 } from "./networks.js";
 import { publishedScreenUrl } from "./readiness.js";
+import { logRequestFailure } from "./request-failures.js";
 import { limitSupervisorRequestBody, supervisorFileWriteSchema } from "./request-limits.js";
 import {
   computerScreenBoots,
@@ -468,6 +469,7 @@ app.post("/computers", async (c) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    logRequestFailure(error);
     return c.json({ error: message }, 500);
   }
 });
@@ -484,6 +486,7 @@ app.get("/computers/:id", async (c) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    logRequestFailure(error);
     return c.json({ error: message }, 404);
   }
 });
@@ -503,17 +506,19 @@ app.post("/computers/:id/exec", async (c) => {
     .parse(await c.req.json());
   const timeoutMs = boundedSandboxCommandTimeoutMs(body.timeoutMs);
   let container: Docker.Container;
-  let layout: ReturnType<typeof screenPorts>;
+  let layout: ReturnType<typeof screenPorts> | undefined;
   try {
     const managed = await managedContainer(id, headers.botId, headers.spaceId);
     // Docker would fail the exec inside the stream; answer up front so the caller can boot it.
     if (!managed.info.State.Running) return c.json({ error: "computer is not running" }, 409);
     container = managed.container;
     const screenId = headers.screenId || headers.botId || id;
-    const screenIndex = computerScreens.get(id)?.get(screenId)?.index ?? 0;
-    layout = screenPorts(screenIndex);
+    // Only the bot's own screen: without one, a graphical command fails instead of using another's.
+    const screenIndex = computerScreens.get(id)?.get(screenId)?.index;
+    layout = screenIndex === undefined ? undefined : screenPorts(screenIndex);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    logRequestFailure(error);
     return c.json({ stdout: "", stderr: message, code: 1 }, 200);
   }
   const encoder = new TextEncoder();
@@ -787,6 +792,7 @@ app.post("/computers/:id/browser", async (c) => {
     return c.json(JSON.parse(result.stdout));
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
+    logRequestFailure(error);
     return c.json({
       ok: false,
       fallback: "computer_act",
@@ -830,6 +836,7 @@ app.post("/computers/:id/observe", async (c) => {
     return c.json(observation);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    logRequestFailure(error);
     return c.json({ error: message }, 500);
   }
 });
@@ -884,6 +891,7 @@ app.post("/computers/:id/actions", async (c) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    logRequestFailure(error);
     return c.json({ error: message }, 500);
   }
 });
@@ -943,6 +951,7 @@ app.get("/computers/:id/files", async (c) => {
     return c.json(JSON.parse(result.stdout));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    logRequestFailure(error);
     return c.json({ error: message }, 400);
   }
 });
@@ -962,6 +971,7 @@ app.post("/computers/:id/files", async (c) => {
     return c.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    logRequestFailure(error);
     return c.json({ error: message }, 400);
   }
 });
@@ -980,7 +990,8 @@ app.get("/computers/:id/screen", async (c) => {
     );
     const screenUrl = await publishedScreenUrl(container, info, layout.viewPort);
     return c.redirect(screenUrlWithToken(screenUrl, viewToken));
-  } catch {
+  } catch (error) {
+    logRequestFailure(error);
     return c.json({ error: "computer not found" }, 404);
   }
 });
@@ -1042,6 +1053,7 @@ app.post("/computers/:id/screen-mode", async (c) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    logRequestFailure(error);
     return c.json({ error: message }, 400);
   }
 });
@@ -1088,6 +1100,7 @@ app.post("/computers/:id/terminal", async (c) => {
       return c.json({ error: "screen control is not active" }, 409);
     }
     const message = error instanceof Error ? error.message : String(error);
+    logRequestFailure(error);
     return c.json({ error: message }, 400);
   }
 });
@@ -1132,6 +1145,7 @@ app.post("/computers/:id/input", async (c) => {
     return c.json({ ok: true, leaseId: body.leaseId ?? null });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    logRequestFailure(error);
     return c.json({ ok: false, error: message }, 500);
   }
 });
@@ -1220,6 +1234,7 @@ app.delete("/computers/:id/screen", async (c) => {
     )
       return c.json({ error: "computer not found" }, 404);
     const message = error instanceof Error ? error.message : String(error);
+    logRequestFailure(error);
     return c.json({ error: message || "computer screen failed to stop" }, 500);
   }
 });
@@ -1285,6 +1300,7 @@ app.post("/computers/:id/stop", async (c) => {
       return c.json({ error: "invalid computer identity" }, 403);
     if (error && typeof error === "object" && "statusCode" in error && error.statusCode === 404)
       return c.json({ error: "computer not found" }, 404);
+    logRequestFailure(error);
     return c.json({ error: "computer failed to stop" }, 500);
   }
 });
@@ -1318,6 +1334,7 @@ app.delete("/computers/:id", async (c) => {
       return c.json({ error: "invalid computer identity" }, 403);
     if ((error as { statusCode?: number })?.statusCode === 404)
       return c.json({ error: "computer not found" }, 404);
+    logRequestFailure(error);
     return c.json({ error: "computer failed to delete" }, 500);
   }
 });

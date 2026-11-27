@@ -14,7 +14,16 @@ import {
   PopoverTrigger,
   useCopyText,
 } from "@rakazo/ui-web";
-import { Check, Copy, MessageSquareDot, MoreHorizontal, Reply, Smile } from "lucide-react";
+import {
+  Check,
+  Copy,
+  MessageSquareDot,
+  MoreHorizontal,
+  Reply,
+  Smile,
+  Square,
+  Volume2,
+} from "lucide-react";
 import { useState } from "react";
 import { MessageHoverMetadata } from "../../../components/messages/MessageHoverMetadata";
 import { isPendingSendMessage } from "../../../lib/composer/pending-send";
@@ -30,6 +39,7 @@ export function MessageHoverActions({
   onMarkUnread,
   markedUnread = false,
   onReact,
+  speech,
 }: {
   message: ThreadMessage;
   side: "start" | "end";
@@ -39,6 +49,7 @@ export function MessageHoverActions({
   onMarkUnread: (message: ThreadMessage) => void;
   markedUnread?: boolean;
   onReact: (message: ThreadMessage, reaction: MessageReaction) => Promise<void>;
+  speech?: { speaking: boolean; disabled: boolean; onSpeak: () => void };
 }) {
   const { t } = useLingui();
   const [copiedNow, copy, copyFailed, resetCopy, copyFailedText] = useCopyText();
@@ -78,7 +89,10 @@ export function MessageHoverActions({
     "grid h-11 w-11 place-items-center text-muted-foreground transition-colors hover:text-foreground [@media(hover:hover)_and_(pointer:fine)]:h-7 [@media(hover:hover)_and_(pointer:fine)]:w-7";
 
   return (
-    <MessageHoverMetadata pinned={moreOpen || reactionsOpen || copied} side={side}>
+    <MessageHoverMetadata
+      pinned={moreOpen || reactionsOpen || copied || Boolean(speech?.speaking)}
+      side={side}
+    >
       {/* biome-ignore lint/a11y/useSemanticElements: a fieldset brings form styling the rail does not want */}
       <div
         data-testid="message-hover-actions"
@@ -112,6 +126,16 @@ export function MessageHoverActions({
               ))}
             </PopoverContent>
           </Popover>
+        ) : null}
+        {speech?.speaking ? (
+          <button
+            type="button"
+            aria-label={t`Stop reading aloud`}
+            onClick={speech.onSpeak}
+            className={iconButtonClass}
+          >
+            <Square size={13} strokeWidth={1.7} />
+          </button>
         ) : null}
         <button
           type="button"
@@ -166,6 +190,18 @@ export function MessageHoverActions({
               <Copy size={14} strokeWidth={1.7} />
               <Trans>Copy</Trans>
             </DropdownMenuItem>
+            {speech && !speech.speaking ? (
+              <DropdownMenuItem
+                disabled={speech.disabled}
+                onClick={() => {
+                  setMoreOpen(false);
+                  speech.onSpeak();
+                }}
+              >
+                <Volume2 size={14} strokeWidth={1.7} />
+                <Trans>Read aloud</Trans>
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
         <span role="status" className="sr-only">

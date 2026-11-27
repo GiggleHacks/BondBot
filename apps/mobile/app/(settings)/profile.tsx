@@ -41,7 +41,7 @@ import {
 } from "../../lib/auth/passkey";
 import { promptPasskeyName } from "../../lib/auth/passkey-name-prompt";
 import { continueWithSso } from "../../lib/auth/sso";
-import { dateLocaleForUi, useUiLocale } from "../../lib/i18n/i18n";
+import { useDateLocale } from "../../lib/i18n/i18n";
 import { useSideInsets } from "../../lib/layout/side-insets";
 import { useResolvedAppearance, useThemedStyles } from "../../lib/native/native";
 import { accountRpcQuery, queryClient, useSave } from "../../lib/query/query";
@@ -58,7 +58,7 @@ import {
 export default function Profile() {
   const sideInsets = useSideInsets();
   const { t } = useLingui();
-  const locale = useUiLocale();
+  const dateLocale = useDateLocale();
   const router = useRouter();
   const styles = useThemedStyles(createSettingsPageStyles);
   const stacked = useStackedSettings();
@@ -311,7 +311,7 @@ export default function Profile() {
                     accessibilityRole="button"
                     detail={
                       created && !Number.isNaN(created.getTime())
-                        ? created.toLocaleDateString(dateLocaleForUi(locale), {
+                        ? created.toLocaleDateString(dateLocale, {
                             dateStyle: "medium",
                           })
                         : undefined
