@@ -2,7 +2,7 @@ import { useLingui } from "@lingui/react/macro";
 import type { Bot, Group, ThreadSnapshot } from "@rakazo/contracts";
 import { MEETING_CALENDAR_RETURN_PARAM } from "@rakazo/contracts";
 import { BotAvatar, Button, GroupAvatar } from "@rakazo/ui-web";
-import { Gift, Menu, Monitor, Phone, Video } from "lucide-react";
+import { Gift, LayoutGrid, Menu, Monitor, Phone, Video } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useBilling } from "../../../components/billing/SubscriptionGate";
@@ -35,6 +35,8 @@ export function ChatHeader({
   vpn,
   screenDocked = false,
   onToggleScreenDock,
+  multiviewOpen = false,
+  onToggleMultiview,
   onSwitchModel,
 }: {
   inGroup: boolean;
@@ -55,6 +57,8 @@ export function ChatHeader({
   screenDocked?: boolean;
   /** Shows or hides the docked screen; left out where there is nothing to dock. */
   onToggleScreenDock?: () => void;
+  multiviewOpen?: boolean;
+  onToggleMultiview?: () => void;
   /** Saves a model switch for the chat's bot; resolves only once it is saved. */
   onSwitchModel?: (choice: {
     provider: string;
@@ -162,6 +166,21 @@ export function ChatHeader({
       </div>
       <div className="flex items-center justify-self-end gap-2">
         <ConnectionBars />
+        {onToggleMultiview ? (
+          <IconTooltip label={t`Multiview`}>
+            <Button
+              variant="floating"
+              size="icon-lg"
+              data-testid="multiview-toggle"
+              aria-label={t`Multiview`}
+              aria-pressed={multiviewOpen}
+              onClick={onToggleMultiview}
+              className="app-no-drag"
+            >
+              <LayoutGrid strokeWidth={1.75} className="size-4.5" />
+            </Button>
+          </IconTooltip>
+        ) : null}
         {onToggleScreenDock && !inGroup && active ? (
           <Button
             variant="floating"

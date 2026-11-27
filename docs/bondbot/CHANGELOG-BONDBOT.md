@@ -181,3 +181,8 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Docked screen reconnects by itself: when the screen of a RUNNING computer shows "Screen not connected", it retries when the app returns to the foreground, the network comes back, and on a 2/4/8/16/32 s backoff, then waits for a retry from the user. A stopped computer is never woken (pages/shell/computers/use-computer-controls.tsx).
 - Long voice notes could fail with "The value of delay is out of range": the transcription timeout was not a whole number when the file size was not divisible by 3. It is now rounded up (apps/api/src/voice-notes.ts).
 - Voice note player made into a compact pill (components/VoiceNotePlayer.tsx) and audio attachments ordered above their transcript text in `MessageView` (pages/shell/chat/message-view.tsx).
+
+## v0.3.0 / 1.8.0 (2026-11-27)
+- Multiview: view 2, 3, or 4 bot computers at once on desktop (`2 cols`, `3 cols` or `1 featured + 2 stacked`, `2x2` grid), and max 2 stacked screens on mobile with pill/swipe paging when 3 or 4 are configured.
+- Each tile shows a live screen (view-only by default; button or double-click takes control with bot-busy confirmation and an animated focus glow), bot swapper, `Maximize`, and a `More` menu with `Wake computer` / `Turn off computer`, `Refresh screen`, `Save screenshot`, `Open full screen`, `Open full chat`, model switcher, VPN controls, and tile removal.
+- Each tile includes a collapsible, drag-resizable mini chat underneath with live replies, send/stop composer, and inline approval cards.

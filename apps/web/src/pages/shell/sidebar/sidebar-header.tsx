@@ -1,7 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import type { Bot } from "@rakazo/contracts";
 import { Button, Popover, PopoverContent, PopoverTrigger } from "@rakazo/ui-web";
-import { Bell, PanelLeft, PanelLeftClose, Plus, Search } from "lucide-react";
+import { Bell, LayoutGrid, PanelLeft, PanelLeftClose, Plus, Search } from "lucide-react";
 import { BondBotMark } from "../../../components/BondBotMark";
 import { IconTooltip } from "../../../components/IconTooltip";
 import { WindowChrome } from "../../../components/WindowChrome";
@@ -21,6 +21,8 @@ export function SidebarHeader({
   setCreateMenuOpen,
   activityMode,
   toggleActivityMode,
+  multiviewOpen = false,
+  onToggleMultiview,
   searchOpen = false,
   onSearch,
   setBotsSidebarCollapsedPref,
@@ -37,6 +39,8 @@ export function SidebarHeader({
   setCreateMenuOpen: (open: boolean) => void;
   activityMode: boolean;
   toggleActivityMode: () => void;
+  multiviewOpen?: boolean;
+  onToggleMultiview?: () => void;
   searchOpen?: boolean;
   onSearch?: () => void;
   setBotsSidebarCollapsedPref: (collapsed: boolean) => void;
@@ -101,6 +105,21 @@ export function SidebarHeader({
               className="app-no-drag"
             >
               <Search className={ICON} strokeWidth={STROKE} aria-hidden="true" />
+            </Button>
+          </IconTooltip>
+        ) : null}
+        {onToggleMultiview && mini ? (
+          <IconTooltip label={t`Multiview`} side={labelSide}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t`Multiview`}
+              aria-pressed={multiviewOpen}
+              data-testid="sidebar-multiview-trigger"
+              onClick={onToggleMultiview}
+              className={`app-no-drag ${railTile} ${multiviewOpen ? "text-foreground ring-1 ring-border" : ""}`}
+            >
+              <LayoutGrid className={ICON} strokeWidth={STROKE} aria-hidden="true" />
             </Button>
           </IconTooltip>
         ) : null}
