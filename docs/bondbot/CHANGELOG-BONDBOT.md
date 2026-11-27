@@ -186,3 +186,8 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Multiview: view 2, 3, or 4 bot computers at once on desktop (`2 cols`, `3 cols` or `1 featured + 2 stacked`, `2x2` grid), and max 2 stacked screens on mobile with pill/swipe paging when 3 or 4 are configured.
 - Each tile shows a live screen (view-only by default; button or double-click takes control with bot-busy confirmation and an animated focus glow), bot swapper, `Maximize`, and a `More` menu with `Wake computer` / `Turn off computer`, `Refresh screen`, `Save screenshot`, `Open full screen`, `Open full chat`, model switcher, VPN controls, and tile removal.
 - Each tile includes a collapsible, drag-resizable mini chat underneath with live replies, send/stop composer, and inline approval cards.
+
+## v0.4.0 / 1.9.0 (2026-11-27)
+- In-app BondBot update indicator: checks `GiggleHacks/BondBot` `main` on GitHub and shows a crisp red notification dot on `BONDBOT` in the sidebar (and mobile navigation button) for workspace owners/admins when a newer version is available.
+- Clickable update popover with version comparison (`vCurrent -> vNext`), changelog notes, optional `Skip` per version, and 1-click update with an animated progress bar (`Checking GitHub` -> `Downloading` -> `Building` -> `Migrating` -> `Restarting` -> auto-reload).
+- Works across both Docker Compose deployments (via the `updater` sidecar `/bondbot/status` and `/bondbot/apply` endpoints) and local git checkouts (`git pull --ff-only`, `pnpm install`, `pnpm build`).

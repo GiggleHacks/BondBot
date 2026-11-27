@@ -58,6 +58,7 @@ import { applyStableUpdate, startUpdateSchedule } from "./schedule.js";
 
 export { applyStableUpdate } from "./schedule.js";
 
+import { mountBondbotRoutes } from "./bondbot-routes.js";
 import type { UpdaterConfig } from "./updater-logic.js";
 import {
   missingSecretAssignments,
@@ -315,6 +316,16 @@ export function createUpdaterApp(
     } catch (error) {
       return refusal(c, error);
     }
+  });
+
+  mountBondbotRoutes(app, {
+    config,
+    run,
+    composeTarget,
+    readEnvFile,
+    isUpdateLocked: () => running,
+    withRunLock,
+    logger: options.logger,
   });
 
   return Object.assign(app, {

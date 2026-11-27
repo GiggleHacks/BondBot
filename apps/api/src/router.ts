@@ -50,6 +50,7 @@ import { meetingRoutes } from "./meetings/meeting-routes.js";
 import { accountRoutes } from "./routes/account.js";
 import { availabilityRoutes } from "./routes/availability.js";
 import { boardsRoutes } from "./routes/boards.js";
+import { bondbotUpdateRoutes } from "./routes/bondbot-update.js";
 import { botsRoutes } from "./routes/bots.js";
 import { capabilitiesRoutes } from "./routes/capabilities.js";
 import { computerRoutes } from "./routes/computer.js";
@@ -60,6 +61,7 @@ import { createRouterContext } from "./routes/context.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { memoryRoutes } from "./routes/memory.js";
 import { messagingRoutes } from "./routes/messaging.js";
+import { modelUsageRoutes } from "./routes/model-usage.js";
 import { modelsRoutes } from "./routes/models.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
 import { organizationsRoutes } from "./routes/organizations.js";
@@ -67,7 +69,6 @@ import { pagesRoutes } from "./routes/pages.js";
 import { paymentWalletRoutes } from "./routes/payment-wallet.js";
 import { routinesRoutes } from "./routes/routines.js";
 import { spacesRoutes } from "./routes/spaces.js";
-import { modelUsageRoutes } from "./routes/model-usage.js";
 import { spendingLimitRoutes } from "./routes/spending-limit.js";
 import { threadsRoutes } from "./routes/threads.js";
 
@@ -184,6 +185,9 @@ export interface RouterDeps {
     computerSettingsEnabled?: boolean;
     mcpStdioEnabled?: boolean;
     mcpStdioAllowedCommands?: string[];
+    bondbotUpdaterUrl?: string;
+    bondbotUpdaterToken?: string;
+    bondbotAnyMemberUpdate?: boolean;
   };
 }
 
@@ -216,6 +220,7 @@ export function createRouter(deps: RouterDeps) {
     ...paymentWalletRoutes(ctx),
     ...spendingLimitRoutes(ctx),
     ...modelUsageRoutes(ctx),
+    ...bondbotUpdateRoutes(ctx),
   });
 }
 
@@ -255,5 +260,8 @@ export function routerEnv(env: AppEnv): RouterDeps["env"] {
     computerSettingsEnabled: env.computerSettingsEnabled,
     mcpStdioEnabled: env.mcpStdioEnabled,
     mcpStdioAllowedCommands: env.mcpStdioAllowedCommands,
+    bondbotUpdaterUrl: env.bondbotUpdaterUrl,
+    bondbotUpdaterToken: env.bondbotUpdaterToken,
+    bondbotAnyMemberUpdate: env.bondbotAnyMemberUpdate,
   };
 }

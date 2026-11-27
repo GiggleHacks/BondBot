@@ -6,6 +6,7 @@ import { Gift, LayoutGrid, Menu, Monitor, Phone, Video } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useBilling } from "../../../components/billing/SubscriptionGate";
+import { useBondbotUpdate } from "../../../components/bondbot-update/BondbotUpdateProvider";
 import { ConnectionBars } from "../../../components/ConnectionBars";
 import { IconTooltip } from "../../../components/IconTooltip";
 import { ModelBrandIcon, modelBrandKey } from "../../../components/ModelBrandIcon";
@@ -67,6 +68,7 @@ export function ChatHeader({
 }) {
   const { t } = useLingui();
   const referral = useBilling().status?.referral;
+  const bondbotUpdateDot = Boolean(useBondbotUpdate()?.showNotificationDot);
   const [inviteOpen, setInviteOpen] = useState(false);
   const macChrome = windowChromeKind(desktopBridge()) === "darwin";
   return (
@@ -82,9 +84,15 @@ export function ChatHeader({
           data-navigation-trigger=""
           aria-label={t`Open navigation`}
           onClick={onOpenNavigation}
-          className="app-no-drag md:hidden"
+          className="app-no-drag relative md:hidden"
         >
           <Menu strokeWidth={1.75} className="size-4.5" />
+          {bondbotUpdateDot ? (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute end-2 top-2 size-2 rounded-full bg-destructive ring-2 ring-background"
+            />
+          ) : null}
         </Button>
       </div>
       <div className="flex min-w-0 items-center justify-self-center gap-1.5">

@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { BondbotUpdateProvider } from "../components/bondbot-update/BondbotUpdateProvider";
 import { IncomingCall } from "../components/call/IncomingCall";
 import { ComputerUpdateProgress } from "../components/computers/ComputerUpdateProgress";
 import { ModelEdgeGlow } from "../components/ModelEdgeGlow";
@@ -1142,9 +1143,11 @@ function SpaceShell() {
   return (
     <SpaceRpcProvider spaceId={shellSpaceId}>
       {initialBotsLoaded || initialLoadFailed ? (
-        <InboundOriginProvider value={bootstrapMe?.inboundOrigin}>
-          <PagesProvider value={pages}>{shell}</PagesProvider>
-        </InboundOriginProvider>
+        <BondbotUpdateProvider>
+          <InboundOriginProvider value={bootstrapMe?.inboundOrigin}>
+            <PagesProvider value={pages}>{shell}</PagesProvider>
+          </InboundOriginProvider>
+        </BondbotUpdateProvider>
       ) : (
         <PageLoading />
       )}

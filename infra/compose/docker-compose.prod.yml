@@ -583,6 +583,9 @@ services:
       RAKAZO_ADMIN_EMAILS:
       DEPLOYMENT_VOICE:
       VOICE_SUMMARY_MIN_CHARS:
+      BONDBOT_UPDATER_URL:
+      BONDBOT_UPDATER_TOKEN:
+      BONDBOT_ANY_MEMBER_UPDATE:
     expose:
       - "3100"
     volumes:

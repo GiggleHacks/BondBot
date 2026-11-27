@@ -1,6 +1,12 @@
 import { oc } from "@orpc/contract";
 import * as z from "zod";
 import {
+  BondbotUpdateApplyRequestSchema,
+  BondbotUpdateAvailabilitySchema,
+  BondbotUpdateCheckRequestSchema,
+  BondbotUpdateJobSchema,
+} from "./bondbot-update.js";
+import {
   DeploymentSettingsSchema,
   ServerUpdateCheckSchema,
   ServerUpdateRequestSchema,
@@ -30,5 +36,11 @@ export const serverRpc = {
     status: oc.output(ServerUpdateStatusSchema),
     check: oc.input(ServerUpdateRequestSchema).output(ServerUpdateCheckSchema),
     apply: oc.input(ServerUpdateRequestSchema).output(ServerUpdateRunSchema),
+  },
+  /** Self-update checks and 1-click apply against GiggleHacks/BondBot on GitHub. */
+  bondbotUpdate: {
+    status: oc.input(BondbotUpdateCheckRequestSchema).output(BondbotUpdateAvailabilitySchema),
+    apply: oc.input(BondbotUpdateApplyRequestSchema).output(BondbotUpdateJobSchema),
+    progress: oc.output(BondbotUpdateJobSchema),
   },
 };

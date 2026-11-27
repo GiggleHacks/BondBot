@@ -4,6 +4,7 @@ import { Button, cn } from "@rakazo/ui-web";
 import { Columns3, LayoutGrid, Menu, PanelLeft, Plus, X } from "lucide-react";
 import type { TouchEvent as ReactTouchEvent, RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useBondbotUpdate } from "../../../components/bondbot-update/BondbotUpdateProvider";
 import { ConnectionBars } from "../../../components/ConnectionBars";
 import { WindowChrome } from "../../../components/WindowChrome";
 import { desktopBridge, windowChromeKind } from "../../../lib/platform/desktop";
@@ -85,6 +86,7 @@ export function MultiviewWorkspace({
   onSendError: (message: string) => void;
 }) {
   const { t } = useLingui();
+  const bondbotUpdateDot = Boolean(useBondbotUpdate()?.showNotificationDot);
   const [config, setConfig] = useState<MultiviewSpaceConfig>(() => readMultiviewConfig(spaceId));
   const [mobilePage, setMobilePage] = useState(0);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
@@ -166,9 +168,15 @@ export function MultiviewWorkspace({
             size="icon-sm"
             aria-label={t`Open navigation`}
             onClick={onOpenNavigation}
-            className="app-no-drag md:hidden"
+            className="app-no-drag relative md:hidden"
           >
             <Menu size={17} strokeWidth={1.8} />
+            {bondbotUpdateDot ? (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute end-1.5 top-1.5 size-2 rounded-full bg-destructive ring-2 ring-background"
+              />
+            ) : null}
           </Button>
           <span className="inline-flex items-center gap-1.5 text-body font-semibold text-foreground">
             <LayoutGrid size={16} strokeWidth={1.9} aria-hidden="true" />

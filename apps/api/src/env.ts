@@ -184,6 +184,9 @@ export interface AppEnv extends MessagingEnvironmentValues {
   crispWebsiteId?: string | null;
   /** DEMO_ACCOUNT_EMAIL and DEMO_ACCOUNT_PASSWORD, published to sign-in; only for throwaway demo servers. */
   demoAccount?: { email: string; password: string } | null;
+  bondbotUpdaterUrl?: string;
+  bondbotUpdaterToken?: string;
+  bondbotAnyMemberUpdate?: boolean;
 }
 
 /** Overrides win key by key inside `sandboxOptions`, so a partial one keeps the rest of the environment's. */
@@ -385,6 +388,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     browserMonitoring: browserMonitoringFromEnv(source),
     crispWebsiteId: parseCrispWebsiteId(source.CRISP_WEBSITE_ID),
     demoAccount: demoAccountFromEnv(source),
+    bondbotUpdaterUrl: optional(source.BONDBOT_UPDATER_URL),
+    bondbotUpdaterToken: optional(source.BONDBOT_UPDATER_TOKEN),
+    bondbotAnyMemberUpdate: source.BONDBOT_ANY_MEMBER_UPDATE === "true",
   };
 }
 
