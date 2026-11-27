@@ -24,7 +24,7 @@ describe("desktop package metadata", () => {
 
   it("registers the rakazo:// protocol scheme for packaged installers", () => {
     expect(packageJson.build?.protocols).toContainEqual({
-      name: "Rakazo",
+      name: "BondBot",
       schemes: ["rakazo"],
     });
   });
