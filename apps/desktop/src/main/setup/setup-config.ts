@@ -6,19 +6,18 @@ import { t } from "../i18n.js";
 
 /** Managed desktop origin; development keeps its usual web/API ports. */
 export const DEFAULT_LOCAL_WEB_URL = "http://127.0.0.1:45173";
+const SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//;
+
 /**
  * Default server for a build. Supplied at build time by `RAKAZO_CLOUD_URL`
  * (scripts/build.mjs bakes it in), so a fork does not carry another deployment's host in
  * source. Unset falls back to the local stack, which is what a development build wants.
  */
-const SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//;
-
 export const RAKAZO_CLOUD_URL = cloudUrl(process.env.RAKAZO_CLOUD_URL);
 export const PROBE_RESPONSE_LIMIT_BYTES = 64 * 1024;
 
 /**
- * The build's default server, validated where it is read so a typo fails the build instead of
- * the app. Unset means a development build talking to the local stack.
+ * The build's default server, validated where it is read, so a typo fails at startup. Unset means a development build talking to the local stack.
  */
 function cloudUrl(configured: string | undefined): string {
   const value = configured?.trim();
@@ -30,11 +29,9 @@ function cloudUrl(configured: string | undefined): string {
 
 export const SETUP_FILE_NAME = "setup.json";
 
-
 export type StartupTarget =
   | { kind: "app"; url: string; source: "env" | "saved" | "cloud" }
   | { kind: "setup" };
-
 
 /**
  * Accepts what a person would actually type ("localhost:5173", "rakazo.example.com")

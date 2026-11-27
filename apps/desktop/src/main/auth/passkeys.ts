@@ -1,6 +1,8 @@
 import path from "node:path";
 import { RAKAZO_CLOUD_URL } from "../setup/setup-config.js";
 
+const DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
+
 /**
  * The only relying party a build is associated with (`webcredentials:` entitlement). The bundler
  * inlines `RAKAZO_PASSKEY_RP_ID`, so the app and its entitlements must be built with the same value.
@@ -32,7 +34,6 @@ export function associatedPasskeyRpIds(input: {
 
 const TEAM_ID = /^[A-Z0-9]{10}$/;
 const BUNDLE_ID = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
-const DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
 
 /**
  * Adds the passkey association to the app's base entitlements for a build signed by `teamId`.

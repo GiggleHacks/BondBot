@@ -4,6 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RAKAZO_CLOUD_URL } from "../setup/setup-config.js";
 import { associatedPasskeyRpIds, PASSKEY_RP_ID, passkeyEntitlements } from "./passkeys.js";
 
+// Without a configured domain a development build falls back to "localhost", which cannot be signed.
+vi.hoisted(() => {
+  process.env.RAKAZO_PASSKEY_RP_ID = "rakazo.example.org";
+});
+
 const root = path.resolve(import.meta.dirname, "../../..");
 const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
   build: { appId: string; mac: { entitlements: string; entitlementsInherit: string } };
@@ -41,7 +46,7 @@ describe("passkeyEntitlements", () => {
     const plist = passkeyEntitlements(base, "ABCDE12345", pkg.build.appId);
     expect(plist.startsWith(base.slice(0, base.lastIndexOf("</dict>")).trimEnd())).toBe(true);
     expect(plist).toContain(
-      "<key>com.apple.application-identifier</key>\n    <string>ABCDE12345.dev.rakazo.desktop</string>",
+      `<key>com.apple.application-identifier</key>\n    <string>ABCDE12345.${pkg.build.appId}</string>`,
     );
     expect(plist).toContain(
       `<key>com.apple.developer.associated-domains</key>\n    <array>\n      <string>webcredentials:${PASSKEY_RP_ID}</string>\n    </array>\n  </dict>\n</plist>`,
@@ -85,9 +90,12 @@ describe("self-hosted passkey domain", () => {
     return import("./passkeys.js");
   }
 
-  it("defaults to the hosted server's domain", async () => {
+  it("defaults to the server's domain, or localhost for a loopback server", async () => {
     const passkeys = await load("");
-    expect(passkeys.PASSKEY_RP_ID).toBe(new URL(RAKAZO_CLOUD_URL).hostname);
+    const host = new URL(RAKAZO_CLOUD_URL).hostname;
+    expect(passkeys.PASSKEY_RP_ID).toBe(
+      host.includes(".") && !/^[\d.]+$/.test(host) ? host : "localhost",
+    );
   });
 
   it("associates the build with RAKAZO_PASSKEY_RP_ID", async () => {

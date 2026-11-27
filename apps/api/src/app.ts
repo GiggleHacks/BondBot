@@ -102,6 +102,7 @@ import {
 } from "@rakazo/logging";
 import { requestLogging } from "@rakazo/logging/hono";
 import { MarkdownMemoryStore } from "@rakazo/memory";
+import type { Context } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { finishStalledOrganizationDeletions } from "./account/account-deletion.js";
@@ -904,25 +905,26 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
   voiceNotes.start();
   // Desktop builds are dropped into /data/downloads by the operator; an absent one answers 404 so
   // the UI can offer the other platform instead.
-  const desktopDownload = (file: string, label: string, contentType: string) => async (c: any) => {
-    const actor = await sessionActor(c.req.raw);
-    if (!actor) return c.json({ error: "Unauthorized" }, 401);
-    const downloadPath = path.join(env.dataDir, "downloads", file);
-    const info = await stat(downloadPath).catch(() => null);
-    if (!info?.isFile()) {
-      return c.json({ error: `${label} desktop build is not available yet.` }, 404);
-    }
-    const stream = Readable.toWeb(createReadStream(downloadPath)) as ReadableStream;
-    return new Response(stream, {
-      status: 200,
-      headers: {
-        "content-type": contentType,
-        "content-disposition": `attachment; filename="${file}"`,
-        "content-length": String(info.size),
-        "cache-control": "no-store",
-      },
-    });
-  };
+  const desktopDownload =
+    (file: string, label: string, contentType: string) => async (c: Context) => {
+      const actor = await sessionActor(c.req.raw);
+      if (!actor) return c.json({ error: "Unauthorized" }, 401);
+      const downloadPath = path.join(env.dataDir, "downloads", file);
+      const info = await stat(downloadPath).catch(() => null);
+      if (!info?.isFile()) {
+        return c.json({ error: `${label} desktop build is not available yet.` }, 404);
+      }
+      const stream = Readable.toWeb(createReadStream(downloadPath)) as ReadableStream;
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": contentType,
+          "content-disposition": `attachment; filename="${file}"`,
+          "content-length": String(info.size),
+          "cache-control": "no-store",
+        },
+      });
+    };
   app.get(
     "/api/desktop/windows",
     desktopDownload("BondBot.exe", "Windows", "application/vnd.microsoft.portable-executable"),
