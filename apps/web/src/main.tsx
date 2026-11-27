@@ -1,7 +1,6 @@
 import "./zod-config";
 import "./monitoring-bootstrap";
 import { rememberSignupAttribution } from "@rakazo/core/signup-attribution";
-import { bestEffort } from "@rakazo/logging/best-effort";
 import { BotAvatarActivityProvider, Toaster, TooltipProvider } from "@rakazo/ui-web";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, useEffect, useLayoutEffect, useRef } from "react";
@@ -66,22 +65,10 @@ function AppearanceSync() {
   return null;
 }
 
-/** The pixel cursor trail loads after first paint, outside the startup bundle. */
-function PixelFx() {
-  useEffect(() => {
-    void bestEffort(
-      "start pixel effects",
-      import("./components/fx/pixel-fx").then((fx) => fx.startPixelFx()),
-    );
-  }, []);
-  return null;
-}
-
 createRoot(document.getElementById("root")!, { onCaughtError: reportCaughtReactError }).render(
   <StrictMode>
     <PerformanceProbe />
     <AppearanceSync />
-    <PixelFx />
     <I18nBootstrap>
       {/* Router state updates must not be transitions: under sustained urgent
           updates (SSE churn while a run streams) a pending navigation is

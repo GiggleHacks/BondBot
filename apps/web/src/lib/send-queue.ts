@@ -116,7 +116,8 @@ function memoryStore(): Store {
         .sort((a, b) => a.index - b.index);
     },
     async deleteCompanions(voiceClientId) {
-      for (const [k, row] of companions) if (row.voiceClientId === voiceClientId) companions.delete(k);
+      for (const [k, row] of companions)
+        if (row.voiceClientId === voiceClientId) companions.delete(k);
     },
   };
 }
@@ -128,7 +129,8 @@ function idbStore(): Store {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = () => {
         const db = req.result;
-        if (!db.objectStoreNames.contains(SENDS)) db.createObjectStore(SENDS, { keyPath: "clientNonce" });
+        if (!db.objectStoreNames.contains(SENDS))
+          db.createObjectStore(SENDS, { keyPath: "clientNonce" });
         if (!db.objectStoreNames.contains(COMPANIONS)) {
           db.createObjectStore(COMPANIONS, { keyPath: ["voiceClientId", "index"] });
         }
@@ -222,7 +224,13 @@ function asRpcError(status: number, text: string): RpcError {
   let message = `Upload failed (${status}).`;
   let data: { reason?: unknown } | undefined;
   try {
-    const body = JSON.parse(text) as { message?: string; data?: { reason?: unknown } };
+    // oRPC wraps both requests and replies as { json, meta }; read the error from inside it.
+    const parsed = JSON.parse(text) as {
+      json?: { message?: string; data?: { reason?: unknown } };
+      message?: string;
+      data?: { reason?: unknown };
+    };
+    const body = parsed.json ?? parsed;
     if (body.message) message = body.message;
     data = body.data;
   } catch {
@@ -360,7 +368,9 @@ class SendQueue {
     void this.refresh().then(() => this.kick());
   }
 
-  async enqueue(input: Omit<SendItem, "createdAt" | "state" | "loaded" | "total" | "fraction" | "bps">) {
+  async enqueue(
+    input: Omit<SendItem, "createdAt" | "state" | "loaded" | "total" | "fraction" | "bps">,
+  ) {
     this.start();
     const item: SendItem = {
       ...input,
@@ -386,7 +396,9 @@ class SendQueue {
       index,
       name: file.name,
       mimeType:
-        file.mimeType || inferAttachmentMimeType(file.name, file.mimeType) || "application/octet-stream",
+        file.mimeType ||
+        inferAttachmentMimeType(file.name, file.mimeType) ||
+        "application/octet-stream",
       blob: file.file,
       uploadNonce: `voice-photo:${voiceClientId}:${index}`,
     }));
@@ -428,25 +440,25 @@ class SendQueue {
     let base = 0;
     const ids: string[] = [];
     try {
-    for (const row of rows) {
-      if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
-      if (!row.artifactId) {
-        const id = await this.uploadFile(
-          { ...row, id: String(row.index), blob: row.blob, uploadNonce: row.uploadNonce },
-          target,
-          spaceId,
-          `voice:${voiceClientId}`,
-          (loaded, fileTotal) => onProgress(base + loaded, Math.max(total, base + fileTotal)),
-        );
-        row.artifactId = id;
-        await this.write((store) => store.putCompanions([row]));
+      for (const row of rows) {
+        if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+        if (!row.artifactId) {
+          const id = await this.uploadFile(
+            { ...row, id: String(row.index), blob: row.blob, uploadNonce: row.uploadNonce },
+            target,
+            spaceId,
+            `voice:${voiceClientId}`,
+            (loaded, fileTotal) => onProgress(base + loaded, Math.max(total, base + fileTotal)),
+          );
+          row.artifactId = id;
+          await this.write((store) => store.putCompanions([row]));
+        }
+        ids.push(row.artifactId);
+        base += Math.ceil(row.blob.size * 1.4) + 256;
+        onProgress(base, total);
       }
-      ids.push(row.artifactId);
-      base += Math.ceil(row.blob.size * 1.4) + 256;
-      onProgress(base, total);
-    }
-    await this.refresh();
-    return ids;
+      await this.refresh();
+      return ids;
     } finally {
       this.aborts.delete(`voice:${voiceClientId}`);
     }
@@ -547,7 +559,10 @@ class SendQueue {
         } as never);
         await this.cancel(item.clientNonce);
       } catch (error) {
-        if (controller.signal.aborted || !(await this.readSends()).some((row) => row.clientNonce === item.clientNonce)) {
+        if (
+          controller.signal.aborted ||
+          !(await this.readSends()).some((row) => row.clientNonce === item.clientNonce)
+        ) {
           continue;
         }
         const status = (error as { status?: number }).status;
@@ -580,12 +595,22 @@ class SendQueue {
   private async uploadAll(item: SendItem, signal: AbortSignal): Promise<string[]> {
     const ids: string[] = [];
     let base = 0;
-    const estimate = item.files.reduce((sum, file) => sum + Math.ceil(file.blob.size * 1.4) + 256, 0);
+    const estimate = item.files.reduce(
+      (sum, file) => sum + Math.ceil(file.blob.size * 1.4) + 256,
+      0,
+    );
     for (const file of item.files) {
       if (!file.artifactId) {
-        file.artifactId = await this.uploadFile(file, item.target, item.spaceId, item.clientNonce, (loaded, total) => {
-          this.sample(item, base + loaded, Math.max(estimate, base + total));
-        }, signal);
+        file.artifactId = await this.uploadFile(
+          file,
+          item.target,
+          item.spaceId,
+          item.clientNonce,
+          (loaded, total) => {
+            this.sample(item, base + loaded, Math.max(estimate, base + total));
+          },
+          signal,
+        );
         await this.write((store) => store.putSend(item));
       }
       ids.push(file.artifactId);
@@ -603,7 +628,10 @@ class SendQueue {
     item.total = meter.total;
     item.fraction = meter.fraction;
     item.bps = meter.bps;
-    this.publish(this.snapshot.items.map((row) => (row.clientNonce === item.clientNonce ? item : row)), this.snapshot.companions);
+    this.publish(
+      this.snapshot.items.map((row) => (row.clientNonce === item.clientNonce ? item : row)),
+      this.snapshot.companions,
+    );
   }
 
   private async uploadFile(
@@ -617,14 +645,21 @@ class SendQueue {
     const prepared = await prepareImage(new File([file.blob], file.name, { type: file.mimeType }));
     const mimeType = inferAttachmentMimeType(prepared.name, prepared.type) || file.mimeType;
     const contentBase64 = await readFileAsBase64(prepared);
+    // RPC wire format: the call input goes inside { json, meta }, as the app's RPC client sends it.
     const body = JSON.stringify({
-      ...target,
-      name: file.name,
-      mimeType,
-      contentBase64,
-      clientNonce: file.uploadNonce,
+      json: {
+        ...target,
+        name: file.name,
+        mimeType,
+        contentBase64,
+        clientNonce: file.uploadNonce,
+      },
+      meta: [],
     });
-    const headers = withSpaceHeaders({ "content-type": "application/json" }, spaceId ?? selectedSpaceId());
+    const headers = withSpaceHeaders(
+      { "content-type": "application/json" },
+      spaceId ?? selectedSpaceId(),
+    );
     const controller = new AbortController();
     const parent = this.aborts.get(abortKey);
     const onAbort = () => controller.abort();
@@ -640,7 +675,8 @@ class SendQueue {
         onProgress,
       });
       if (!res.ok) throw asRpcError(res.status, await res.text());
-      const artifact = (await res.json()) as { id?: string };
+      const reply = (await res.json()) as { json?: { id?: string }; id?: string };
+      const artifact = reply.json ?? reply;
       if (!artifact.id) throw new Error("Upload failed.");
       return artifact.id;
     } finally {

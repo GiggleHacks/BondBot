@@ -1,13 +1,4 @@
-import {
-  mkdir,
-  open,
-  readdir,
-  readFile,
-  rename,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
   ArtifactStore,
@@ -34,11 +25,11 @@ import {
 import { getLogger } from "@rakazo/logging";
 import type { Context, Hono } from "hono";
 import * as z from "zod";
+import { loadVoiceCredential, voiceContext, voiceProviderFor } from "./calls/voice.js";
 import { deleteArtifactFamily, storeOwnedArtifact } from "./content/artifacts.js";
 import { readBoundedBody, readBoundedBytes } from "./http/http-body.js";
 import type { ThreadTarget } from "./threads/thread-target.js";
 import { resolveThreadTarget, sendThreadMessage } from "./threads/thread-target.js";
-import { loadVoiceCredential, voiceContext, voiceProviderFor } from "./calls/voice.js";
 import {
   AudioConversionError,
   cutPiece,
@@ -184,7 +175,9 @@ const CompanionBody = z.object({
 async function readCompanionIds(dir: string): Promise<string[]> {
   try {
     const parsed = JSON.parse(await readFile(path.join(dir, "companions.json"), "utf8")) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string").slice(0, 8) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === "string").slice(0, 8)
+      : [];
   } catch {
     return [];
   }
@@ -300,7 +293,7 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
   ): Promise<string> {
     const audio = new Uint8Array(await readFile(file));
     // A slow self-hosted server is still progressing; allow several times real time.
-    const seconds = Math.max(30, audio.byteLength / 3_000);
+    const seconds = Math.max(30, Math.ceil(audio.byteLength / 3_000));
     let lastError: unknown = new Error(
       "Voice transcription is unavailable. Check the local speech server.",
     );
@@ -400,8 +393,7 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
       }
     }
     const dir = noteDir(deps, id);
-    const source =
-      options.sourcePath ?? (await assemble(id, parts, row.bytes, "speech-source"));
+    const source = options.sourcePath ?? (await assemble(id, parts, row.bytes, "speech-source"));
     const wav = path.join(dir, "speech.wav");
     const duration = await decodeForSpeech(source, wav, options.signal);
     if (options.final && exceedsDeclaredDuration(duration, row.durationMs)) {

@@ -554,6 +554,59 @@ export function useComputerControls({
   // Retrying cannot help once the hours are spent; only a plan change can.
   const allowanceUsed =
     ownedComputer?.state !== "running" && isComputerAllowanceUsed(computerFailure);
+  // A docked screen that lost its connection while the phone was asleep reconnects by itself when
+  // the app returns, the network comes back, or on a short backoff, instead of waiting for Retry.
+  // Only a RUNNING computer is retried; a stopped one is never woken.
+  const autoReconnectBotId = computerBot?.id;
+  const autoReconnectWanted =
+    Boolean(computerFailure) && !allowanceUsed && ownedComputer?.state === "running";
+  // Counts across the error clearing and returning on each attempt, so a dead server cannot loop;
+  // the app coming back to the foreground or the network returning starts it over.
+  const autoReconnectAttempts = useRef({ botId: autoReconnectBotId, count: 0 });
+  if (autoReconnectAttempts.current.botId !== autoReconnectBotId) {
+    autoReconnectAttempts.current = { botId: autoReconnectBotId, count: 0 };
+  }
+  const [autoReconnectTick, setAutoReconnectTick] = useState(0);
+  const retryDockedComputer = () => {
+    if (document.visibilityState !== "visible" || !docked) return;
+    bestEffort("computer.autoReconnect", refreshDockedComputer());
+  };
+  const autoReconnectDelay =
+    autoReconnectWanted && autoReconnectBotId && autoReconnectAttempts.current.count < 5
+      ? 2_000 * 2 ** autoReconnectAttempts.current.count
+      : null;
+  useTimeout(
+    () => {
+      autoReconnectAttempts.current.count += 1;
+      setAutoReconnectTick((tick) => tick + 1);
+      retryDockedComputer();
+    },
+    autoReconnectDelay,
+    `${autoReconnectBotId ?? ""}:${autoReconnectTick}`,
+  );
+  const resumeAutoReconnect = () => {
+    if (!autoReconnectWanted || !autoReconnectBotId || document.visibilityState !== "visible") {
+      return;
+    }
+    autoReconnectAttempts.current.count = 0;
+    setAutoReconnectTick((tick) => tick + 1);
+    retryDockedComputer();
+  };
+  useEventListener(
+    autoReconnectWanted && autoReconnectBotId ? document : null,
+    "visibilitychange",
+    resumeAutoReconnect,
+  );
+  useEventListener(
+    autoReconnectWanted && autoReconnectBotId ? window : null,
+    "online",
+    resumeAutoReconnect,
+  );
+  useEventListener(
+    autoReconnectWanted && autoReconnectBotId ? window : null,
+    "pageshow",
+    resumeAutoReconnect,
+  );
   const computerScreenError = computerFailure ? (
     <div role="alert" className="flex flex-col items-center gap-3 px-6 text-center text-body">
       {screenFailure ? (

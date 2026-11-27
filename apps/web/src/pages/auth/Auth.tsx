@@ -15,6 +15,7 @@ import { PasskeySignIn, usePasskeySignIn } from "../../components/account/Passke
 import { PinInput } from "../../components/account/PinInput";
 import { SocialSignInButtons } from "../../components/account/SocialSignInButtons";
 import { QuakeText } from "../../components/brand/QuakeText";
+import { startPixelFx } from "../../components/fx/pixel-fx";
 import { WindowChrome } from "../../components/WindowChrome";
 import { authClient } from "../../lib/auth/auth";
 import type { AuthCapabilities } from "../../lib/auth/auth-capabilities";
@@ -710,6 +711,8 @@ export function AuthFrame({
 }) {
   const server = desktopBridge()?.server;
   const robotSlot = useRef<HTMLDivElement>(null);
+  // The pixel cursor trail belongs to these screens only and stops once they close.
+  useEffect(() => startPixelFx(), []);
   return (
     // Always dark: the robot is drawn on black whatever the app theme is.
     <div

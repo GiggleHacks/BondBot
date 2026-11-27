@@ -1,5 +1,5 @@
-// Local addition (BondBot): a pixel trail behind the mouse pointer. Hover effects are CSS
-// (styles/pixel-fx.css); both follow `html[data-pixel-fx]` and reduced motion.
+// Local addition (BondBot): a pixel trail behind the mouse pointer on the sign-in screens. Hover
+// effects are CSS (styles/pixel-fx.css); both follow `html[data-pixel-fx]` and reduced motion.
 
 const GRID = 4;
 const LIFE_MS = 360;
@@ -8,12 +8,10 @@ const SPACING = 6;
 
 type Pixel = { x: number; y: number; born: number; size: number; accent: boolean };
 
-let started = false;
-
-/** Starts the trail once per page. Touch and pen input never draw. */
-export function startPixelFx(): void {
-  if (started || typeof window === "undefined") return;
-  started = true;
+/** Starts the trail and returns how to stop and remove it. Touch and pen input never draw. */
+export function startPixelFx(): () => void {
+  // Nothing to draw on where media queries are missing, such as a test DOM.
+  if (typeof window.matchMedia !== "function") return () => {};
   const root = document.documentElement;
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
   const canvas = document.createElement("canvas");
@@ -27,9 +25,9 @@ export function startPixelFx(): void {
     pointerEvents: "none",
     zIndex: "2147483646",
   });
-  document.body.append(canvas);
   const ctx = canvas.getContext("2d");
-  if (!ctx) return;
+  if (!ctx) return () => {};
+  document.body.append(canvas);
 
   const pixels: Pixel[] = [];
   let frame = 0;
@@ -109,14 +107,26 @@ export function startPixelFx(): void {
     if (!frame) frame = requestAnimationFrame(draw);
   }
 
+  function leave() {
+    last = null;
+  }
+
   resize();
   window.addEventListener("resize", resize);
   window.addEventListener("pointermove", move, { passive: true });
-  document.addEventListener("pointerleave", () => {
-    last = null;
-  });
+  document.addEventListener("pointerleave", leave);
   // Theme changes recolor the trail.
-  new MutationObserver(() => {
+  const themes = new MutationObserver(() => {
     colors = readColors();
-  }).observe(root, { attributes: true, attributeFilter: ["data-theme", "data-palette"] });
+  });
+  themes.observe(root, { attributes: true, attributeFilter: ["data-theme", "data-palette"] });
+
+  return () => {
+    window.removeEventListener("resize", resize);
+    window.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerleave", leave);
+    themes.disconnect();
+    if (frame) cancelAnimationFrame(frame);
+    canvas.remove();
+  };
 }

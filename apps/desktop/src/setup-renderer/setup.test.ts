@@ -210,7 +210,7 @@ describe("setup", () => {
     check.click();
     ui.resolveCheck({ ok: true, url: "https://two.example" });
     await flush();
-    expect(status.textContent).toBe("Rakazo answered at https://two.example.");
+    expect(status.textContent).toBe("BondBot answered at https://two.example.");
   });
 
   it("does not clear an unrelated save error when an address is edited", async () => {
@@ -275,7 +275,7 @@ describe("setup", () => {
     currentCheck.resolve({ ok: true, url: "https://two.example" });
     await flush();
     expect(field.value).toBe("https://two.example");
-    expect(element("status").textContent).toBe("Rakazo answered at https://two.example.");
+    expect(element("status").textContent).toBe("BondBot answered at https://two.example.");
     expect(element("status").getAttribute("data-tone")).toBe("ok");
     expect(element<HTMLButtonElement>("check").disabled).toBe(false);
     expect(element<HTMLButtonElement>("continue").disabled).toBe(false);
@@ -332,7 +332,7 @@ describe("setup", () => {
     await flush();
 
     expect(element("stack").hidden).toBe(false);
-    expect(element("stack-phase").textContent).toBe("Downloading Rakazo…");
+    expect(element("stack-phase").textContent).toBe("Downloading BondBot…");
   });
 
   it("locks the address while it is being saved and unlocks it when the save fails", async () => {
@@ -387,7 +387,7 @@ describe("setup", () => {
     await flush();
 
     expect(element<HTMLInputElement>("server-url").value).toBe("https://one.example");
-    expect(element("status").textContent).toBe("Rakazo answered at https://one.example.");
+    expect(element("status").textContent).toBe("BondBot answered at https://one.example.");
     expect(element("status").getAttribute("data-tone")).toBe("ok");
     expect(element<HTMLButtonElement>("check").disabled).toBe(false);
   });
@@ -438,7 +438,7 @@ describe("setup", () => {
     ui.startResult.resolve(stackState("pulling"));
     await flush();
     expect(element("stack").hidden).toBe(false);
-    expect(element("stack-phase").textContent).toBe("Downloading Rakazo…");
+    expect(element("stack-phase").textContent).toBe("Downloading BondBot…");
     expect(element<HTMLButtonElement>("continue").disabled).toBe(true);
 
     ui.resolveStackState(stackState("ready"));
@@ -448,7 +448,7 @@ describe("setup", () => {
     ui.resolveSave({ ok: true });
     await flush();
 
-    expect(element("stack-phase").textContent).toBe("Rakazo is ready.");
+    expect(element("stack-phase").textContent).toBe("BondBot is ready.");
     expect(element("stack-phase").getAttribute("data-tone")).toBe("ok");
     expect(ui.saves).toEqual([{ mode: "new", serverUrl: DEFAULT_LOCAL_URL }]);
     expect(element<HTMLButtonElement>("continue").disabled).toBe(false);
@@ -556,7 +556,7 @@ describe("setup", () => {
       submitForm();
       ui.startResult.resolve(stackState("pulling"));
       await flush();
-      expect(element("stack-phase").textContent).toBe("Downloading Rakazo…");
+      expect(element("stack-phase").textContent).toBe("Downloading BondBot…");
 
       if (leaveAfterReady) {
         ui.resolveStackState(stackState("ready"));
@@ -613,13 +613,13 @@ describe("setup", () => {
     expect(element("status").textContent).toBe("Comprobando…");
     ui.resolveCheck({ ok: true, url: "https://one.example" });
     await flush();
-    expect(element("status").textContent).toBe("Rakazo respondió en https://one.example.");
+    expect(element("status").textContent).toBe("BondBot respondió en https://one.example.");
 
     selectMode("new");
     submitForm();
     ui.startResult.resolve({ ...stackState("pulling"), layerBytes: { layer: 2.5e6 } });
     await flush();
-    expect(element("stack-phase").textContent).toBe("Descargando Rakazo…");
+    expect(element("stack-phase").textContent).toBe("Descargando BondBot…");
     expect(element("stack-detail").textContent).toBe("3 MB descargados");
   });
 
@@ -679,14 +679,14 @@ describe("setup", () => {
     ui.resolveCheck({ ok: true, url: "https://one.example" });
     await flush();
     expect(element("status").textContent).toBe(
-      "Rakazo odpowiedziało pod adresem https://one.example.",
+      "BondBot odpowiedziało pod adresem https://one.example.",
     );
 
     selectMode("new");
     submitForm();
     ui.startResult.resolve({ ...stackState("pulling"), layerBytes: { layer: 2.5e6 } });
     await flush();
-    expect(element("stack-phase").textContent).toBe(PL_MESSAGES["Downloading Rakazo…"]);
+    expect(element("stack-phase").textContent).toBe("Pobieranie BondBot…");
     expect(element("stack-detail").textContent).toBe("Pobrano 3 MB");
   });
 });

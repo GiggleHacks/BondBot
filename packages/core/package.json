@@ -110,6 +110,11 @@
       "development": "./src/primitives/retry.ts",
       "default": "./src/primitives/retry.ts"
     },
+    "./brand": {
+      "types": "./src/branding/brand.ts",
+      "development": "./src/branding/brand.ts",
+      "default": "./src/branding/brand.ts"
+    },
     "./translate": {
       "types": "./src/locale/translate.ts",
       "development": "./src/locale/translate.ts",

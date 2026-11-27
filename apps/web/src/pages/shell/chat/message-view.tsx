@@ -9,6 +9,7 @@ import type {
   MessageReaction,
   ThreadMessage,
 } from "@rakazo/contracts";
+import { isAttachmentAudioMimeType } from "@rakazo/contracts";
 import type { ChildBotBlock, PeerExchange } from "@rakazo/core";
 import { isPeerReceiptBlocks, isToolActivityBlock, otherAuthor } from "@rakazo/core";
 import { BotAvatar, Button, cn, resolvePersonaColorDef } from "@rakazo/ui-web";
@@ -16,13 +17,13 @@ import { ChevronRight, UserRound } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CollaborationMarker } from "../../../components/ai/CollaborationMarker";
 import { ComputerCard } from "../../../components/computers/ComputerCard";
+import { ModelSwitchNote } from "../../../components/ModelSwitchNote";
 import { ArtifactFileCard } from "../../../components/messages/ArtifactFileCard";
 import { AskCard } from "../../../components/messages/AskCard";
 import { CloudAgentCard } from "../../../components/messages/CloudAgentCard";
 import { McpAppCard } from "../../../components/messages/McpAppCard";
 import { OutgoingDraftCard } from "../../../components/messages/OutgoingDraftCard";
 import { SubagentCard } from "../../../components/messages/SubagentCard";
-import { ModelSwitchNote } from "../../../components/ModelSwitchNote";
 import {
   LIVE_TOOL_STEP_WINDOW,
   StandaloneToolActivity,
@@ -169,16 +170,20 @@ export const MessageView = memo(function MessageView({
   const quoteMessageId = message.id.includes(":") ? undefined : message.id;
 
   // Only what is drawn names the mentioned bots; copy, quote, and speech keep the original text.
-  const blocks = useMemo(
-    () =>
-      mentions?.length
-        ? withBlockMentions(
-            message.blocks,
-            mentions.map((bot) => ({ id: bot.botId, name: bot.name })),
-          )
-        : message.blocks,
-    [message.blocks, mentions],
-  );
+  const blocks = useMemo(() => {
+    const withMentions = mentions?.length
+      ? withBlockMentions(
+          message.blocks,
+          mentions.map((bot) => ({ id: bot.botId, name: bot.name })),
+        )
+      : message.blocks;
+    // A voice note's words sit under the player, not above it.
+    const audio = withMentions.filter(
+      (block) => block.kind === "file" && isAttachmentAudioMimeType(block.mimeType),
+    );
+    if (!audio.length) return withMentions;
+    return [...audio, ...withMentions.filter((block) => !audio.includes(block))];
+  }, [message.blocks, mentions]);
   const openPage = useOpenPage();
   const pageCards = pages?.length ? (
     <div className="mt-3 flex flex-col gap-3">
@@ -256,11 +261,9 @@ export const MessageView = memo(function MessageView({
   );
   // Anchored below the speaker and reply line so the rail centers on the bubble itself.
   // A message with text and attachments anchors it on its first text bubble.
-  const textAnchorIndex = message.blocks.findIndex((block) => block.kind === "text");
+  const textAnchorIndex = blocks.findIndex((block) => block.kind === "text");
   const hoverAnchorIndex =
-    textAnchorIndex === -1
-      ? message.blocks.findIndex((block) => block.kind === "ask")
-      : textAnchorIndex;
+    textAnchorIndex === -1 ? blocks.findIndex((block) => block.kind === "ask") : textAnchorIndex;
   const peerReceipt = isPeerReceiptBlocks(message.blocks);
   const hoverActions = peerReceipt ? null : (
     <MessageHoverActions
