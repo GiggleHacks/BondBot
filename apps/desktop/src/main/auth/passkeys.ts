@@ -6,7 +6,13 @@ import { RAKAZO_CLOUD_URL } from "../setup/setup-config.js";
  * inlines `RAKAZO_PASSKEY_RP_ID`, so the app and its entitlements must be built with the same value.
  */
 export const PASSKEY_RP_ID =
-  process.env.RAKAZO_PASSKEY_RP_ID?.trim().toLowerCase() || new URL(RAKAZO_CLOUD_URL).hostname;
+  process.env.RAKAZO_PASSKEY_RP_ID?.trim().toLowerCase() ||
+  // A development build's fallback server is a loopback IP, which no passkey can rely on.
+  rpIdOrLoopback(new URL(RAKAZO_CLOUD_URL).hostname);
+
+function rpIdOrLoopback(hostname: string): string {
+  return DOMAIN.test(hostname) ? hostname : "localhost";
+}
 
 /**
  * Relying parties whose passkeys this build can use through the system passkey sheet. The

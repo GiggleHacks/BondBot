@@ -108,6 +108,10 @@ jobs:
         env:
           RAKAZO_ALLOW_DEV_SECRETS: "1"
           RAKAZO_DESKTOP_RELEASE: "1"
+          # The server setup offers by default. Set as a repository variable so a fork does not
+          # ship another deployment's host; unset falls back to the local stack.
+          RAKAZO_CLOUD_URL: ${{ vars.RAKAZO_CLOUD_URL }}
+          RAKAZO_PASSKEY_RP_ID: ${{ vars.RAKAZO_PASSKEY_RP_ID }}
       - name: Build the server bundle This computer downloads on Apple silicon
         if: runner.os == 'macOS'
         shell: bash

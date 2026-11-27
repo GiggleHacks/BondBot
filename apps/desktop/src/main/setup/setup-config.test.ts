@@ -144,8 +144,30 @@ describe("saved setup", () => {
       mode: "existing",
       serverUrl: RAKAZO_CLOUD_URL,
     });
-    expect(parseSetupInput({ mode: "new", serverUrl: RAKAZO_CLOUD_URL })).toBeNull();
+    // In tests RAKAZO_CLOUD_URL is unset, so it is the loopback fallback and "new" also applies.
+    expect(parseSetupInput({ mode: "new", serverUrl: RAKAZO_CLOUD_URL })).toEqual({
+      mode: "new",
+      serverUrl: RAKAZO_CLOUD_URL,
+    });
     expect(servesBundledRenderer(RAKAZO_CLOUD_URL, false)).toBe(false);
+  });
+
+  it("takes the default server from the build, falling back to the local stack", async () => {
+    // A build sets RAKAZO_CLOUD_URL; a development build leaves it unset. Stub, reset, then import.
+    async function load(configured: string) {
+      vi.stubEnv("RAKAZO_CLOUD_URL", configured);
+      vi.resetModules();
+      return import("./setup-config.js");
+    }
+
+    const built = await load("https://build.example.com");
+    expect(built.RAKAZO_CLOUD_URL).toBe("https://build.example.com");
+    expect(await load("http://192.168.1.20:3100").then((m) => m.RAKAZO_CLOUD_URL)).toBe(
+      "http://192.168.1.20:3100",
+    );
+    expect(await load("").then((m) => m.RAKAZO_CLOUD_URL)).toBe(DEFAULT_LOCAL_WEB_URL);
+    vi.unstubAllEnvs();
+    vi.resetModules();
   });
 });
 

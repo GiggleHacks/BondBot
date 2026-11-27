@@ -902,25 +902,35 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
   const voiceNotes = createVoiceNotes(voiceNoteDeps);
   mountVoiceNoteRoutes(app, voiceNoteDeps, voiceNotes, (c) => sessionActor(c.req.raw));
   voiceNotes.start();
-  app.get("/api/desktop/windows", async (c) => {
+  // Desktop builds are dropped into /data/downloads by the operator; an absent one answers 404 so
+  // the UI can offer the other platform instead.
+  const desktopDownload = (file: string, label: string, contentType: string) => async (c: any) => {
     const actor = await sessionActor(c.req.raw);
     if (!actor) return c.json({ error: "Unauthorized" }, 401);
-    const exePath = path.join(env.dataDir, "downloads", "BondBot.exe");
-    const info = await stat(exePath).catch(() => null);
+    const downloadPath = path.join(env.dataDir, "downloads", file);
+    const info = await stat(downloadPath).catch(() => null);
     if (!info?.isFile()) {
-      return c.json({ error: "Windows desktop build is not available yet." }, 404);
+      return c.json({ error: `${label} desktop build is not available yet.` }, 404);
     }
-    const stream = Readable.toWeb(createReadStream(exePath)) as ReadableStream;
+    const stream = Readable.toWeb(createReadStream(downloadPath)) as ReadableStream;
     return new Response(stream, {
       status: 200,
       headers: {
-        "content-type": "application/vnd.microsoft.portable-executable",
-        "content-disposition": 'attachment; filename="BondBot.exe"',
+        "content-type": contentType,
+        "content-disposition": `attachment; filename="${file}"`,
         "content-length": String(info.size),
         "cache-control": "no-store",
       },
     });
-  });
+  };
+  app.get(
+    "/api/desktop/windows",
+    desktopDownload("BondBot.exe", "Windows", "application/vnd.microsoft.portable-executable"),
+  );
+  app.get(
+    "/api/desktop/mac",
+    desktopDownload("BondBot.dmg", "macOS", "application/x-apple-diskimage"),
+  );
   mountAccountImportRoute(
     app,
     { ...spaceDeletionDeps, maxArtifactBytes: env.maxUploadSizeBytes },

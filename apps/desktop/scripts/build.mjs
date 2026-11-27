@@ -17,5 +17,7 @@ await build({
     "process.env.RAKAZO_DESKTOP_RELEASE": JSON.stringify(process.env.RAKAZO_DESKTOP_RELEASE ?? ""),
     // Self-hosted builds associated with their own passkey domain (see src/main/auth/passkeys.ts).
     "process.env.RAKAZO_PASSKEY_RP_ID": JSON.stringify(process.env.RAKAZO_PASSKEY_RP_ID ?? ""),
+    // The server setup offers by default. Baked in so the source carries no deployment's host.
+    "process.env.RAKAZO_CLOUD_URL": JSON.stringify(process.env.RAKAZO_CLOUD_URL ?? ""),
   },
 });

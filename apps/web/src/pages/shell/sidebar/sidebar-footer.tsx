@@ -272,15 +272,26 @@ export function SidebarFooter({
             ))}
             <div className="my-1 border-t border-border" />
             {!desktopBridge() ? (
-              <a
-                className={`${buttonVariants({ variant: "ghost", size: "lg" })} w-full justify-start gap-2.5 font-normal`}
-                href="/api/desktop/windows"
-                download="BondBot.exe"
-                data-testid="download-windows-app-link"
-              >
-                <MonitorDown className="text-muted-foreground" strokeWidth={1.75} />
-                <span>Download Windows app</span>
-              </a>
+              <>
+                <a
+                  className={`${buttonVariants({ variant: "ghost", size: "lg" })} w-full justify-start gap-2.5 font-normal`}
+                  href="/api/desktop/mac"
+                  download="BondBot.dmg"
+                  data-testid="download-mac-app-link"
+                >
+                  <MonitorDown className="text-muted-foreground" strokeWidth={1.75} />
+                  <span>Download macOS app</span>
+                </a>
+                <a
+                  className={`${buttonVariants({ variant: "ghost", size: "lg" })} w-full justify-start gap-2.5 font-normal`}
+                  href="/api/desktop/windows"
+                  download="BondBot.exe"
+                  data-testid="download-windows-app-link"
+                >
+                  <MonitorDown className="text-muted-foreground" strokeWidth={1.75} />
+                  <span>Download Windows app</span>
+                </a>
+              </>
             ) : null}
             {onInvite ? (
               <Button

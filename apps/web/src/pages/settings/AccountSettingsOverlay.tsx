@@ -30,6 +30,10 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { AccountAccess, LinkSsoRow } from "../../components/account/AccountAccess";
+import {
+  currentDesktopPlatform,
+  type DesktopPlatform,
+} from "../../lib/platform/desktop-download";
 import { AccountPhoto } from "../../components/account/AccountPhoto";
 import { PasskeySettings } from "../../components/account/PasskeySettings";
 import { SuccessPop } from "../../components/ai/primitives";
@@ -69,6 +73,30 @@ import { useQueryUserId, useSave, useSpaceQueries } from "../../lib/query/query"
 import type { RpcClient } from "../../lib/query/rpc";
 import { authErrorText } from "../../lib/query/user-error";
 import { reasoningPreference } from "../../lib/reasoning-preference";
+/** Builds the rows the settings screen offers for this visitor's platform. */
+function desktopDownloadRows(platform: DesktopPlatform) {
+  const rows = [
+    {
+      platform: "mac" as const,
+      title: "BondBot for macOS",
+      description: "Signed and notarized disk image — drag it to Applications. Apple silicon.",
+      href: "/api/desktop/mac",
+      fileName: "BondBot.dmg",
+      action: "Download BondBot.dmg",
+    },
+    {
+      platform: "windows" as const,
+      title: "BondBot for Windows",
+      description: "Portable desktop app with its own icon and window — drop it anywhere and run.",
+      href: "/api/desktop/windows",
+      fileName: "BondBot.exe",
+      action: "Download BondBot.exe",
+    },
+  ];
+  // The visitor's own platform first, so the usual case needs no reading.
+  if (platform === "linux") return rows;
+  return [...rows].sort((a, b) => (a.platform === platform ? -1 : b.platform === platform ? 1 : 0));
+}
 
 export type SettingsGeneralProps = {
   email?: string | null;
@@ -99,6 +127,8 @@ export function GeneralSettingsPanels({
 }: SettingsGeneralProps) {
   const { t } = useLingui();
   const account = accountDisplay({ name, email }, t`You`);
+  // Built once: the visitor's platform does not change mid-session.
+  const [desktopDownloads] = useState(() => desktopDownloadRows(currentDesktopPlatform()));
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
@@ -603,29 +633,29 @@ export function GeneralSettingsPanels({
       <TrustedLinkSitesSettings />
 
       {!desktopBridge() ? (
-        <SettingsGroup title="Windows app" data-testid="windows-desktop-download">
-          <div className="flex items-center justify-between gap-4 px-4 py-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <img
-                src="/brand/bondbot-robot.png"
-                alt="BondBot"
-                className="size-10 shrink-0 rounded-lg border border-border object-cover [image-rendering:pixelated]"
-              />
-              <div className="min-w-0">
-                <div className="text-body font-medium text-foreground">BondBot for Windows</div>
-                <div className="text-body-sm text-muted-foreground">
-                  Portable desktop app with its own icon and window — drop it anywhere and run.
+        <SettingsGroup title="Desktop app" data-testid="windows-desktop-download">
+          {desktopDownloads.map((item) => (
+            <div key={item.platform} className="flex items-center justify-between gap-4 px-4 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <img
+                  src="/brand/bondbot-robot.png"
+                  alt="BondBot"
+                  className="size-10 shrink-0 rounded-lg border border-border object-cover [image-rendering:pixelated]"
+                />
+                <div className="min-w-0">
+                  <div className="text-body font-medium text-foreground">{item.title}</div>
+                  <div className="text-body-sm text-muted-foreground">{item.description}</div>
                 </div>
               </div>
+              <a
+                href={item.href}
+                download={item.fileName}
+                className={`${buttonVariants({ variant: "secondary", size: "sm" })} shrink-0`}
+              >
+                {item.action}
+              </a>
             </div>
-            <a
-              href="/api/desktop/windows"
-              download="BondBot.exe"
-              className={`${buttonVariants({ variant: "secondary", size: "sm" })} shrink-0`}
-            >
-              Download BondBot.exe
-            </a>
-          </div>
+          ))}
         </SettingsGroup>
       ) : null}
 
