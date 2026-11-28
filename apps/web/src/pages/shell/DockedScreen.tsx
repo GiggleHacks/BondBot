@@ -1,7 +1,9 @@
 // Local addition (David, 2026-11-21): the live screen docked above the chat, with a draggable
 // divider, a full screen view and a way to close it. Phone only until 2026-11-28, now every width.
+import { useTimeout } from "@rakazo/chat-ui/hooks";
 import type { Bot, ComputerStatus } from "@rakazo/contracts";
 import { computerPreviewPlaceholder } from "@rakazo/i18n/computer-preview";
+import { bestEffort } from "@rakazo/logging/best-effort";
 import { Button } from "@rakazo/ui-web";
 import { useIsMobile } from "@rakazo/ui-web/hooks/use-mobile";
 import { Maximize2, MessageSquare, RefreshCw, X } from "lucide-react";
@@ -14,6 +16,7 @@ import {
   defaultDockHeight,
   screenDockHeightPreference,
 } from "../../lib/screen-dock";
+import { useEventListener } from "../../lib/use-event-listener";
 import { resolveOwnedComputerScreen } from "./computers/computer-view";
 
 /** The floating header's height, so the docked screen starts just under it. */
@@ -25,15 +28,9 @@ const DOUBLE_TAP_ZOOM = 2.5;
 function useViewportHeight(): number {
   const read = () => window.visualViewport?.height ?? window.innerHeight;
   const [height, setHeight] = useState(read);
-  useEffect(() => {
-    const update = () => setHeight(read());
-    window.addEventListener("resize", update);
-    window.visualViewport?.addEventListener("resize", update);
-    return () => {
-      window.removeEventListener("resize", update);
-      window.visualViewport?.removeEventListener("resize", update);
-    };
-  }, []);
+  const update = () => setHeight(read());
+  useEventListener(window, "resize", update);
+  useEventListener(window.visualViewport, "resize", update);
   return height;
 }
 
@@ -56,6 +53,7 @@ export function DockedScreen({
   hasControl = false,
   onTakeControl,
   onRelease,
+  onOpenFullWindow,
   onClose,
 }: {
   bot: Bot;
@@ -78,6 +76,8 @@ export function DockedScreen({
   onTakeControl?: () => Promise<boolean> | boolean;
   /** Hands control back. */
   onRelease?: () => Promise<void> | void;
+  /** On a wide window Full screen opens the full window, which has the screen's other controls. */
+  onOpenFullWindow?: () => void;
   onClose: () => void;
 }) {
   const viewport = useViewportHeight();
@@ -85,18 +85,16 @@ export function DockedScreen({
   const [chosen, setChosen] = useState(() => screenDockHeightPreference.get());
   const [full, setFull] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const refresh = async () => {
+  const refresh = () => {
     if (refreshing || !onRefresh) return;
     setRefreshing(true);
-    try {
-      await Promise.race([
-        Promise.resolve(onRefresh()),
-        new Promise((resolve) => window.setTimeout(resolve, 6000)),
-      ]);
-    } finally {
-      setRefreshing(false);
-    }
+    void bestEffort(
+      "dockedScreen.refresh",
+      Promise.resolve(onRefresh()).finally(() => setRefreshing(false)),
+    );
   };
+  // A refresh that never answers gives the button back.
+  useTimeout(() => setRefreshing(false), refreshing ? 6000 : null);
   const drag = useRef<{ startY: number; startHeight: number } | null>(null);
   // The Back gesture leaves full screen first.
   useBackLayer(full, () => setFull(false));
@@ -104,7 +102,13 @@ export function DockedScreen({
   // The newest height, so letting go saves what the last drag step set even before it has rendered.
   const latest = useRef(height);
   latest.current = height;
-  const owned = resolveOwnedComputerScreen(bot.id, computer, embeddedScreenUrl, screenBotId, heldScreen);
+  const owned = resolveOwnedComputerScreen(
+    bot.id,
+    computer,
+    embeddedScreenUrl,
+    screenBotId,
+    heldScreen,
+  );
   const showing =
     owned.computer?.state === "running" && owned.embeddedScreenUrl && !computerScreenError;
   const asleep =
@@ -119,7 +123,8 @@ export function DockedScreen({
   const controlling = Boolean(hasControl && showing);
   const [taking, setTaking] = useState(false);
   const [confirmTakeover, setConfirmTakeover] = useState(false);
-  const tapTimer = useRef<number | undefined>(undefined);
+  // When the last single tap landed; it takes control once no second tap (zoom) follows.
+  const [pendingTap, setPendingTap] = useState<number | null>(null);
   const takeControl = useCallback(async () => {
     if (!onTakeControl) return;
     setConfirmTakeover(false);
@@ -140,10 +145,17 @@ export function DockedScreen({
   }, [onTakeControl, showing, controlling, taking, owned.computer?.controlHolder, takeControl]);
   const requestControlRef = useRef(requestControl);
   requestControlRef.current = requestControl;
-  useEffect(() => () => window.clearTimeout(tapTimer.current), []);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new bot, lost screen, or taking control drops pending tap/confirm state.
+  useTimeout(
+    () => {
+      setPendingTap(null);
+      requestControlRef.current();
+    },
+    pendingTap === null ? null : 340,
+    pendingTap,
+  );
+  // A new bot, lost screen, or taking control drops a pending tap or confirm.
   useEffect(() => {
-    window.clearTimeout(tapTimer.current);
+    setPendingTap(null);
     setConfirmTakeover(false);
   }, [bot.id, showing, controlling]);
 
@@ -164,8 +176,23 @@ export function DockedScreen({
   const zoom = useRef({ s: 1, x: 0, y: 0 });
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<
-    | { kind: "pinch"; dist: number; s: number; x: number; y: number; mid: { x: number; y: number } }
-    | { kind: "pan"; s: number; x: number; y: number; at: { x: number; y: number }; moved: number; t0: number }
+    | {
+        kind: "pinch";
+        dist: number;
+        s: number;
+        x: number;
+        y: number;
+        mid: { x: number; y: number };
+      }
+    | {
+        kind: "pan";
+        s: number;
+        x: number;
+        y: number;
+        at: { x: number; y: number };
+        moved: number;
+        t0: number;
+      }
     | null
   >(null);
   const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
@@ -205,7 +232,15 @@ export function DockedScreen({
       };
     } else if (points.length === 1) {
       const [a] = points as [{ x: number; y: number }];
-      gesture.current = { kind: "pan", s: z.s, x: z.x, y: z.y, at: { ...a }, moved: 0, t0: performance.now() };
+      gesture.current = {
+        kind: "pan",
+        s: z.s,
+        x: z.x,
+        y: z.y,
+        at: { ...a },
+        moved: 0,
+        t0: performance.now(),
+      };
     } else {
       gesture.current = null;
     }
@@ -228,7 +263,10 @@ export function DockedScreen({
       const points = [...pointers.current.values()];
       const [a, b] = points as [{ x: number; y: number }, { x: number; y: number }];
       const now = local((a.x + b.x) / 2, (a.y + b.y) / 2);
-      const s = Math.min(MAX_ZOOM, Math.max(1, (g.s * (Math.hypot(a.x - b.x, a.y - b.y) || 1)) / g.dist));
+      const s = Math.min(
+        MAX_ZOOM,
+        Math.max(1, (g.s * (Math.hypot(a.x - b.x, a.y - b.y) || 1)) / g.dist),
+      );
       // The point of the screen that was under the fingers stays under them.
       const px = (g.mid.x - g.x) / g.s;
       const py = (g.mid.y - g.y) / g.s;
@@ -244,41 +282,43 @@ export function DockedScreen({
     if (!pointers.current.has(event.pointerId)) return;
     const g = gesture.current;
     pointers.current.delete(event.pointerId);
-    if (g?.kind === "pan" && event.type === "pointerup" && g.moved < 10 && performance.now() - g.t0 < 300) {
+    if (
+      g?.kind === "pan" &&
+      event.type === "pointerup" &&
+      g.moved < 10 &&
+      performance.now() - g.t0 < 300
+    ) {
       const tap = local(event.clientX, event.clientY);
       const last = lastTap.current;
       const now = performance.now();
       if (last && now - last.t < 320 && Math.hypot(tap.x - last.x, tap.y - last.y) < 30) {
         lastTap.current = null;
-        window.clearTimeout(tapTimer.current);
+        setPendingTap(null);
         if (zoom.current.s > 1.05) applyZoom(1, 0, 0);
-        else applyZoom(DOUBLE_TAP_ZOOM, tap.x - tap.x * DOUBLE_TAP_ZOOM, tap.y - tap.y * DOUBLE_TAP_ZOOM);
+        else
+          applyZoom(
+            DOUBLE_TAP_ZOOM,
+            tap.x - tap.x * DOUBLE_TAP_ZOOM,
+            tap.y - tap.y * DOUBLE_TAP_ZOOM,
+          );
       } else {
         lastTap.current = { t: now, x: tap.x, y: tap.y };
-        // A single tap takes control once it is clear no second tap (zoom) follows.
-        window.clearTimeout(tapTimer.current);
-        tapTimer.current = window.setTimeout(() => requestControlRef.current(), 340);
+        setPendingTap(now);
       }
     }
     if (zoom.current.s < 1.02) applyZoom(1, 0, 0);
     beginGesture();
   };
   // A new bot, full screen or not, entering control mode, or a screen that went away starts at 1x again.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: these only trigger the reset.
   useEffect(() => {
     pointers.current.clear();
     gesture.current = null;
     applyZoom(1, 0, 0);
   }, [bot.id, full, showing, controlling, applyZoom]);
 
-  useEffect(() => {
-    if (!full) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFull(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [full]);
+  useEventListener(full ? window : null, "keydown", (event) => {
+    if (event.key === "Escape") setFull(false);
+  });
 
   return (
     <div
@@ -299,26 +339,34 @@ export function DockedScreen({
             ? "fixed inset-0 z-[70] bg-black"
             : "absolute inset-x-2 top-0 overflow-hidden rounded-xl bg-black"
         }
-        style={{ touchAction: "none", ...(full ? { paddingTop: "env(safe-area-inset-top)" } : { height }) }}
+        style={{
+          touchAction: "none",
+          ...(full ? { paddingTop: "env(safe-area-inset-top)" } : { height }),
+        }}
       >
         {showing ? (
-          <div ref={zoomLayer} data-testid="docked-screen-zoom" data-zoom="1" className="absolute inset-0 origin-top-left">
-          {screenFrames(screenFrameKey, owned.embeddedScreenUrl as string, owned.heldScreen).map(
-            (frame) => (
-              <iframe
-                key={frame.key}
-                title={frame.held ? undefined : "Bot screen"}
-                aria-hidden={frame.held || undefined}
-                tabIndex={frame.held ? -1 : undefined}
-                ref={frame.held ? undefined : screenFrameRef}
-                src={frame.url}
-                sandbox={screenIframeSandbox(frame.url)}
-                className={`h-full w-full border-0 bg-black${frame.held ? " absolute inset-0" : ""}`}
-                allow="clipboard-read; clipboard-write"
-                style={{ pointerEvents: controlling ? "auto" : "none" }}
-              />
-            ),
-          )}
+          <div
+            ref={zoomLayer}
+            data-testid="docked-screen-zoom"
+            data-zoom="1"
+            className="absolute inset-0 origin-top-left"
+          >
+            {screenFrames(screenFrameKey, owned.embeddedScreenUrl as string, owned.heldScreen).map(
+              (frame) => (
+                <iframe
+                  key={frame.key}
+                  title={frame.held ? undefined : "Bot screen"}
+                  aria-hidden={frame.held || undefined}
+                  tabIndex={frame.held ? -1 : undefined}
+                  ref={frame.held ? undefined : screenFrameRef}
+                  src={frame.url}
+                  sandbox={screenIframeSandbox(frame.url)}
+                  className={`h-full w-full border-0 bg-black${frame.held ? " absolute inset-0" : ""}`}
+                  allow="clipboard-read; clipboard-write"
+                  style={{ pointerEvents: controlling ? "auto" : "none" }}
+                />
+              ),
+            )}
           </div>
         ) : (
           <div className="grid h-full place-items-center px-6 text-center text-body text-white/70">
@@ -366,7 +414,10 @@ export function DockedScreen({
           </div>
         ) : null}
         {taking ? (
-          <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center" style={full ? { bottom: 88 } : undefined}>
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center"
+            style={full ? { bottom: 88 } : undefined}
+          >
             <span className="rounded-full bg-black/60 px-3 py-1 text-[11px] text-white ring-1 ring-white/20">
               Taking control…
             </span>
@@ -378,7 +429,10 @@ export function DockedScreen({
             className={`absolute flex items-center gap-2 rounded-full bg-black/65 py-1 pe-1 ps-3 text-[11px] text-white ring-1 ring-white/20 ${full ? "start-1/2 -translate-x-1/2" : "start-2"}`}
             style={full ? { top: "calc(env(safe-area-inset-top) + 12px)" } : { bottom: 8 }}
           >
-            <span aria-hidden="true" className="size-[7px] rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.95)]" />
+            <span
+              aria-hidden="true"
+              className="size-[7px] rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.95)]"
+            />
             You're in control
             <button
               type="button"
@@ -448,7 +502,8 @@ export function DockedScreen({
             </button>
           </>
         ) : (
-          <div className="absolute end-2 top-2 flex gap-2">
+          // Below the chat's find bar while it is open, which would cover them.
+          <div className="absolute end-2 top-2 flex gap-2 in-data-finding:top-11">
             {onRefresh ? (
               <button
                 type="button"
@@ -469,6 +524,7 @@ export function DockedScreen({
               aria-label="Full screen"
               data-testid="docked-screen-full"
               onClick={() => {
+                if (!phone && onOpenFullWindow) return onOpenFullWindow();
                 setFull(true);
                 requestControl();
               }}

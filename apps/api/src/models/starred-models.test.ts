@@ -4,6 +4,7 @@ import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import type { RouterDeps } from "../router.js";
 import { createRouter } from "../router.js";
+import { MAX_STARRED_MODELS } from "../routes/model-usage.js";
 
 type Row = { userId: string; provider: string; modelId: string };
 
@@ -18,6 +19,9 @@ function setup() {
       rows
         .filter((row) => matches(row, where))
         .map(({ provider, modelId }) => ({ provider, modelId })),
+    count: async ({ where }: { where: Partial<Row> }) =>
+      rows.filter((row) => matches(row, where)).length,
+    findFirst: async ({ where }: { where: Row }) => rows.find((row) => matches(row, where)) ?? null,
     createMany: async ({ data, skipDuplicates }: { data: Row; skipDuplicates?: boolean }) => {
       const duplicate = rows.some((row) => matches(row, data));
       if (duplicate && !skipDuplicates) throw new Error("unique violation");
@@ -73,5 +77,19 @@ describe("starred models", () => {
     await expect(alice.starred()).resolves.toEqual([model]);
     await alice.setStarred({ ...model, starred: false });
     await expect(alice.starred()).resolves.toEqual([]);
+  });
+
+  it("refuses a new star past the limit but keeps an existing one", async () => {
+    const { client } = setup();
+    const alice = client("user-a");
+    for (let index = 0; index < MAX_STARRED_MODELS; index += 1) {
+      await alice.setStarred({ provider: "p", modelId: `m-${index}`, starred: true });
+    }
+    await expect(
+      alice.setStarred({ provider: "p", modelId: "one-more", starred: true }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(
+      alice.setStarred({ provider: "p", modelId: "m-0", starred: true }),
+    ).resolves.toEqual({ ok: true });
   });
 });

@@ -917,6 +917,7 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
                   hasControl={computerControls.hasControl}
                   onTakeControl={computerControls.takeDockedControl}
                   onRelease={() => computerControls.releaseComputer()}
+                  onOpenFullWindow={() => void openComputer(active.id)}
                   onClose={() => screenDockPreference.set(false)}
                 />
               ) : null}

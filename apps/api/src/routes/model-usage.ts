@@ -1,6 +1,10 @@
 // Local addition (David, 2026-11-21): what the quick switch lists first, most used and starred.
+import { ClientError } from "@rakazo/core";
 import { accountPreferencesChangesScope } from "@rakazo/db";
 import type { RouterContext } from "./context.js";
+
+/** Far more than the list can show usefully, so only a script ever meets it. */
+export const MAX_STARRED_MODELS = 100;
 
 export function modelUsageRoutes(ctx: RouterContext) {
   const { deps, authed } = ctx;
@@ -41,6 +45,12 @@ export function modelUsageRoutes(ctx: RouterContext) {
         const { userId } = context.actor;
         const row = { userId, provider: input.provider, modelId: input.modelId };
         if (input.starred) {
+          const count = await deps.prisma.starredModel.count({ where: { userId } });
+          if (
+            count >= MAX_STARRED_MODELS &&
+            !(await deps.prisma.starredModel.findFirst({ where: row }))
+          )
+            throw new ClientError("CONFLICT", `Star at most ${MAX_STARRED_MODELS} models.`);
           await deps.prisma.starredModel.createMany({ data: row, skipDuplicates: true });
         } else {
           await deps.prisma.starredModel.deleteMany({ where: row });

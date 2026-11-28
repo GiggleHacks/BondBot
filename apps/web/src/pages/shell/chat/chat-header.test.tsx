@@ -41,6 +41,9 @@ vi.mock("@rakazo/ui-web", async (importOriginal) => {
     DialogTitle: Plain,
   };
 });
+// Both read live data through popovers of their own; their tests cover them.
+vi.mock("../../../components/ConnectionBars", () => ({ ConnectionBars: () => null }));
+vi.mock("../../../components/ModelSwitcher", () => ({ ModelSwitcher: () => null }));
 vi.mock("../../../components/IconTooltip", () => ({
   IconTooltip: ({ children }: { children: ReactNode }) => children,
 }));
