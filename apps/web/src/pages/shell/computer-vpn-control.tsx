@@ -172,27 +172,39 @@ export function ComputerVpnFlagChip({
   const shortStatus = isBlocked
     ? "VPN BLOCKED"
     : isWarning
-      ? `FALLBACK · ${display.countryCode}`
+      ? "FALLBACK"
       : isVpn
-        ? `${display.locked ? "VPN LOCKED" : "VPN ON"} · ${display.countryCode}`
+        ? display.locked
+          ? "VPN LOCKED"
+          : "VPN ON"
         : isArmedStopped
-          ? `${display.locked ? "VPN LOCKED" : "VPN READY"} · ${display.countryCode}`
-          : `VPN OFF · ${display.countryCode}`;
+          ? display.locked
+            ? "VPN LOCKED"
+            : "VPN READY"
+          : "VPN OFF";
+  // The blocked chip names no country: nothing is getting out.
+  const shortCountry = isBlocked ? null : display.countryCode;
 
+  const exit = display.exitIp ? ` (${display.exitIp})` : "";
   const tooltip = isBlocked
-    ? `Kill Switch active — internet blocked`
+    ? "Kill Switch active: internet blocked"
     : isWarning
-      ? `VPN tunnel down — fell back to ${display.countryName}${display.exitIp ? ` (${display.exitIp})` : ""}`
+      ? `VPN tunnel down. Fell back to ${display.countryName}${exit}`
       : isVpn
-        ? `VPN ON${display.locked ? " (Locked)" : ""} · ${display.countryName}${display.exitIp ? ` (${display.exitIp})` : ""}`
+        ? `VPN ON${display.locked ? " (Locked)" : ""}: ${display.countryName}${exit}`
         : isArmedStopped
-          ? `VPN ${display.locked ? "Locked" : "Ready"} · ${display.countryName} (computer asleep — boots on VPN when woken)`
-          : `VPN OFF · Direct (${display.countryName}${display.exitIp ? ` · ${display.exitIp}` : ""})`;
+          ? `VPN ${display.locked ? "Locked" : "Ready"}: ${display.countryName}. The computer is asleep and boots on VPN when woken.`
+          : `VPN OFF: direct from ${display.countryName}${exit}`;
 
   return (
     <span
       title={tooltip}
-      {...(iconsOnly ? { role: "img", "aria-label": shortStatus } : {})}
+      {...(iconsOnly
+        ? {
+            role: "img",
+            "aria-label": shortCountry ? `${shortStatus}, ${shortCountry}` : shortStatus,
+          }
+        : {})}
       className={cn(
         "relative inline-flex items-center rounded-md border transition-colors",
         compact ? "gap-0.5 px-1 py-px" : "gap-1.5 rounded-full px-2 py-0.5",
@@ -230,6 +242,7 @@ export function ComputerVpnFlagChip({
       {!compact && !iconsOnly ? (
         <span
           className={cn(
+            // off-scale: status text inside the VPN chip.
             "text-[11px] font-medium tracking-tight tabular-nums",
             isBlocked
               ? "text-red-300"
@@ -241,6 +254,7 @@ export function ComputerVpnFlagChip({
           )}
         >
           {shortStatus}
+          {shortCountry ? <span className="ms-1.5 opacity-70">{shortCountry}</span> : null}
         </span>
       ) : null}
     </span>
@@ -260,9 +274,10 @@ export function DedicatedComputerBadge({
 }) {
   if (botVpn?.computerMode !== "dedicated") return null;
   const running = asleep === undefined ? botVpn.state !== "stopped" : !asleep;
-  const label = running ? "Dedicated computer · Running" : "Dedicated computer · Asleep";
+  const label = running ? "Dedicated computer: running" : "Dedicated computer: asleep";
   return (
     <span
+      role="img"
       title={label}
       aria-label={label}
       data-roster-dedicated-computer={running ? "running" : "stopped"}
@@ -386,6 +401,7 @@ export function ComputerVpnPopover({
             <div className="flex items-center gap-1.5 text-body-sm font-semibold text-foreground">
               <CountryFlag code={display.countryCode} />
               <span className="truncate">{botName}</span>
+              {/* off-scale: badge beside the bot name. */}
               <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                 {isTeam ? "Team computer" : t`Own computer`}
               </span>

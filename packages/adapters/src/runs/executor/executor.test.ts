@@ -1,4 +1,4 @@
-import { normalizeContext } from "@earendil-works/pi-ai";
+import { getSupportedThinkingLevels, normalizeContext } from "@earendil-works/pi-ai";
 import { WorkspaceTooLargeError } from "@rakazo/adapter-kit";
 import type { MessageBlock } from "@rakazo/contracts";
 import { FLEET_TOOL_NAMES } from "@rakazo/contracts";
@@ -4491,8 +4491,9 @@ description: Prepare standup notes
         contextWindow: expectedContextWindow,
       });
       expect(runtime.input).toContain("image");
-      expect(thinkingLevelFor(runtime, "high")).toBe("high");
-      expect(thinkingLevelFor(runtime, "max")).toBe("max");
+      expect(getSupportedThinkingLevels(runtime)).toContain("max");
+      // BondBot always runs a thinking model at high effort.
+      expect(thinkingLevelFor(runtime, "max")).toBe("high");
     },
   );
 

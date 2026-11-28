@@ -9,13 +9,13 @@ import { useIsMobile } from "@rakazo/ui-web/hooks/use-mobile";
 import { Maximize2, MessageSquare, RefreshCw, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useBackLayer } from "../../lib/back-layers";
 import { screenFrames, screenIframeSandbox } from "../../lib/computers/computer-screen";
 import {
   clampDockHeight,
   defaultDockHeight,
   screenDockHeightPreference,
 } from "../../lib/screen-dock";
+import { useBackLayer } from "../../lib/use-back-layer";
 import { useEventListener } from "../../lib/use-event-listener";
 import { resolveOwnedComputerScreen } from "./computers/computer-view";
 
@@ -408,6 +408,7 @@ export function DockedScreen({
             className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center"
             style={full ? { bottom: 88 } : undefined}
           >
+            {/* off-scale: overlay caption on the computer screen. */}
             <span className="rounded-full bg-black/60 px-3 py-1 text-[11px] text-white ring-1 ring-white/20">
               {phone ? "Tap" : "Click"} the screen to control
             </span>
@@ -418,6 +419,7 @@ export function DockedScreen({
             className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center"
             style={full ? { bottom: 88 } : undefined}
           >
+            {/* off-scale: overlay caption on the computer screen. */}
             <span className="rounded-full bg-black/60 px-3 py-1 text-[11px] text-white ring-1 ring-white/20">
               Taking control…
             </span>
@@ -426,6 +428,7 @@ export function DockedScreen({
         {controlling ? (
           <div
             data-testid="docked-screen-control-tag"
+            // off-scale: overlay tag on the computer screen.
             className={`absolute flex items-center gap-2 rounded-full bg-black/65 py-1 pe-1 ps-3 text-[11px] text-white ring-1 ring-white/20 ${full ? "start-1/2 -translate-x-1/2" : "start-2"}`}
             style={full ? { top: "calc(env(safe-area-inset-top) + 12px)" } : { bottom: 8 }}
           >
@@ -473,6 +476,7 @@ export function DockedScreen({
             aria-label="Reset zoom"
             data-testid="docked-screen-zoom-reset"
             onClick={() => applyZoom(1, 0, 0)}
+            // off-scale: overlay control on the computer screen.
             className={`${roundButton} absolute start-3 top-3 text-[11px] font-semibold`}
             style={full ? { marginTop: "env(safe-area-inset-top)" } : undefined}
           >

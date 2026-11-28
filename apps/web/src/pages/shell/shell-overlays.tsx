@@ -144,7 +144,7 @@ export function SettingsOverlays({
   showSettings: boolean;
   spaces: Space[];
   renameSpace: (spaceId: string, name: string, client: RpcClient) => Promise<void>;
-  removeSpace: (spaceId: string) => Promise<void>;
+  removeSpace: (spaceId: string) => Promise<boolean>;
   leftSpace: (spaceId: string, activeSpaceId: string) => Promise<void>;
   refreshSpaces: () => Promise<void>;
   alive: RefObject<boolean>;
@@ -174,7 +174,8 @@ export function SettingsOverlays({
           spaces={spaces}
           onRenameSpace={renameSpace}
           onDeleteSpace={async (spaceId) => {
-            await removeSpace(spaceId);
+            // Closing steps back in history, which would cancel a reload already under way.
+            if (await removeSpace(spaceId)) return;
             if (alive.current) setOverlay(null);
           }}
           onLeftSpace={(spaceId, activeSpaceId) => {

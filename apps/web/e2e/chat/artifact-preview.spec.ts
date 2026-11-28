@@ -121,23 +121,20 @@ test("audio attachments can retry a failed preview without leaving the card", as
     mimeType: "audio/wav",
     buffer: wav,
   });
+  // BondBot shows audio as a voice note, which loads as it scrolls into view.
+  await page.route("**/rpc/artifacts/get", (route) => route.abort("failed"));
   const composer = page.getByRole("combobox", { name: /Message/ });
   await composer.fill("Here is the audio clip");
   await composer.press("Enter");
-  const play = page.getByRole("button", { name: "Play clip.wav", exact: true });
-  await expect(play).toBeVisible({ timeout: 30_000 });
-  await page.route("**/rpc/artifacts/get", (route) => route.abort("failed"));
-  await play.click();
-  await expect(page.getByRole("alert")).toContainText("Could not load this file.");
+  const note = page.getByTestId("transcript").getByTestId("voice-note");
+  await expect(note).toContainText("Could not load. Tap play to retry.", { timeout: 30_000 });
+  const play = note.getByRole("button", { name: "Play voice note", exact: true });
   await expect(play).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Download clip.wav", exact: true })).toBeVisible();
+  await expect(note.getByRole("button", { name: "Download clip.wav", exact: true })).toBeVisible();
   await captureScreenshot(page, testInfo, "audio-preview-failure-retry");
   await page.unroute("**/rpc/artifacts/get");
   await play.click();
-  const audio = page.locator('audio[aria-label="clip.wav"]');
-  await expect(audio).toBeVisible();
-  await expect(audio).toHaveAttribute("controls", "");
-  await expect(play).toHaveCount(0);
-  await expect(page.getByText("Could not load this file.", { exact: true })).toHaveCount(0);
+  await expect(note.locator("audio")).toHaveAttribute("src", /^blob:/);
+  await expect(note).not.toContainText("Could not load");
   await captureScreenshot(page, testInfo, "audio-preview-recovered");
 });

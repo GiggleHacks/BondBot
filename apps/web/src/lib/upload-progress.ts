@@ -48,7 +48,9 @@ export function xhrSend(input: {
     xhr.responseType = "text";
     xhr.timeout = input.timeoutMs ?? 180_000;
     const headers = new Headers(input.headers);
-    headers.forEach((value, key) => xhr.setRequestHeader(key, value));
+    headers.forEach((value, key) => {
+      xhr.setRequestHeader(key, value);
+    });
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) input.onProgress?.(event.loaded, event.total);
     };

@@ -2425,13 +2425,11 @@ describeWithDatabase("API authorization and resource isolation", () => {
     expect(
       await rpc(app, cookie, "bots/update", { ...update, thinkingLevel: "max" }),
     ).toMatchObject({ thinkingLevel: "max" });
+    // BondBot keeps thinking on for every compatible model, so saving it off narrows nothing.
     await rpc(app, cookie, "models/connect", { ...connection, reasoning: false });
     expect(
-      (await raw(app, cookie, "bots/update", { ...update, thinkingLevel: "low" })).status,
-    ).toBe(400);
-    expect(
-      (await raw(app, cookie, "bots/update", { ...update, thinkingLevel: "xhigh" })).status,
-    ).toBe(400);
+      await rpc(app, cookie, "bots/update", { ...update, thinkingLevel: "low" }),
+    ).toMatchObject({ thinkingLevel: "low" });
     expect(
       await rpc(app, cookie, "bots/update", { ...update, thinkingLevel: "off" }),
     ).toMatchObject({ thinkingLevel: "off" });

@@ -1,51 +1,17 @@
 import { expect, test } from "@playwright/test";
 import { captureScreenshot, completeOnboarding, rpc, signup } from "../helpers/helpers";
 
-test("an ongoing call stays in reach on a page outside the shell", async ({ page }, testInfo) => {
+// BondBot turns phone calls and read-aloud off in favour of voice notes.
+test("a connected voice adds no call button and no read-aloud", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `call-controls-${stamp}@rakazo.test`, "password12", "Call Controls");
-  await completeOnboarding(page);
-  await rpc(page, "voice/connect", { provider: "scripted", apiKey: "fake-call-voice-key" });
-  await page.goto("/app");
-  await page.waitForURL(/\/app\/[^/]+$/);
-  // Until the voice status loads, the call button opens voice settings instead of calling.
-  const callButton = page.getByTestId("call-button");
-  await expect(callButton).toHaveAttribute("data-voice-ready", "");
-
-  await callButton.click();
-  const call = page.getByTestId("call-view");
-  await expect(call).toBeVisible();
-
-  await page.getByTestId("user-menu-trigger").click();
-  await page.getByRole("button", { name: "Artifacts", exact: true }).click();
-  await expect(page).toHaveURL(/\/app\/artifacts$/);
-  await expect(page.getByRole("heading", { name: "Artifacts", exact: true })).toBeVisible();
-  await expect(call).toBeVisible();
-  await captureScreenshot(page, testInfo, "call-card-artifacts");
-
-  await call.getByRole("button", { name: "Minimize call" }).click();
-  const returnBar = page.getByTestId("call-return-bar");
-  await expect(returnBar).toBeVisible();
-  await expect(call).toBeHidden();
-  await captureScreenshot(page, testInfo, "call-return-bar-artifacts");
-
-  await returnBar.click();
-  await expect(call).toBeVisible();
-  await call.getByRole("button", { name: "Hang up" }).click();
-  await expect(call).toBeHidden();
-  await expect(returnBar).toBeHidden();
-});
-
-test("an active call keeps a chat read-aloud from starting", async ({ page }, testInfo) => {
-  const stamp = Date.now();
-  await signup(page, `read-aloud-call-${stamp}@rakazo.test`, "password12", "Read Aloud Call");
+  await signup(page, `calls-off-${stamp}@rakazo.test`, "password12", "Calls Off");
   await completeOnboarding(page);
 
-  // A scripted reply gives the read-aloud control a message to act on.
+  // A scripted reply gives the message menu something to act on.
   const composer = page.getByRole("combobox", { name: /Message/ });
-  await composer.fill(`read-aloud-call-${stamp}`);
+  await composer.fill(`calls-off-${stamp}`);
   await composer.press("Enter");
-  const replyText = `i handled: read-aloud-call-${stamp}`;
+  const replyText = `i handled: calls-off-${stamp}`;
   await expect(page.getByTestId("message-bot-bubble").filter({ hasText: replyText })).toBeVisible({
     timeout: 20_000,
   });
@@ -53,41 +19,16 @@ test("an active call keeps a chat read-aloud from starting", async ({ page }, te
   await rpc(page, "voice/connect", { provider: "scripted", apiKey: "fake-call-voice-key" });
   await page.goto("/app");
   await page.waitForURL(/\/app\/[^/]+$/);
-  const callButton = page.getByTestId("call-button");
-  await expect(callButton).toHaveAttribute("data-voice-ready", "");
   // After the reload only the durable reply is on screen, so the locator is unambiguous.
   const message = page
     .locator("[data-message-id]")
     .filter({ has: page.getByTestId("message-bot-bubble").filter({ hasText: replyText }) })
     .last();
-  const readAloud = page.getByRole("menuitem", { name: "Read aloud" });
-  const openMessageMenu = async () => {
-    await message.hover();
-    await message.getByRole("button", { name: "More" }).click();
-  };
-  await openMessageMenu();
-  await expect(readAloud).toBeEnabled();
-  await page.keyboard.press("Escape");
-
-  // The call owns the speaker: starting another read must stay unavailable for its length.
-  await callButton.click();
-  const call = page.getByTestId("call-view");
-  await expect(call).toBeVisible();
-
-  await call.getByRole("button", { name: "Minimize call" }).click();
-  const returnBar = page.getByTestId("call-return-bar");
-  await expect(returnBar).toBeVisible();
-  await expect(call).toBeHidden();
-  await openMessageMenu();
-  await expect(readAloud).toBeDisabled();
-  await captureScreenshot(page, testInfo, "read-aloud-paused-during-call");
-  await page.keyboard.press("Escape");
-
-  // Hanging up hands the speaker back to the chat.
-  await returnBar.click();
-  await expect(call).toBeVisible();
-  await call.getByRole("button", { name: "Hang up" }).click();
-  await expect(call).toBeHidden();
-  await openMessageMenu();
-  await expect(readAloud).toBeEnabled();
+  await message.hover();
+  await message.getByRole("button", { name: "More" }).click();
+  await expect(page.getByRole("menuitem").first()).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Read aloud" })).toHaveCount(0);
+  await expect(page.getByTestId("chat-header")).toBeVisible();
+  await expect(page.getByTestId("call-button")).toHaveCount(0);
+  await captureScreenshot(page, testInfo, "chat-without-calls");
 });

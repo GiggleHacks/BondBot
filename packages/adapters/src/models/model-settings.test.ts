@@ -405,7 +405,8 @@ describe("compatible model defaults", () => {
     );
   const row = { id: "c", provider: "openai-compatible", label: "Server", defaultModel: "plain" };
 
-  it("read images and think unless the server's list or the model's own settings say not", () => {
+  // BondBot keeps thinking on for every compatible model, whatever its settings say.
+  it("read images unless the server's list or the model's own settings say not, and think", () => {
     const hosted = secret("https://models.example.test/v1");
     const settings = (id: string) => connectionModelSettings(hosted, row.provider, id);
     expect(settings("plain")).toEqual({ images: true, reasoning: true });
@@ -414,9 +415,11 @@ describe("compatible model defaults", () => {
       reasoning: true,
       contextWindow: 64_000,
     });
-    expect(settings("own")).toEqual({ images: false, reasoning: false });
+    expect(settings("own")).toEqual({ images: false, reasoning: true });
     const dto = modelCredentialDto(row, serializeModelSecret(hosted));
-    for (const id of ["plain", "text-only", "own"]) {
+    // Settings shows the saved "own" choice; the run still thinks.
+    expect(credentialModelSettings(dto, "own")).toMatchObject({ images: false, reasoning: false });
+    for (const id of ["plain", "text-only"]) {
       const { images, reasoning } = settings(id);
       expect(credentialModelSettings(dto, id)).toMatchObject({ images, reasoning });
     }
@@ -424,7 +427,7 @@ describe("compatible model defaults", () => {
     expect(credentialModelSettings(dto, "text-only").contextWindow).toBeUndefined();
   });
 
-  it("keep thinking off where the whole connection turned it off", () => {
+  it("think even where the whole connection turned it off", () => {
     const hosted = parseModelSecret(
       JSON.stringify({
         kind: "openai_compatible",
@@ -433,8 +436,8 @@ describe("compatible model defaults", () => {
       }),
     );
     const dto = modelCredentialDto(row, serializeModelSecret(hosted));
-    expect(connectionModelSettings(hosted, row.provider, "plain").reasoning).toBe(false);
-    expect(credentialModelSettings(dto, "plain").reasoning).toBe(false);
+    expect(connectionModelSettings(hosted, row.provider, "plain").reasoning).toBe(true);
+    expect(credentialModelSettings(dto, "plain").reasoning).toBe(true);
   });
 
   it("ask for the usual share of a listed output ceiling", () => {
@@ -458,9 +461,9 @@ describe("compatible model defaults", () => {
     expect(connectionModelSettings(listedText, row.provider, "big").maxTokens).toBe(32_768);
   });
 
-  it("assume neither on a local server", () => {
+  it("assume only thinking on a local server", () => {
     const local = secret("http://127.0.0.1:8000/v1");
-    expect(connectionModelSettings(local, row.provider, "plain")).toEqual({});
+    expect(connectionModelSettings(local, row.provider, "plain")).toEqual({ reasoning: true });
   });
 });
 

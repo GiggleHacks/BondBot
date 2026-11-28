@@ -1,6 +1,7 @@
 // Local addition (David, 2026-11-22): is the app really connected? A light check every few seconds
 // (a tiny public request to the server), plus the live streams and the browser's own online flag,
 // boiled down to one level the signal bars show.
+import { bestEffort } from "@rakazo/logging/best-effort";
 import { timeoutSignal } from "./timeout-signal";
 
 export type ConnectionLevel = "checking" | "good" | "slow" | "reconnecting" | "offline";
@@ -63,7 +64,9 @@ async function defaultProbe(timeoutMs: number): Promise<boolean> {
     const res = await fetch("/api/auth/ok", { cache: "no-store", signal: timeout.signal });
     // A captive portal or an error page that answers 200 is not the server.
     if (!res.ok || !(res.headers.get("content-type") ?? "").includes("json")) return false;
-    const body = (await res.json().catch(() => null)) as { ok?: boolean } | null;
+    const body = (await bestEffort("read the health reply", res.json())) as
+      | { ok?: boolean }
+      | undefined;
     return body?.ok === true;
   } finally {
     timeout.clear();
@@ -106,7 +109,9 @@ export class ConnectionMonitor {
     this.timeoutMs = options.timeoutMs ?? 5_000;
     this.streamGraceMs = options.streamGraceMs ?? STREAM_GRACE_MS;
     this.probe = options.probe ?? defaultProbe;
-    this.isOnline = options.isOnline ?? (() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
+    this.isOnline =
+      options.isOnline ??
+      (() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
     this.snapshot = {
       level: "checking",
       latencyMs: null,
@@ -126,7 +131,9 @@ export class ConnectionMonitor {
     return () => this.listeners.delete(listener);
   };
 
-  private levelFor(s: Omit<ConnectionSnapshot, "level"> & { level?: ConnectionLevel }): ConnectionLevel {
+  private levelFor(
+    s: Omit<ConnectionSnapshot, "level"> & { level?: ConnectionLevel },
+  ): ConnectionLevel {
     return deriveLevel({
       online: s.online,
       failures: s.failures,
@@ -226,7 +233,8 @@ export class ConnectionMonitor {
       };
       const onOffline = () => this.update({ online: false });
       const onVisible = () => {
-        if (document.visibilityState === "visible") void this.check().finally(() => this.schedule());
+        if (document.visibilityState === "visible")
+          void this.check().finally(() => this.schedule());
       };
       window.addEventListener("online", onOnline);
       window.addEventListener("offline", onOffline);

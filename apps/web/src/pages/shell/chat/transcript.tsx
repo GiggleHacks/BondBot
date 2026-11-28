@@ -41,6 +41,8 @@ import {
 } from "react";
 import { ActiveBotGlyph } from "../../../components/ai/CollaborationMarker";
 import { VoiceChatCard } from "../../../components/call/VoiceChatCard";
+import { PendingOutbox } from "../../../components/PendingOutbox";
+import { PendingVoiceNotes } from "../../../components/PendingVoiceNotes";
 import {
   isDetachedRange,
   lastSelectedText,
@@ -60,8 +62,6 @@ import { useEventListener } from "../../../lib/use-event-listener";
 import type { ImportSetupTarget } from "../bots/import-setup-card";
 import { isEditableTarget } from "../shell-shortcuts";
 import { TimeSeparator, UnreadDivider } from "./chat-context";
-import { PendingOutbox } from "../../../components/PendingOutbox";
-import { PendingVoiceNotes } from "../../../components/PendingVoiceNotes";
 import type { GalleryImage } from "./image-gallery";
 import { galleryImageKey, ImageGalleryProvider } from "./image-gallery";
 import { MessageView } from "./message-view";
@@ -122,6 +122,7 @@ export const Transcript = memo(function Transcript({
   onReleaseComputer,
   onOpenImportSetup,
   onOpenAgentImport,
+  onConnectModel,
   rpc,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -182,6 +183,7 @@ export const Transcript = memo(function Transcript({
   ) => Promise<void>;
   onOpenImportSetup?: (target: ImportSetupTarget) => void;
   onOpenAgentImport?: () => void;
+  onConnectModel?: () => void;
   rpc: ReturnType<typeof createSpaceRpc>;
 }) {
   const { t } = useLingui();
@@ -847,7 +849,7 @@ export const Transcript = memo(function Transcript({
             );
           })}
           <PendingVoiceNotes target={artifactTarget} />
-          <PendingOutbox target={artifactTarget} />
+          <PendingOutbox target={artifactTarget} onConnectModel={onConnectModel} />
           {running &&
           !messages.some(
             (message) => message.id.startsWith("progress:") && liveMessageComposing(message.blocks),

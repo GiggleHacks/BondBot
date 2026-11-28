@@ -194,5 +194,6 @@ test("a retryable failure offers Try again on the original message", async ({ pa
   await retry.click();
   expect((await request).postDataJSON()).toMatchObject({ json: { runId: failedRunId } });
   await expect(page.getByTestId("composer-error")).toBeHidden();
-  await expect(page.getByText(prompt, { exact: true })).toHaveCount(1);
+  // The sidebar previews the same text, so count the chat alone.
+  await expect(page.getByTestId("transcript").getByText(prompt, { exact: true })).toHaveCount(1);
 });

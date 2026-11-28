@@ -64,6 +64,7 @@ describe("the images compose file", () => {
       "supervisor",
       "tailscale-ingress",
       "updater",
+      "vpn",
       "web",
       "worker",
     ]);
@@ -174,9 +175,10 @@ describe("the images compose file", () => {
     expect(compose.services.migrate?.networks).toEqual(["data"]);
   });
 
-  it("never builds from a checkout", () => {
-    for (const service of Object.values(compose.services)) {
-      expect(service.build).toBeUndefined();
+  it("never builds from a checkout, except the opt-in VPN manager", () => {
+    for (const [name, service] of Object.entries(compose.services)) {
+      if (name === "vpn") expect(service.profiles).toEqual(["vpn"]);
+      else expect(service.build).toBeUndefined();
     }
   });
 
@@ -200,7 +202,7 @@ describe("the images compose file", () => {
     );
   });
 
-  it("keeps Docker access on the supervisor and opt-in updater only", () => {
+  it("keeps Docker access on the supervisor and the opt-in updater and VPN manager only", () => {
     for (const [name, service] of Object.entries(compose.services)) {
       const hasSocket = (service.volumes ?? []).some((volume) => volume.includes("docker.sock"));
       if (name === "supervisor") {
@@ -208,9 +210,9 @@ describe("the images compose file", () => {
         expect(service.ports).toBeUndefined();
         expect(service.user).toBe("root");
         expect(String(service.command)).toContain("sandbox-supervisor");
-      } else if (name === "updater") {
+      } else if (name === "updater" || name === "vpn") {
         expect(hasSocket).toBe(true);
-        expect(service.profiles).toEqual(["updater"]);
+        expect(service.profiles).toEqual([name]);
         expect(service.ports).toBeUndefined();
       } else {
         expect(hasSocket).toBe(false);

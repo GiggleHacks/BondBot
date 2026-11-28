@@ -167,36 +167,43 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Fixed: three desktop menu messages had lost their translations (their keys had been edited to "BondBot"); they use the original keys again and are renamed when shown.
 
 ## Deployed to cccbox: 0.2.1 (2026-11-26 05:54 ICT)
+
 - Image rakazo-voice:v021-20261126 (tagged :local), built off the server from the 0.2.1 working tree on top of 283ad475a (not yet committed at deploy time). api, web, worker and supervisor recreated. No schema change.
 - Rehearsed against a throwaway Postgres: PIN and password sign-up and sign-in, and the PIN lockout.
 - Verified live: services healthy, no error logs, API reports 1.7.1, page title and installed app name say BondBot, served files carry 0.2.1 and the rename step. Not checked on screen: Chrome could not open the site.
 - Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v021-20261126/rollback.sh (image pre-v021-20261126; a database dump from just before is beside it).
 
 ## v0.2.2 (2026-11-26)
+
 - The pixel cursor trail now shows only on the sign-in screens (sign-in, sign-up, password reset, join organization) and is removed once you are in. AuthFrame starts and stops it (components/fx/pixel-fx.ts). The hover flicker is unchanged, and Settings > Pixel effects still turns both off.
 
 ## Deployed to cccbox: 0.2.2 (2026-11-26 06:12 ICT)
+
 - Image rakazo-voice:v022-20261126 (tagged :local), built off the server from the uncommitted 0.2.2 working tree on top of 283ad475a. api, web, worker and supervisor recreated. No schema change.
 - Rehearsed against a throwaway Postgres (PIN and password sign-up, sign-in, lockout). Verified live: services healthy, no error logs, API reports 1.7.2, served files carry 0.2.2. Not checked on screen.
 - Rollback to 0.2.1: bash /mnt/user/appdata/rakazo/backup-pre-v022-20261126/rollback.sh
 
 ## 0.2.2 follow-up fixes (2026-11-27, no version bump)
+
 - Image uploads from the send queue failed with "Upload failed (400)": lib/send-queue.ts posted a plain JSON body to `/rpc/artifacts/create`. The RPC server expects `{ json, meta }` and answers `{ json }`; the upload now wraps the request and reads replies and errors from inside it.
 - Docked screen reconnects by itself: when the screen of a RUNNING computer shows "Screen not connected", it retries when the app returns to the foreground, the network comes back, and on a 2/4/8/16/32 s backoff, then waits for a retry from the user. A stopped computer is never woken (pages/shell/computers/use-computer-controls.tsx).
 - Long voice notes could fail with "The value of delay is out of range": the transcription timeout was not a whole number when the file size was not divisible by 3. It is now rounded up (apps/api/src/voice-notes.ts).
 - Voice note player made into a compact pill (components/VoiceNotePlayer.tsx) and audio attachments ordered above their transcript text in `MessageView` (pages/shell/chat/message-view.tsx).
 
 ## v0.3.0 / 1.8.0 (2026-11-27)
+
 - Multiview: view 2, 3, or 4 bot computers at once on desktop (`2 cols`, `3 cols` or `1 featured + 2 stacked`, `2x2` grid), and max 2 stacked screens on mobile with pill/swipe paging when 3 or 4 are configured.
 - Each tile shows a live screen (view-only by default; button or double-click takes control with bot-busy confirmation and an animated focus glow), bot swapper, `Maximize`, and a `More` menu with `Wake computer` / `Turn off computer`, `Refresh screen`, `Save screenshot`, `Open full screen`, `Open full chat`, model switcher, VPN controls, and tile removal.
 - Each tile includes a collapsible, drag-resizable mini chat underneath with live replies, send/stop composer, and inline approval cards.
 
 ## v0.4.0 / 1.9.0 (2026-11-27)
+
 - In-app BondBot update indicator: checks `GiggleHacks/BondBot` `main` on GitHub and shows a crisp red notification dot on `BONDBOT` in the sidebar (and mobile navigation button) for workspace owners/admins when a newer version is available.
 - Clickable update popover with version comparison (`vCurrent -> vNext`), changelog notes, optional `Skip` per version, and 1-click update with an animated progress bar (`Checking GitHub` -> `Downloading` -> `Building` -> `Migrating` -> `Restarting` -> auto-reload).
 - Works across both Docker Compose deployments (via the `updater` sidecar `/bondbot/status` and `/bondbot/apply` endpoints) and local git checkouts (`git pull --ff-only`, `pnpm install`, `pnpm build`).
 
 ## v0.4.1 / 1.9.1 (2026-11-27)  Rakazo base update
+
 - Merged upstream Rakazo main (164 commits after v0.16.0, up to ff3f24666; no newer upstream release exists) into BondBot 0.4.0. All BondBot features, names and looks are kept.
 - New from upstream, among others: organization vault and shared sign-ins, organization model connections, shared skills/plugins/MCP servers/app connections, bot API keys with an API, MCP server and CLI, app icon picker, image rows with a cached lightbox, option cards for questions, read-aloud moved into the message menu, line breaks in replies, settings layout cleanup, many fixes. 15 new migrations (additive).
 - Conflicts resolved by keeping BondBot behaviour: forced thinking for OpenAI-compatible models now sits on top of upstream's new compatible-model defaults; the five-theme Appearance dropdown is kept over upstream's three-way toggle; voice notes, VPN reconcile, Windows download and the BondBot README are kept; the server image installs ffmpeg plus upstream's fonts; desktop app id stays BondBot and takes upstream's new launcher entry.
@@ -204,12 +211,14 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Checked: type-check passes in every workspace (mobile included); Biome and the repo checks show nothing new beyond BondBot's existing baseline. Unit tests: every failure was either already failing on 0.4.0 or is an upstream test expecting behaviour BondBot changes on purpose (always-high effort, forced thinking, auto-pay under a spending limit, ElevenLabs hidden). One more fails only because of an ignored local `packages/i18n/locales/messages.pot`.
 
 ## Deployed to cccbox: 0.4.1 (2026-11-27)
+
 - Image rakazo-voice:v041-20261127 (tagged :local), built off the server from c2a98805c and loaded with docker load. New docker-compose.images.yml from the repo (three new optional settings). api, web, worker and supervisor recreated; the sudo computer override and the speech server are unchanged and still work.
 - Rehearsed first on a copy of the live database: the 15 new migrations applied (338 to 353), and the new API, booted on a network with no internet, passed health, refused an easy PIN, and handled PIN and password sign-up and sign-in.
 - Verified live: services healthy, no error logs, 353 migrations, API reports 1.9.1, the web bundle carries 0.4.1, page title BondBot, speech server reachable. Not exercised: a real bot run, voice notes, VPN switching, the new organization features, the screen in a browser.
 - Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v041-20261127/rollback.sh (image pre-v041-20261127; a database dump from just before is beside it).
 
 ## v0.5.0 / 1.10.0 (2026-11-28)
+
 - Multiview: the divider between a screen and its chat drags, scrolls (wheel up gives the chat more room) and takes arrow keys, up to nearly the whole tile. A second layout, picked in the Multiview header, gives each bot a full-height chat column with its screen as a small window at the top end (click it for full screen; it can be hidden). That column's composer is text only.
 - Wake in the bot panel starts the computer where it is. A separate Full screen button on the preview opens the full window.
 - Sleeping bots are drawn grey with a moon (sidebar, chat header, Multiview). The roster is re-read when a computer wakes or stops.
@@ -222,24 +231,26 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Sign-in page is smaller and holds still: the robot and the BOND BOT wordmark are drawn once.
 - Checked: type-check passes (the two old billing errors aside); unit tests and repo checks match 0.4.1's failures; 87 targeted browser tests pass and 4 fail the same way on 0.4.1. Not heard or seen on a real server before deploy: the sounds in a live chat, real memory and CPU figures in the panel.
 
-
 ## Deployed to cccbox: 0.5.0 (2026-11-28 07:51 ICT, by the in-app updater)
+
 - Updated with the app's own Update button (image built on cccbox from 1771c3aaf, about 6 minutes). Database dumped to /mnt/user/appdata/rakazo/backup-pre-v050-20261128/ while it built; no schema change.
 - Verified live: api, web, worker and supervisor healthy, API reports 1.10.0, the three compose files and the sudo computer override are in use, speech server reachable. One expected "run.queue_delayed" during the restart.
 - Seen: the update screen stayed at "Reconnecting 94%" although the server had finished (fixed in 0.5.1).
 - Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v050-20261128/rollback.sh
 
 ## v0.5.1 / 1.10.1 (2026-11-28)
+
 - Updates: the red dot is gone. An "Update to vX" button with Skip sits above the CPU and RAM meter. While updating it shows a checklist (download, build, database, restart), a moving bar, size and speed while downloading, time left (from the last update's length), the current build step, and that refreshing is safe.
 - Fixed: the page stayed at 94% for ever after a successful update, because it waited on /health, which the web server does not answer with JSON. It now follows the update's own record and reloads when that says finished. A page loaded during an update picks it up.
 - The updater sidecar reports live progress. It does not update itself: rebuild and replace its image once (rakazo-updater) for speed, time left and build steps.
 - Sounds are on by default (migration turns them on for existing accounts, which also turns on phone push sounds). Each kind has its own switch in Settings > General > Notifications. Thinking ticks are far quieter and sparser, the tool burst quieter, and the send, tool and thinking sounds have four versions each.
 - Fixed: the send sound did not play on a real server (0.5.0 too). The build packed small sound files into the page's code, which the content security policy refuses to load. Sounds now stay files.
 - Settings > General has two optional looks, both off by default and kept per device. "Colorful chat" colours thinking, tool steps by what they touch (red when one failed), headings, emphasised words, code, links, quotes and errors. "Terminal font" uses Cascadia Mono where installed and the device's monospace elsewhere. The Dark blue theme goes well with it.
-- The bot panel's reading is now "RAM 1.2 GB  CPU 8%", green, amber or red by how full it is.
+- The bot panel's reading is now `RAM 1.2 GB  CPU 8%`, green, amber or red by how full it is.
 - Linux (and Windows) desktop with the system window frame: the logo is at the far left again; the room for macOS window buttons is no longer reserved.
 
 ## Deployed to cccbox: 0.5.1 (2026-11-28 08:42 ICT, by hand)
+
 - Image built from 3f9b839115 (app) and efbc7ad5f2 (updater, replaced for the first time since 0.4.0).
 - Rehearsed against a throwaway copy of the database: the one migration applied, the API started, PIN sign-up and sign-in worked, new accounts start with sounds on.
 - Database dumped to /mnt/user/appdata/rakazo/backup-pre-v051-20261128/ just before. The updater's time estimate was seeded with the 0.5.0 update's length.
@@ -248,6 +259,7 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v051-20261128/rollback.sh (0.5.0 app and updater; the database stays).
 
 ## v0.6.0 / 1.11.0 (2026-11-28)
+
 - VPN files are now managed in the app instead of by hand on the server. Settings > VPN uploads one or many WireGuard (.conf) files at once, tests each one (it says which country and IP bots appear from, or what went wrong) and removes them. Step-by-step help for making a file, with Proton VPN as the example.
 - New bot has a VPN choice under the name, with "Block the internet if the VPN stops working" (Kill Switch) on by default. A bot made with a VPN gets its own computer. With no file yet, "Connect through a VPN" uploads one right there and tests it.
 - The VPN chip menu links to Settings > VPN. It no longer says "Proton VPN" or assumes Thailand when the host country is unknown; country names come from the browser, so any country works.
@@ -256,6 +268,7 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - No database change. Existing hand-placed files keep working as shared files.
 
 ## Deployed to cccbox: 0.6.0 (2026-11-28 10:20 ICT, updater started over ssh)
+
 - Host VPN manager replaced first (/boot/config/rakazo-vpn-manager.py, old copy in backup-pre-v060-20261128/ and .bak-20261128). After the restart the same bots were on the same VPNs and Kill Switches, all five tunnels up with keepalive, no duplicate routing rules.
 - App built on cccbox by the updater from b2dd0c0319. Database dumped to /mnt/user/appdata/rakazo/backup-pre-v060-20261128/ first; no schema change.
 - Verified live: services healthy, API reports 1.11.0, no error lines, the supervisor reports the VPN manager with Kill Switch available. A real tunnel tested "connected" (JP). A dummy file went through upload, test ("server did not answer"), a refused removal by another owner, and removal, both against the VPN manager and through the supervisor; nothing was left behind. The new screens were checked in a browser with sample data.
@@ -263,6 +276,7 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v060-20261128/rollback.sh (0.5.1 app image, compose file and VPN manager; the database stays).
 
 ## v0.7.0 / 1.12.0 (2026-11-28)
+
 - Chat list: unread chats show a Telegram-style count bubble (bot replies and other people's messages since you last read it, up to 999+), also on avatars when the sidebar is collapsed. A chat only marked unread keeps a plain dot. The native mobile app is unchanged.
 - The server now sends that count with the chat list. Marking a chat read from the list no longer leaves old messages to be counted again, and its "New" divider now starts at the first message after that.
 - Settings > VPN: a test shows just the ping and IP address, or "No response", "No internet", "Not going through VPN". New "Test all" button. The long result sentences are gone.
@@ -271,6 +285,7 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - No database change.
 
 ## Deployed to cccbox: 0.7.0 (2026-11-28 about 09:50 ICT, updater started over ssh)
+
 - Host VPN manager replaced first (old copy in backup-pre-v070-20261128/). Same bots on the same VPNs and Kill Switches afterwards, no duplicate routing rules, all seven tunnels tested "connected" with a ping, and the two uploaded US files now read as United States.
 - App built on cccbox by the updater from 1694403b2d. Database dumped to /mnt/user/appdata/rakazo/backup-pre-v070-20261128/ first; no schema change.
 - Verified live: services healthy, API reports 1.12.0, no API error lines, flag files served, a VPN test through the supervisor returns a ping.
@@ -278,12 +293,14 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v070-20261128/rollback.sh (0.6.0 app image, compose file and VPN manager; the database stays).
 
 ## v0.8.0 / 1.13.0 (2026-11-28)
+
 - Quick switch (model dropdown in the chat header): a star beside each model pins it to a Starred section at the top, above Most used (the 3 most used that are not starred) and All models. Stars are per account, so phone and desktop match. Needs migration 20270105000000_starred_models before the new API serves it.
 - Screen above chat on desktop too: the monitor button in the chat header (phone only before) now shows at every width, in the browser and the desktop app. While the screen is above the chat, the right panel's Computer box says 'Shown above chat' instead of drawing a second copy, and the dock hides while the full window or Multiview is open.
 - Screen above chat fixes: on desktop its Full screen button opens the full window (Take control, Teach, screenshot); its buttons move below the chat's find bar while that is open; an account can star at most 100 models.
 - Database change: migration 20270105000000_starred_models adds the starred_models table (additive; the old release never reads it).
 
 ## Deployed to cccbox: 0.8.0 (2026-11-28 about 11:40 ICT, updater started over ssh)
+
 - App built on cccbox by the updater from d47a716b4a. Database dumped to /mnt/user/appdata/rakazo/backup-pre-v080-20261128/ first (with .env and the compose files).
 - Verified live: services healthy, API reports 1.13.0, no API or worker error lines, web answers 200 and carries the new code, starred_models table in place with row security on.
 - Not checked while signed in: stars and the screen above chat on live data.

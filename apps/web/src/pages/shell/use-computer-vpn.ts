@@ -1,7 +1,10 @@
+import { useTimeout } from "@rakazo/chat-ui/hooks";
 import type { BotVpnStatus, ComputerVpnOverview, SetComputerVpnInput } from "@rakazo/contracts";
+import { bestEffort } from "@rakazo/logging/best-effort";
 import { toast } from "@rakazo/ui-web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { createSpaceRpc } from "../../lib/query/rpc";
+import { useEventListener } from "../../lib/use-event-listener";
 import { playVpnSound, primeVpnAudio } from "../../lib/vpn-sounds";
 
 export interface ComputerVpnController {
@@ -40,17 +43,10 @@ export function useComputerVpn({
   // Counts requests, so an answer arriving after a newer request (or a space change) is dropped.
   const latestRequest = useRef(0);
 
-  useEffect(() => {
-    const update = () => setPolling(pollingAllowed());
-    document.addEventListener("visibilitychange", update);
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    return () => {
-      document.removeEventListener("visibilitychange", update);
-      window.removeEventListener("online", update);
-      window.removeEventListener("offline", update);
-    };
-  }, []);
+  const updatePolling = () => setPolling(pollingAllowed());
+  useEventListener(document, "visibilitychange", updatePolling);
+  useEventListener(window, "online", updatePolling);
+  useEventListener(window, "offline", updatePolling);
 
   const refreshVpn = useCallback(async () => {
     if (!spaceId) return;
@@ -76,12 +72,18 @@ export function useComputerVpn({
 
   // Refreshes at once, then every 15 s; stops while the tab is hidden or offline and
   // refreshes once more when it comes back.
+  const [polls, setPolls] = useState(0);
   useEffect(() => {
-    if (!spaceId || !polling) return;
-    void refreshVpn();
-    const timer = setInterval(() => void refreshVpn(), POLL_MS);
-    return () => clearInterval(timer);
+    if (spaceId && polling) void refreshVpn();
   }, [spaceId, polling, refreshVpn]);
+  useTimeout(
+    () => {
+      void refreshVpn();
+      setPolls((count) => count + 1);
+    },
+    spaceId && polling ? POLL_MS : null,
+    `${spaceId}:${polls}`,
+  );
 
   const setBotVpn = useCallback(
     async (input: SetComputerVpnInput): Promise<BotVpnStatus | null> => {
@@ -102,7 +104,7 @@ export function useComputerVpn({
           playVpnSound("vpn-on");
         }
         if (input.switchToDedicated) {
-          await refreshBots().catch(() => undefined);
+          await bestEffort("refresh bots after a VPN change", refreshBots());
         }
         await refreshVpn();
         return updated;

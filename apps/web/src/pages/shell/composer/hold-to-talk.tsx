@@ -222,7 +222,7 @@ export function HoldToTalkControls({
           size="icon"
           aria-label="Stop and send recording"
           onClick={talk.submit}
-          className="size-8 shrink-0 animate-pulse rounded-full bg-destructive-fill text-destructive-foreground shadow-sm hover:bg-destructive-fill/90"
+          className="shrink-0 animate-pulse rounded-full bg-destructive-fill text-destructive-foreground shadow-sm hover:bg-destructive-fill/90"
         >
           <Square size={11} strokeWidth={0} fill="currentColor" />
         </Button>

@@ -190,7 +190,7 @@ test("This computer installs and starts the stack, then opens the app", async ()
 
   const appWindowPromise = app.waitForEvent("window");
   await setup.getByRole("button", { name: "Continue" }).click();
-  await expect(setup.locator("#stack-phase")).toHaveText("Downloading Rakazo…");
+  await expect(setup.locator("#stack-phase")).toHaveText("Downloading BondBot…");
   await expect(setup.getByRole("button", { name: "Continue" })).toBeDisabled();
   await expect(setup.locator("#stack-detail")).toHaveText("412 MB downloaded");
   await expect(setup.locator("#stack-progress")).toBeVisible();
@@ -245,7 +245,7 @@ test("without Docker the app offers the download and continues once Docker is in
   await setup.getByRole("button", { name: "Continue" }).click();
   const docker = process.platform === "linux" ? "Docker" : "Docker Desktop";
   await expect(setup.locator("#stack-phase")).toHaveText(
-    `Rakazo needs ${docker} to run on this computer.`,
+    `BondBot needs ${docker} to run on this computer.`,
   );
   await expect(setup.locator("#stack-phase")).not.toHaveAttribute("data-tone");
   const download = setup.getByRole("button", {
@@ -277,7 +277,7 @@ test("switching to Existing instance while the stack starts keeps that choice", 
   await setup.getByRole("radio", { name: /This computer/ }).check();
 
   await setup.getByRole("button", { name: "Continue" }).click();
-  await expect(setup.locator("#stack-phase")).toHaveText("Downloading Rakazo…");
+  await expect(setup.locator("#stack-phase")).toHaveText("Downloading BondBot…");
 
   // Fake docker sleeps during pull; leave This computer before ready so followStack must not save.
   await setup.getByRole("radio", { name: /Existing instance/ }).check();

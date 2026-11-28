@@ -50,7 +50,10 @@ export function createBotRemoval(deps: RouterDeps, repos: ReturnType<typeof crea
       },
       options,
     );
-    if (bot.computer?.scope === "dedicated" && (bot.computer.vpnProfile || bot.computer.vpnLocked)) {
+    if (
+      bot.computer?.scope === "dedicated" &&
+      (bot.computer.vpnProfile || bot.computer.vpnLocked)
+    ) {
       await setSupervisorHomeVpn(deps.env, bot.computer.homeKey, {
         profile: null,
         locked: false,

@@ -40,6 +40,7 @@ export function BondBotUpdatePopover({
         <div className="flex min-w-0 flex-col gap-0.5">
           <div className="flex items-center gap-2">
             <span className="text-body-sm font-semibold text-foreground">BondBot update</span>
+            {/* off-scale: version badge. */}
             <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
               {targetLabel && availability.updateAvailable
                 ? `${currentLabel} -> ${targetLabel}`
@@ -90,6 +91,7 @@ export function BondBotUpdatePopover({
       {applyError ? <p className="text-caption text-destructive">{applyError}</p> : null}
 
       {!activeProgress && availability.updateAvailable && availability.changelogSummary ? (
+        // off-scale: release notes in a compact popover.
         <div className="max-h-32 overflow-y-auto rounded-lg border border-border/60 bg-muted/30 px-2.5 py-2 text-[12px] leading-relaxed text-muted-foreground whitespace-pre-wrap">
           {availability.changelogSummary}
         </div>
@@ -100,6 +102,7 @@ export function BondBotUpdatePopover({
       availability.manualCommands.length > 0 ? (
         <div className="flex flex-col gap-1.5 rounded-lg border border-border/60 bg-muted/30 p-2.5">
           <div className="flex items-center justify-between gap-2">
+            {/* off-scale: caption in a compact popover. */}
             <span className="text-[11px] font-medium text-muted-foreground">
               Run on host to update
             </span>
@@ -117,6 +120,7 @@ export function BondBotUpdatePopover({
               {copied ? "Copied" : "Copy"}
             </Button>
           </div>
+          {/* off-scale: shell commands that must fit the popover. */}
           <pre className="overflow-x-auto font-mono text-[11px] leading-snug text-foreground">
             {availability.manualCommands.join("\n")}
           </pre>

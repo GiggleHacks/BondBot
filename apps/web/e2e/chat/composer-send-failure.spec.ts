@@ -112,7 +112,8 @@ test("an unchanged routine retry after a lost response reuses the run", {
   expect(runIds[1]).toBe(runIds[0]);
 });
 
-test("an accepted send clears recovered text after returning to the thread", {
+// BondBot hands a send to an on-device outbox, which shows it at once and retries by itself.
+test("a send waiting on the server stays out of the box after returning to the thread", {
   tag: "@nightly",
 }, async ({ page }) => {
   await openComposer(page, "pending-return");
@@ -135,9 +136,14 @@ test("an accepted send clears recovered text after returning to the thread", {
   await expect(composer).toHaveValue("");
   await sidebar.getByRole("button", { name: /^Other thread/ }).click();
   await sidebar.getByRole("button", { name: /^Chief/ }).click();
-  await expect(composer).toHaveValue("pending accepted message");
-  releaseSend();
+  const waiting = page.getByTestId("pending-outbox-item");
+  await expect(waiting).toContainText("pending accepted message");
   await expect(composer).toHaveValue("");
+  releaseSend();
+  await expect(waiting).toHaveCount(0);
+  await expect(
+    page.getByTestId("message-user-bubble").filter({ hasText: "pending accepted message" }),
+  ).toHaveCount(1);
   await page.reload();
   await expect(composer).toHaveValue("");
 });
@@ -172,7 +178,7 @@ test("separate picks with matching file metadata upload their own bytes", {
   await composer.fill("Process both files");
   await composer.press("Enter");
   await expect(
-    page.getByTestId("transcript").getByText("Process both files", { exact: true }),
+    page.getByTestId("message-user-bubble").filter({ hasText: "Process both files" }),
   ).toBeVisible();
   expect(uploads).toEqual([
     Buffer.from("first").toString("base64"),
@@ -180,7 +186,7 @@ test("separate picks with matching file metadata upload their own bytes", {
   ]);
 });
 
-test("a retried send after an edit reuses the attachment's uploaded artifact", {
+test("a retried send reuses the attachment's uploaded artifact", {
   tag: "@nightly",
 }, async ({ page }) => {
   const composer = await openComposer(page, "attachment-retry");
@@ -206,17 +212,14 @@ test("a retried send after an edit reuses the attachment's uploaded artifact", {
     else await route.continue();
   });
   await composer.press("Enter");
-  await expect(page.getByTestId("composer-error")).toBeVisible();
-  // Editing the draft gives the retry a new send nonce; the file is unchanged,
-  // so its upload must replay the artifact the first attempt already stored.
-  await composer.fill("process the file now");
-  await composer.press("Enter");
+  // The retry sends the same message, so its upload is not repeated.
+  await page.getByTestId("pending-outbox").getByRole("button", { name: "Retry" }).click();
   await expect(
-    page.getByTestId("transcript").getByText("process the file now", { exact: true }),
+    page.getByTestId("message-user-bubble").filter({ hasText: "process the file" }),
   ).toBeVisible();
 
-  expect(uploadNonces).toHaveLength(2);
-  expect(uploadNonces[1]).toBe(uploadNonces[0]);
+  expect(sends).toBe(2);
+  expect(uploadNonces).toHaveLength(1);
   const artifacts = await rpc<{ items: Array<{ name: string }> }>(page, "artifacts/listSpace", {
     botId,
     limit: 60,

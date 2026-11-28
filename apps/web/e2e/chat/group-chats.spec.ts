@@ -187,13 +187,10 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
     .first();
   await researcherMessage.hover();
   await researcherMessage.getByRole("button", { name: "More" }).click();
-  const [speechRequest] = await Promise.all([
-    page.waitForRequest(
-      (request) => request.url().includes("/api/voice/speak") && request.method() === "POST",
-    ),
-    page.getByRole("menuitem", { name: "Read aloud" }).click(),
-  ]);
-  expect(speechRequest.postDataJSON()).toMatchObject({ botId: researcherId });
+  // BondBot turns read-aloud off, so a group message does not offer it.
+  await expect(page.getByRole("menuitem").first()).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Read aloud" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await captureScreenshot(page, testInfo, "group-transcript");
 
   await composer.fill("@Res");

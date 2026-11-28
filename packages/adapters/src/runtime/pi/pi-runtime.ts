@@ -34,6 +34,7 @@ import {
 import { deliverFinishedShells } from "../../computers/sandbox/shell-command-stream.js";
 import { withAutomatedLabels } from "../../messaging/automated-messages.js";
 import { withCloudflareAuth } from "../../models/endpoints/cloudflare-ai-gateway.js";
+import { reasoningCapture, reasoningEnabledFor } from "../../reasoning-capture.js";
 import {
   CUT_REPLY_CONTINUATION_PROMPT,
   cutReplyAtLimitPrompt,
@@ -127,7 +128,6 @@ import {
 } from "./tools/pi-runtime-tools.js";
 import { withPiTelemetry } from "./usage/pi-telemetry.js";
 import { observedPiStream } from "./usage/pi-usage.js";
-import { reasoningCapture, reasoningEnabledFor } from "../../reasoning-capture.js";
 
 const MAX_REJECTED_REQUESTS = 5;
 const running = new Map<string, { controller: AbortController; work: Promise<void> }>();

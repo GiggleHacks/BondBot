@@ -1,8 +1,6 @@
 // Local addition (David, 2026-11-21): the phone's Back gesture closes the top open layer (menu,
 // side panel, settings window, computer window, full screen) instead of leaving the app.
 // Each open layer owns one browser history entry; closing a layer in the app removes its entry.
-import { useEffect, useId, useRef } from "react";
-
 type Layer = { id: string; close: () => void };
 
 const stack: Layer[] = [];
@@ -92,18 +90,6 @@ export function closeLayer(id: string) {
   if (at < 0) return;
   stack.splice(at, 1);
   schedule();
-}
-
-/** While `open`, the Back gesture calls `close` (the newest open layer first). */
-export function useBackLayer(open: boolean, close: () => void, enabled = true) {
-  const id = useId();
-  const closeRef = useRef(close);
-  closeRef.current = close;
-  useEffect(() => {
-    if (!enabled || !open) return;
-    openLayer(id, () => closeRef.current());
-    return () => closeLayer(id);
-  }, [id, open, enabled]);
 }
 
 // Start listening as soon as the app loads, so a marker left by a reload is cleared at once.

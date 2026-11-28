@@ -71,7 +71,7 @@ afterEach(() => {
   Reflect.deleteProperty(document, "execCommand");
 });
 
-it("reports a copied message separately and keeps the same More button usable", async () => {
+it("reports a copied message separately and keeps the same Copy button usable", async () => {
   let copiedText = "";
   stubExecCommand((active) => {
     copiedText = active instanceof HTMLTextAreaElement ? active.value : "";
@@ -79,21 +79,20 @@ it("reports a copied message separately and keeps the same More button usable", 
   });
   expect(navigator.clipboard).toBeUndefined();
 
-  const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="More"]');
+  // BondBot: Copy is its own button beside More.
+  const trigger = document.querySelector<HTMLButtonElement>('[data-testid="message-copy-button"]');
   const status = container.querySelector('[role="status"]');
+  expect(trigger?.getAttribute("aria-label")).toBe("Copy");
   await click(trigger);
-  await click(menuItem("Copy"));
 
   expect(copiedText).toBe("Answer text");
-  expect(trigger?.getAttribute("aria-expanded")).toBe("false");
-  expect(trigger?.getAttribute("aria-label")).toBe("More");
+  expect(trigger?.getAttribute("aria-label")).toBe("Copied");
   expect(trigger?.querySelector(".lucide-check")).not.toBeNull();
   expect(container.querySelector('[role="status"]')).toBe(status);
   expect(status?.textContent).toBe("Copied");
   expect(trigger?.contains(status)).toBe(false);
 
-  await click(trigger);
-  expect(trigger?.getAttribute("aria-expanded")).toBe("true");
+  await click(document.querySelector<HTMLButtonElement>('button[aria-label="More"]'));
   expect(menuItem("Copy")).toBeDefined();
 });
 

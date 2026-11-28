@@ -127,6 +127,7 @@ import { localSignupAdmitter, mountLocalComputerHost } from "./computers/local-s
 import { mountScreenTarget } from "./computers/screen-proxy.js";
 import { storeInboundAttachment } from "./content/artifacts.js";
 import { mountSharedPages } from "./content/shared-pages.js";
+import { mountDevEmails } from "./email/dev-emails.js";
 import { apiEmail, emailErrorLogger } from "./email/email.js";
 import { mountEmailInboundRoute } from "./email/email-inbound.js";
 import { lifecycleEmailScheduler } from "./email/lifecycle-email.js";
@@ -147,6 +148,7 @@ import { mountDesktopDownloadRoutes } from "./http/desktop-downloads.js";
 import { databaseProbe, healthRoutes } from "./http/health.js";
 import { startHourlySweep } from "./http/hourly-sweep.js";
 import { trackInFlightRequests } from "./http/in-flight-requests.js";
+import { mountNoStoreReplies } from "./http/no-store-replies.js";
 import { mountApiRequestBodyLimits } from "./http/request-body-limit.js";
 import { mountRpcRoute } from "./http/rpc-route.js";
 import { mountScriptAssets } from "./http/script-assets.js";
@@ -166,7 +168,7 @@ import type { SpaceDeletionDeps } from "./spaces/space-deletion.js";
 import { afterSpaceDeparture } from "./spaces/space-departure.js";
 import { cspReportRoutes } from "./telemetry/csp-report.js";
 import { monitoringRoutes } from "./telemetry/monitoring.js";
-import { createVoiceNotes, mountVoiceNoteRoutes } from "./voice-notes.js";
+import { mountVoiceNotes } from "./voice/mount-voice-notes.js";
 import { mountWebhookHttpRoutes } from "./webhooks/webhook.js";
 
 // A stop that hands runs back is allowed 30 seconds before the process is killed.
@@ -768,24 +770,10 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     prisma,
   });
   app.use("*", sendRenewedCookies);
-  // Session and account replies must never be stored by a client or an HTTP cache.
-  for (const path of ["/api/auth/*", "/rpc/*"]) {
-    app.use(path, async (c, next) => {
-      await next();
-      c.header("cache-control", "no-store");
-    });
-  }
+  mountNoStoreReplies(app);
   mountAuthCapabilities(app, { env, auth, email, billing });
   mountAppAssociation(app, env);
-  if (localEmailEmulator && env.nodeEnv === "development") {
-    app.get(
-      "/api/dev/emails",
-      () =>
-        new Response(JSON.stringify(localEmailEmulator.sent), {
-          headers: { "cache-control": "no-store", "content-type": "application/json" },
-        }),
-    );
-  }
+  if (env.nodeEnv === "development") mountDevEmails(app, localEmailEmulator);
   app.route(
     "/",
     monitoringRoutes(
@@ -874,28 +862,12 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
   mountAccountExportRoute(app, { prisma, auth, artifacts, home });
   mountAuditExportRoute(app, { prisma, sessionActor });
   mountVoiceHttpRoutes(app, { prisma, secrets, env }, (c) => sessionActor(c.req.raw), env);
-  const voiceNoteDeps = {
-    prisma,
-    secrets,
-    artifacts,
-    events,
-    jobs,
-    sandbox,
-    env: {
-      dataDir: env.dataDir,
-      mcpAllowPrivateEndpoint: env.mcpAllowPrivateEndpoint,
-      maxAttachmentsPerMessage: env.maxAttachmentsPerMessage,
-      sttFallback: process.env.VOICE_NOTES_STT_URL?.trim()
-        ? {
-            baseUrl: process.env.VOICE_NOTES_STT_URL.trim(),
-            model: process.env.VOICE_NOTES_STT_MODEL?.trim() || "whisper-1",
-          }
-        : undefined,
-    },
-  };
-  const voiceNotes = createVoiceNotes(voiceNoteDeps);
-  mountVoiceNoteRoutes(app, voiceNoteDeps, voiceNotes, (c) => sessionActor(c.req.raw));
-  voiceNotes.start();
+  const voiceNotes = mountVoiceNotes(
+    app,
+    { prisma, secrets, artifacts, events, jobs, sandbox },
+    env,
+    (c) => sessionActor(c.req.raw),
+  );
   mountDesktopDownloadRoutes(app, env.dataDir, sessionActor);
   mountAccountImportRoute(
     app,

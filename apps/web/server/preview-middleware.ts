@@ -532,7 +532,6 @@ export type WebServerSettings = ReturnType<typeof webServerSettings>;
  * what runs after the SPA fallback has resolved the page.
  */
 
-
 let hostCpuSample: { total: number; idle: number } | null = null;
 let hostStatsCache: {
   at: number;

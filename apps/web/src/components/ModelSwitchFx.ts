@@ -133,7 +133,13 @@ export async function playModelSwitchFx(options: {
       const icon = phase === "old" ? oldIcon : newIcon;
       if (icon) {
         context.imageSmoothingEnabled = true;
-        context.drawImage(icon, Math.round(cx - iconSize / 2), Math.round(cy - iconSize / 2), iconSize, iconSize);
+        context.drawImage(
+          icon,
+          Math.round(cx - iconSize / 2),
+          Math.round(cy - iconSize / 2),
+          iconSize,
+          iconSize,
+        );
       }
       if (elapsed < DURATION_MS) requestAnimationFrame(frame);
       else resolve();

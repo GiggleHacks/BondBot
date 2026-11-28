@@ -1,3 +1,4 @@
+import { bestEffort } from "@rakazo/logging/best-effort";
 export type VpnSoundKind = "vpn-on" | "vpn-off" | "lock-on" | "lock-off" | "error";
 
 let sharedAudioCtx: AudioContext | null = null;
@@ -18,7 +19,7 @@ function getAudioContext(): AudioContext | null {
 export function primeVpnAudio(): void {
   const ctx = getAudioContext();
   if (ctx && ctx.state === "suspended") {
-    void ctx.resume().catch(() => undefined);
+    void bestEffort("resume audio", ctx.resume());
   }
 }
 
@@ -64,7 +65,7 @@ export function playVpnSound(kind: VpnSoundKind): void {
   const ctx = getAudioContext();
   if (!ctx) return;
   if (ctx.state === "suspended") {
-    void ctx.resume().catch(() => undefined);
+    void bestEffort("resume audio", ctx.resume());
   }
 
   switch (kind) {

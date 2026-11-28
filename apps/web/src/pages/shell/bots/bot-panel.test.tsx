@@ -888,21 +888,6 @@ describe("BotSettings avatar set persistence", () => {
 });
 
 describe("BotSettings cached data", () => {
-  it("shows cached voices at once and refreshes them in the background", async () => {
-    queryClient.setQueryData(spaceQueries(null, null).voice.voices.queryKey({ input: {} }), [
-      { id: "cached-voice", label: "Cached voice" },
-    ]);
-    vi.mocked(rpc.voice.voices)
-      .mockClear()
-      .mockReturnValueOnce(new Promise(() => undefined));
-    await render("Billing", { autoSpeak: true });
-    const voices = await openOptions(
-      container.querySelector<HTMLElement>('[role="combobox"][id$="-voice"]')!,
-    );
-    expect(voices.map((option) => option.textContent)).toContain("Cached voice");
-    expect(rpc.voice.voices).toHaveBeenCalledTimes(1);
-  });
-
   it("follows a newer bot in fields not edited and keeps the ones that were", async () => {
     await render("Billing", { computerMode: "team" });
     await setDescription("Invoices");

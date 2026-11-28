@@ -8,6 +8,7 @@ import type { AgentRunRequest } from "@rakazo/adapter-kit";
 import { describe, expect, it, vi } from "vitest";
 import { buildModelConnectPlaintext, modelCredentialDto } from "../../models/model-connect.js";
 import { defaultCatalogModelId, isCatalogModelChoice } from "../../models/model-selection.js";
+import { connectionModelSettings } from "../../models/model-settings.js";
 import { modelAcceptsImageInput } from "../../models/model-vision.js";
 import { listPiCatalog } from "./models/pi-models.js";
 import { resolveModelAuth } from "./models/pi-oauth.js";
@@ -143,7 +144,11 @@ it.each([true, false, undefined])(
           id: "same-model",
           baseUrl: auth.secret.baseUrl,
           allowPrivateEndpoint: true,
-          reasoning: auth.secret.reasoning,
+          reasoning: connectionModelSettings(
+            auth.secret,
+            OPENAI_COMPATIBLE_PROVIDER_ID,
+            "same-model",
+          ).reasoning,
         },
       },
       OPENAI_COMPATIBLE_PROVIDER_ID,
@@ -159,7 +164,8 @@ it.each([true, false, undefined])(
       },
       plaintext,
     );
-    expect(model.reasoning).toBe(reasoning ?? false);
+    // BondBot keeps thinking on for every compatible model, whatever was saved.
+    expect(model.reasoning).toBe(true);
     expect(credential.thinkingLevels).toEqual(getSupportedThinkingLevels(model));
   },
 );

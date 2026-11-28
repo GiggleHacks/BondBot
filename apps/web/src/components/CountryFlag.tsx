@@ -1,3 +1,4 @@
+// biome-ignore-all lint/plugin: national flag colours are fixed by each country, not the theme.
 import { Globe } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 

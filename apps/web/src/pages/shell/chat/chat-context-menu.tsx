@@ -5,7 +5,8 @@ import type { ComponentProps, Dispatch, ReactNode, SetStateAction } from "react"
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { lazyOverlay } from "../../../components/ErrorBoundary";
 import type { createSpaceRpc } from "../../../lib/query/rpc";
-import { type PendingVpnChoice, resolveBotVpnDisplay } from "../computer-vpn-control";
+import type { PendingVpnChoice } from "../computer-vpn-control";
+import { resolveBotVpnDisplay } from "../computer-vpn-control";
 import type { ShellDialogsState } from "../shell-dialogs";
 import type { SnoozeChat } from "../sidebar/use-chat-snooze";
 import type { ComputerVpnController } from "../use-computer-vpn";

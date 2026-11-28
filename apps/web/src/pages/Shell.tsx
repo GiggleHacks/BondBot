@@ -1,15 +1,11 @@
-import { Trans } from "@lingui/react/macro";
 import type { Bot } from "@rakazo/contracts";
 import { DEFAULT_NEW_BOT_AVATAR_SET, hasLab } from "@rakazo/contracts";
 import { chatWoke } from "@rakazo/core";
 import { bestEffort } from "@rakazo/logging/best-effort";
-import { Button, toast } from "@rakazo/ui-web";
 import { useIsMobile } from "@rakazo/ui-web/hooks/use-mobile";
 import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
 import type { Ref } from "react";
 import {
-  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -22,13 +18,9 @@ import { useParams } from "react-router-dom";
 import { BondbotUpdateProvider } from "../components/bondbot-update/BondbotUpdateProvider";
 import { IncomingCall } from "../components/call/IncomingCall";
 import { ComputerUpdateProgress } from "../components/computers/ComputerUpdateProgress";
-import { ModelEdgeGlow } from "../components/ModelEdgeGlow";
 import { PageLoading } from "../components/PageLoading";
 import { PageViewHost } from "../components/pages/PageViewHost";
 import { authClient } from "../lib/auth/auth";
-import { useBackLayer } from "../lib/back-layers";
-import { toolActivityPreference } from "../lib/chat/tool-activity-preference";
-import { composerEnterToSendPreference } from "../lib/composer/composer-enter-to-send-pref";
 import { PagesProvider, usePagesForChat } from "../lib/pages/pages";
 import { desktopBridge } from "../lib/platform/desktop";
 import { usePreloadRecoveryState } from "../lib/platform/preload-recovery";
@@ -39,16 +31,14 @@ import { queryClient, spaceQueries } from "../lib/query/query";
 import type { RpcClient } from "../lib/query/rpc";
 import { createSpaceRpc, selectedSpaceId } from "../lib/query/rpc";
 import { SpaceRpcProvider } from "../lib/query/space-rpc";
-import { errorText } from "../lib/query/user-error";
 import { InboundOriginProvider } from "../lib/routines/inbound-url";
-import { screenDockPreference } from "../lib/screen-dock";
+import { useBackLayer } from "../lib/use-back-layer";
 import { BotUsageLine } from "./shell/bots/bot-usage-line";
 import type { CreateBotDialogInput } from "./shell/bots/create-bot-dialog";
+import { createBotWithVpn } from "./shell/bots/create-bot-with-vpn";
 import { useTeaching } from "./shell/bots/use-teaching";
-import { ChatColumn } from "./shell/chat/chat-column";
 import { useChatMenu } from "./shell/chat/chat-context-menu";
-import { ChatHeader } from "./shell/chat/chat-header";
-import { Transcript } from "./shell/chat/transcript";
+import { ShellChatArea } from "./shell/chat/shell-chat-area";
 import { useChatRead } from "./shell/chat/use-chat-read";
 import { useMessageActions } from "./shell/chat/use-message-actions";
 import { useMessageJump } from "./shell/chat/use-message-jump";
@@ -56,16 +46,15 @@ import { useReadAloud } from "./shell/chat/use-read-aloud";
 import { useThreadState } from "./shell/chat/use-thread-state";
 import { useThreadSync } from "./shell/chat/use-thread-sync";
 import { useTranscriptView } from "./shell/chat/use-transcript-view";
-import { ChatComposerArea } from "./shell/composer/chat-composer-area";
 import { useComposerActions } from "./shell/composer/use-composer-actions";
 import { useComposerMentions } from "./shell/composer/use-composer-mentions";
 import { useComposerModelShortcuts } from "./shell/composer/use-composer-model-shortcuts";
 import type { PendingVpnChoice } from "./shell/computer-vpn-control";
-import { TeamComputerVpnDialog } from "./shell/computer-vpn-control";
 import { ComputerOverlay } from "./shell/computers/computer-overlay";
-import { ComputerPanel } from "./shell/computers/computer-panel";
+import { ShellComputerPanel } from "./shell/computers/shell-computer-panel";
+import { TeamComputerVpnChoice } from "./shell/computers/team-computer-vpn-choice";
 import { useComputerControls, useComputerState } from "./shell/computers/use-computer";
-import { DockedScreen } from "./shell/DockedScreen";
+import { useShellViewModes } from "./shell/computers/use-shell-view-modes";
 import { HostComputerPrompt } from "./shell/host-computer-prompt";
 import { KeyboardShortcutsDialog } from "./shell/keyboard-shortcuts-dialog";
 import { rightPanelStorageKey } from "./shell/right-panel-state";
@@ -109,12 +98,6 @@ import { useShellShortcutActions } from "./shell/use-shell-shortcut-actions";
 import { useShellStatus } from "./shell/use-shell-status";
 import { useSpaceActions } from "./shell/use-space-actions";
 import { useOpenSpaceChat } from "./shell/use-space-switch";
-
-const MultiviewWorkspace = lazy(() =>
-  import("./shell/multiview/MultiviewWorkspace").then((module) => ({
-    default: module.MultiviewWorkspace,
-  })),
-);
 
 export function ShellPage() {
   // Reset the Space's shell while keeping the scroll position of the shared roster.
@@ -185,8 +168,6 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
     placeholderData: bootstrapMe && bootstrapMe.userId === userId ? bootstrapMe : undefined,
   });
   const chatPreferences = useChatPreferences(me?.chatPreferences);
-  const enterToSend = composerEnterToSendPreference.use();
-  const showToolActivity = toolActivityPreference.use();
   const thread = useThreadState(chatPreferences.streamReplies);
   const { snapshot } = thread;
   const botsSidebarDensity = botsSidebarDensityPreference.use();
@@ -228,22 +209,8 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
   });
   const { inGroup, routeChat, active, activeGroup, activeBotId, activeGroupId, userBubble } =
     useActiveChat({ botId, groupId, startChat, bots, groups, now: snoozeNow });
-  const selectBot = useCallback(
-    (id: string) => {
-      setMobileSidebarOpen(false);
-      multiviewOpenPreference.set(false);
-      navigate(`/app/${id}`);
-    },
-    [navigate, setMobileSidebarOpen],
-  );
-  const multiviewOpen = multiviewOpenPreference.use();
-  const toggleMultiview = useCallback(() => {
-    setMobileSidebarOpen(false);
-    multiviewOpenPreference.set(!multiviewOpenPreference.get());
-  }, [setMobileSidebarOpen]);
-  const screenDockOn = screenDockPreference.use();
-  // Multiview shows screens of its own, so the dock steps aside while it is open.
-  const screenDockActive = screenDockOn && !multiviewOpen && !inGroup && Boolean(active);
+  const { multiviewOpen, toggleMultiview, screenDockActive, openBot, selectBot } =
+    useShellViewModes({ inGroup, hasActiveBot: Boolean(active), navigate, setMobileSidebarOpen });
   const computerState = useComputerState({
     rpc,
     panel,
@@ -603,13 +570,6 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
     setSendError: composer.setSendError,
   });
 
-  const openBot = useCallback(
-    (id: string) => {
-      multiviewOpenPreference.set(false);
-      navigate(`/app/${id}`);
-    },
-    [navigate],
-  );
   const { replyToMessage, quoteMessage, markMessageUnread } = useMessageActions({
     activeId: active?.id,
     groupId,
@@ -662,23 +622,7 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
 
   async function createBot(input: CreateBotDialogInput, client: RpcClient) {
     const isFirstBot = botsRef.current.length === 0;
-    const { vpn: vpnChoice, ...botInput } = input;
-    // A VPN belongs to one computer, so a bot made with one gets its own.
-    const bot = await client.bots.create({
-      ...botInput,
-      notifyOnFinish: true,
-      ...(vpnChoice ? { computerMode: "dedicated" as const } : {}),
-    });
-    if (vpnChoice) {
-      try {
-        await client.computer.setVpn({ botId: bot.id, ...vpnChoice, switchToDedicated: true });
-      } catch (error) {
-        toast.error(
-          `${bot.name} was created, but its VPN could not be turned on. ${errorText(error, "Pick it again from the VPN menu.")}`,
-        );
-      }
-      void vpn.refreshVpn();
-    }
+    const bot = await createBotWithVpn(client, input, vpn.refreshVpn);
     openCreatedBot(bot);
     dialogs.setCreateBotOpen(false);
     await composer.startFocusPrompt(bot.id, isFirstBot);
@@ -814,196 +758,69 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
         onToggleMultiview={toggleMultiview}
       />
 
-      {multiviewOpen ? (
-        <Suspense fallback={null}>
-          <MultiviewWorkspace
-            spaceId={bootstrapMe?.spaceId ?? shellSpaceId ?? "default"}
-            isMobile={isMobileSidebar}
-            drawerOpen={mobileSidebarOpen}
-            covered={panelCoversChat}
-            bots={bots}
-            botsRef={botsRef}
-            archivedBots={archivedBots}
-            activeBotId={active?.id}
-            rpc={rpc}
-            queries={queries}
-            meId={userId}
-            streamReplies={chatPreferences.streamReplies}
-            showToolActivity={showToolActivity}
-            sandboxProvider={bootstrapMe?.sandboxProvider}
-            vpn={vpn}
-            maximizedBotId={computerOpen ? (computerBot?.id ?? null) : null}
-            onOpenNavigation={() => setMobileSidebarOpen(true)}
-            onMaximize={(targetBotId) => void openComputer(targetBotId)}
-            onOpenFullChat={openBot}
-            onOpenBot={openBot}
-            onCreateBot={() => dialogs.setCreateBotOpen(true)}
-            onExit={() => multiviewOpenPreference.set(false)}
-            refreshBots={refreshBots}
-            onBotUpdated={(updated) =>
-              setBots((current) => current.map((bot) => (bot.id === updated.id ? updated : bot)))
-            }
-            onUpgrade={() => openSettings("billing")}
-            onSendError={(message) => composer.setSendError(message)}
-          />
-        </Suspense>
-      ) : (
-        <ChatColumn
-          drawerOpen={mobileSidebarOpen}
-          covered={panelCoversChat}
-          findOpen={findOpen}
-          findInputRef={findInputRef}
-          onCloseFind={() => {
-            setFindOpen(false);
-            focusComposer();
-          }}
-          header={
-            <>
-              {active && !inGroup ? (
-                <ModelEdgeGlow provider={active.modelProvider} modelId={active.modelId} />
-              ) : null}
-              <ChatHeader
-                inGroup={inGroup}
-                active={active}
-                activeGroup={activeGroup}
-                activeSnapshot={activeSnapshot}
-                phoneCallsEnabled={false}
-                meetingsEnabled={Boolean(bootstrapMe?.meetingsEnabled)}
-                voiceReady={false}
-                inCall={Boolean(active) && call?.botId === active?.id}
-                panelOpen={chatPanelOpen}
-                onOpenNavigation={() => setMobileSidebarOpen(true)}
-                onTogglePanel={toggleChatPanel}
-                onCall={openCall}
-                vpn={vpn}
-                screenDocked={screenDockActive}
-                onToggleScreenDock={() => screenDockPreference.set(!screenDockOn)}
-                multiviewOpen={multiviewOpen}
-                onToggleMultiview={toggleMultiview}
-                onSwitchModel={async (choice) => {
-                  if (!active) return undefined;
-                  // Resolves only once the server has saved the switch; a failure throws.
-                  const updated = await rpc.bots.update({
-                    botId: active.id,
-                    modelProvider: choice.provider,
-                    modelId: choice.modelId,
-                  });
-                  setBots((current) =>
-                    current.map((bot) => (bot.id === updated.id ? updated : bot)),
-                  );
-                  void refreshBots().catch(() => undefined);
-                  return {
-                    provider: updated.modelProvider ?? choice.provider,
-                    modelId: updated.modelId ?? choice.modelId,
-                  };
-                }}
-              />
-              {screenDockActive && active && !computerOpen ? (
-                <DockedScreen
-                  bot={active}
-                  computer={computerState.computer}
-                  embeddedScreenUrl={computerControls.embeddedScreenUrl}
-                  screenBotId={computerState.screenBotId ?? null}
-                  screenFrameKey={computerState.screenFrameKey}
-                  heldScreen={computerState.heldScreen}
-                  screenFrameRef={
-                    chatPanelOpen && isMobileSidebar ? undefined : computerState.setScreenFrame
-                  }
-                  computerScreenError={computerControls.computerScreenError}
-                  computerBooting={computerControls.computerBooting}
-                  booting={computerState.booting}
-                  onWake={() => void openComputer(undefined, false, true)}
-                  onRefresh={computerControls.refreshDockedComputer}
-                  hasControl={computerControls.hasControl}
-                  onTakeControl={computerControls.takeDockedControl}
-                  onRelease={() => computerControls.releaseComputer()}
-                  onOpenFullWindow={() => void openComputer(active.id)}
-                  onClose={() => screenDockPreference.set(false)}
-                />
-              ) : null}
-            </>
-          }
-          composer={
-            <ChatComposerArea
-              composer={composer}
-              inGroup={inGroup}
-              groupId={groupId}
-              active={active}
-              activeGroup={activeGroup}
-              activeSnapshot={activeSnapshot}
-              meId={userId}
-              memberName={view.resolveMemberName}
-              recordingSkill={Boolean(recordingSkill)}
-              running={composerRunning}
-              enterToSend={enterToSend}
-              sendColors={userBubble}
-              modelPicker={chatPreferences.composerModelPicker ? modelShortcuts.pickerProps : null}
-              onBotSaved={(updated) =>
-                setBots((current) => current.map((bot) => (bot.id === updated.id ? updated : bot)))
-              }
-              phoneCallsEnabled={false}
-              dictationTranscribe={false}
-              artifactTarget={view.artifactTarget}
-              mentionTargets={composerMentionTargets}
-              agentSkills={agentSkills}
-              onSlashOpen={refreshAgentSkills}
-              openSettings={openSettings}
-              openChatSettings={openChatSettings}
-              setPanel={setPanel}
-              setModelFocusRequest={setModelFocusRequest}
-            />
-          }
-        >
-          {showNewBotPrompt ? (
-            <div className="grid flex-1 place-items-center">
-              <Button onClick={() => dialogs.setCreateBotOpen(true)}>
-                <Plus size={16} aria-hidden="true" />
-                <Trans>New bot</Trans>
-              </Button>
-            </div>
-          ) : (
-            <div className={`flex min-h-0 flex-1 flex-col ${screenDockActive ? "-mt-20" : ""}`}>
-              <Transcript
-                key={activeSnapshot?.threadId}
-                meId={userId}
-                scrollRef={thread.messageScroll}
-                scrollRequest={scrollRequest}
-                onScrollRequestHandled={clearScrollRequest}
-                {...view.transcriptProps}
-                {...composer.transcriptProps}
-                markedUnreadMessageId={read.markedUnreadMessageId}
-                showToolActivity={showToolActivity}
-                unreadAfterSeq={read.unreadAfterSeq}
-                loadingOlder={loadingOlder}
-                userBubble={userBubble}
-                onCallBack={undefined}
-                onLoadOlder={loadOlder}
-                onOpenBot={openBot}
-                onAnswer={composer.answerMessage}
-                onReply={replyToMessage}
-                onMarkUnread={markMessageUnread}
-                onQuote={quoteMessage}
-                onQuoteShortcutChange={registerQuoteShortcut}
-                onReact={composer.reactToMessage}
-                onJumpToMessage={jumpToReplyMessage}
-                onOpenPeerMessages={openPeerMessages}
-                onRefresh={refreshActiveThread}
-                onBotChanged={refreshBots}
-                onAddRoutine={addSkillRoutine}
-                voiceReady={false}
-                speakingMessageId={speakingMessageId}
-                callHoldsSpeaker={callHoldsSpeaker}
-                onSpeak={speakMessage}
-                onOpenComputer={computerControls.onOpenComputer}
-                onReleaseComputer={computerControls.onReleaseComputer}
-                onOpenImportSetup={openImportSetup}
-                onOpenAgentImport={openAgentImport}
-                rpc={rpc}
-              />
-            </div>
-          )}
-        </ChatColumn>
-      )}
+      <ShellChatArea
+        rpc={rpc}
+        queries={queries}
+        userId={userId}
+        shellSpaceId={shellSpaceId}
+        chatPreferences={chatPreferences}
+        userBubble={userBubble}
+        active={active}
+        activeGroup={activeGroup}
+        inGroup={inGroup}
+        groupId={groupId}
+        view={view}
+        composer={composer}
+        vpn={vpn}
+        computerState={computerState}
+        computerControls={computerControls}
+        thread={thread}
+        scrollRequest={scrollRequest}
+        clearScrollRequest={clearScrollRequest}
+        jumpToReplyMessage={jumpToReplyMessage}
+        read={read}
+        loadOlder={loadOlder}
+        loadingOlder={loadingOlder}
+        refreshActiveThread={refreshActiveThread}
+        replyToMessage={replyToMessage}
+        quoteMessage={quoteMessage}
+        markMessageUnread={markMessageUnread}
+        registerQuoteShortcut={registerQuoteShortcut}
+        openBot={openBot}
+        openPeerMessages={openPeerMessages}
+        addSkillRoutine={addSkillRoutine}
+        speakingMessageId={speakingMessageId}
+        speakMessage={speakMessage}
+        callHoldsSpeaker={callHoldsSpeaker}
+        openImportSetup={openImportSetup}
+        openAgentImport={openAgentImport}
+        recordingSkill={recordingSkill}
+        composerMentionTargets={composerMentionTargets}
+        agentSkills={agentSkills}
+        refreshAgentSkills={refreshAgentSkills}
+        modelShortcuts={modelShortcuts}
+        openSettings={openSettings}
+        openChatSettings={openChatSettings}
+        setPanel={setPanel}
+        setModelFocusRequest={setModelFocusRequest}
+        dialogs={dialogs}
+        isMobileSidebar={isMobileSidebar}
+        mobileSidebarOpen={mobileSidebarOpen}
+        setMobileSidebarOpen={setMobileSidebarOpen}
+        panelCoversChat={panelCoversChat}
+        chatPanelOpen={chatPanelOpen}
+        toggleChatPanel={toggleChatPanel}
+        findOpen={findOpen}
+        setFindOpen={setFindOpen}
+        findInputRef={findInputRef}
+        focusComposer={focusComposer}
+        call={call}
+        openCall={openCall}
+        toggleMultiview={toggleMultiview}
+        screenDockActive={screenDockActive}
+        showNewBotPrompt={showNewBotPrompt}
+        roster={roster}
+      />
 
       <PageViewHost />
       <IncomingCall
@@ -1012,21 +829,10 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
         onAnswered={(botId) => navigate(`/app/${botId}`)}
       />
 
-      <TeamComputerVpnDialog
+      <TeamComputerVpnChoice
+        vpn={vpn}
         choice={teamVpnChoice}
-        busy={Boolean(teamVpnChoice && vpn.pendingBotId === teamVpnChoice.botId)}
         onClose={() => setTeamVpnChoice(null)}
-        onConfirm={(switchToDedicated) => {
-          if (!teamVpnChoice) return;
-          const choice = teamVpnChoice;
-          setTeamVpnChoice(null);
-          void vpn.setBotVpn({
-            botId: choice.botId,
-            profile: choice.profile,
-            locked: choice.locked,
-            switchToDedicated,
-          });
-        }}
       />
 
       <ShellSidePanel
@@ -1054,20 +860,14 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
         }
         computerPanel={
           active ? (
-            <ComputerPanel
-              {...computerControls.panelProps(active)}
+            <ShellComputerPanel
+              active={active}
+              computerControls={computerControls}
               screenBotId={computerState.screenBotId ?? null}
               shownAbove={screenDockActive && !isMobileSidebar}
-              sandboxProvider={bootstrapMe?.sandboxProvider}
-              onRecovered={(sandboxProvider) => {
-                setBootstrapMe((prev) => (prev ? { ...prev, sandboxProvider } : prev));
-                computerControls.holdComputerRecovery();
-              }}
-              onOpenComputerSettings={
-                bootstrapMe?.computerSettingsEnabled === true
-                  ? () => openSettings("computer")
-                  : undefined
-              }
+              bootstrapMe={bootstrapMe}
+              setBootstrapMe={setBootstrapMe}
+              openSettings={openSettings}
             />
           ) : null
         }

@@ -139,9 +139,7 @@ describe("voice note uploads", () => {
     const dead: VoiceNoteFetch = async () => {
       throw new TypeError("Failed to fetch");
     };
-    await expect(
-      uploadFinishedParts(store, (await store.getNote("n1"))!, dead),
-    ).rejects.toThrow();
+    await expect(uploadFinishedParts(store, (await store.getNote("n1"))!, dead)).rejects.toThrow();
     expect(await store.listChunks("n1")).toHaveLength(SLICES_PER_PART * 2);
     expect((await store.getNote("n1"))?.state).toBe("recording");
   });

@@ -1,7 +1,8 @@
+import { bestEffort } from "@rakazo/logging/best-effort";
 import { selectedSpaceId, withSpaceHeaders } from "../query/rpc";
 import { sendQueue } from "../send-queue";
-import { SpeedTracker, xhrSend } from "../upload-progress";
 import { timeoutSignal } from "../timeout-signal";
+import { SpeedTracker, xhrSend } from "../upload-progress";
 import { recoverInterruptedNotes, VoiceNoteRecorder, voiceNotesSupported } from "./recorder";
 import type { LocalVoiceNote, VoiceNoteStore, VoiceNoteTarget } from "./store";
 import { failoverVoiceNoteStore, indexedDbVoiceNoteStore, memoryVoiceNoteStore } from "./store";
@@ -104,19 +105,14 @@ export class VoiceNotes {
   private readonly noticeListeners = new Set<(text: string) => void>();
 
   constructor(private readonly store: VoiceNoteStore) {
-    this.recorder = new VoiceNoteRecorder(
-      store,
-      () => void this.stop(true),
-      undefined,
-      {
-        // The microphone was taken away or storage failed: keep and send what exists.
-        onInterrupted: (message) => {
-          this.notify(message);
-          void this.stop(true);
-        },
-        onNotice: (message) => this.notify(message),
+    this.recorder = new VoiceNoteRecorder(store, () => void this.stop(true), undefined, {
+      // The microphone was taken away or storage failed: keep and send what exists.
+      onInterrupted: (message) => {
+        this.notify(message);
+        void this.stop(true);
       },
-    );
+      onNotice: (message) => this.notify(message),
+    });
   }
 
   /** Short messages for the person ("could not save the recording"); the composer shows them. */
@@ -196,7 +192,7 @@ export class VoiceNotes {
       const note = await this.recorder.start({ clientId, ...input });
       this.set({ recording: { clientId, startedAt: note.startedAt, target: note.target } });
     } catch (error) {
-      await sendQueue.clearVoiceCompanions(clientId).catch(() => undefined);
+      await bestEffort("clear voice note companions", sendQueue.clearVoiceCompanions(clientId));
       throw error;
     } finally {
       this.starting = null;
@@ -244,7 +240,7 @@ export class VoiceNotes {
       // Callers fire and forget; a storage failure ends here as a message, not a rejection.
       dropFinishing();
       this.notify("Could not save the recording");
-      void this.refresh().catch(() => undefined);
+      void bestEffort("refresh voice notes", this.refresh());
     }
   }
 
@@ -303,7 +299,10 @@ export class VoiceNotes {
       try {
         do {
           this.serverAgain = false;
-          const res = await send_("/api/voice-notes", { method: "GET", spaceId: selectedSpaceId() });
+          const res = await send_("/api/voice-notes", {
+            method: "GET",
+            spaceId: selectedSpaceId(),
+          });
           if (!res.ok) break;
           const body = (await res.json()) as { notes?: ServerVoiceNote[] };
           this.set({ server: Array.isArray(body.notes) ? body.notes : [] });
@@ -378,7 +377,11 @@ export class VoiceNotes {
                   current.compTotal + current.audioTotal,
                   current.compTotal + audioBase + total,
                 );
-                this.noteMeter(clientId, current.compLoaded + audioBase + loaded, combinedTotal || 1);
+                this.noteMeter(
+                  clientId,
+                  current.compLoaded + audioBase + loaded,
+                  combinedTotal || 1,
+                );
               },
             }).then((res) => {
               const current = this.uploadProgress.get(clientId);
@@ -417,8 +420,18 @@ export class VoiceNotes {
                 );
               } catch (error) {
                 const status = (error as { status?: number }).status;
-                if (status !== undefined && status >= 400 && status < 500 && status !== 401 && status !== 403 && status !== 408 && status !== 429) {
-                  throw new VoiceNoteRejected(error instanceof Error ? error.message : "Could not upload attached files.");
+                if (
+                  status !== undefined &&
+                  status >= 400 &&
+                  status < 500 &&
+                  status !== 401 &&
+                  status !== 403 &&
+                  status !== 408 &&
+                  status !== 429
+                ) {
+                  throw new VoiceNoteRejected(
+                    error instanceof Error ? error.message : "Could not upload attached files.",
+                  );
                 }
                 throw error;
               }

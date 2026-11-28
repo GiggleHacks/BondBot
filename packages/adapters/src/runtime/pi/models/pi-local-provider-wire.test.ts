@@ -133,7 +133,7 @@ describe("local model reasoning on the wire", () => {
       ...localServer,
       RAKAZO_LOCAL_REASONING_MODELS: "example-model",
     });
-    expect(listed.reasoning_effort).toBe("medium");
+    expect(listed.reasoning_effort).toBe("high");
   });
 });
 

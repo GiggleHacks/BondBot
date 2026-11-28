@@ -12,12 +12,7 @@ export const DECODE_LIMIT_SECONDS = 61 * 60 + 5;
  * Placed before `-i` on anything a member uploaded: stop reading after the limit, and let
  * the input name no protocol but a local file or a pipe (no network, no playlist fetches).
  */
-const UNTRUSTED_INPUT = [
-  "-t",
-  String(DECODE_LIMIT_SECONDS),
-  "-protocol_whitelist",
-  "file,pipe",
-];
+const UNTRUSTED_INPUT = ["-t", String(DECODE_LIMIT_SECONDS), "-protocol_whitelist", "file,pipe"];
 
 /** ffmpeg could not convert the recording; the detail is for the server log, not the member. */
 export class AudioConversionError extends Error {}
@@ -188,17 +183,7 @@ export async function pausesAfter(
   signal?: AbortSignal,
 ): Promise<number[]> {
   const log = await ffmpeg(
-    [
-      "-ss",
-      String(from),
-      "-i",
-      wav,
-      "-af",
-      "silencedetect=noise=-35dB:d=0.4",
-      "-f",
-      "null",
-      "-",
-    ],
+    ["-ss", String(from), "-i", wav, "-af", "silencedetect=noise=-35dB:d=0.4", "-f", "null", "-"],
     { signal },
   );
   return parseSilences(log).map((pause) => pause + from);

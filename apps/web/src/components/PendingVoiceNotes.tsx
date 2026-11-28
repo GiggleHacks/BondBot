@@ -3,9 +3,9 @@
 import { Mic, RotateCcw, Trash2, WifiOff } from "lucide-react";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { ArtifactTarget } from "../lib/pages/artifact-open";
+import { sendQueue } from "../lib/send-queue";
 import { formatVoiceTime, placeholderPeaks, VOICE_NOTE_BARS } from "../lib/voice-note";
 import type { VoiceNoteTarget } from "../lib/voice-notes/store";
-import { sendQueue } from "../lib/send-queue";
 import { voiceNotes } from "../lib/voice-notes/voice-notes";
 import { UploadMeter } from "./UploadMeter";
 
@@ -56,7 +56,7 @@ export function PendingVoiceNotes({ target }: { target: ArtifactTarget }) {
       status: failed
         ? (note.error ?? "Could not send")
         : waiting
-          ? "Offline · will send when connected"
+          ? "Offline. Will send when connected"
           : note.state === "uploading" && progress !== undefined
             ? `Sending ${Math.round(progress * 100)}%`
             : note.retryAt
@@ -98,7 +98,7 @@ export function PendingVoiceNotes({ target }: { target: ArtifactTarget }) {
       key: note.clientId,
       durationMs: note.durationMs,
       phase: state.online ? "sending" : "waiting",
-      status: state.online ? "Sending…" : "Offline · will send when connected",
+      status: state.online ? "Sending…" : "Offline. Will send when connected",
     });
   }
 
@@ -117,7 +117,8 @@ export function PendingVoiceNotes({ target }: { target: ArtifactTarget }) {
     <div data-testid="pending-voice-notes" className="flex flex-col gap-2">
       <style>{STYLES}</style>
       {rows.map((row, at) => {
-        const live = row.phase === "sending" || row.phase === "posting" || row.phase === "transcribing";
+        const live =
+          row.phase === "sending" || row.phase === "posting" || row.phase === "transcribing";
         const peaks = placeholderPeaks(row.key, VOICE_NOTE_BARS);
         return (
           <div
@@ -153,6 +154,7 @@ export function PendingVoiceNotes({ target }: { target: ArtifactTarget }) {
                     />
                   ))}
                 </div>
+                {/* off-scale: time inside the small voice note pill. */}
                 <div className="flex h-3.5 items-center text-[11px] leading-none tabular-nums opacity-80">
                   {formatVoiceTime(Math.max(1, Math.round(row.durationMs / 1000)))}
                 </div>
@@ -173,44 +175,45 @@ export function PendingVoiceNotes({ target }: { target: ArtifactTarget }) {
                 onCancel={row.onDelete}
               />
             ) : (
-            <div
-              data-testid="pending-voice-status"
-              aria-live="polite"
-              className={`flex max-w-full items-center gap-1.5 pe-1 text-[11px] leading-4 ${row.phase === "failed" ? "text-destructive" : "text-muted-foreground"}`}
-            >
-              <span className="truncate">{row.status}</span>
-              {row.phase === "transcribing" ? (
-                <span aria-hidden="true" className="inline-flex gap-[2px]">
-                  {[0, 1, 2].map((dot) => (
-                    <span
-                      key={dot}
-                      className="vn-dot size-[3px] rounded-full bg-current"
-                      style={{ animationDelay: `${dot * 180}ms` }}
-                    />
-                  ))}
-                </span>
-              ) : null}
-              {row.onRetry ? (
-                <button
-                  type="button"
-                  aria-label="Retry voice note"
-                  onClick={row.onRetry}
-                  className="grid size-5 place-items-center rounded-full hover:bg-accent"
-                >
-                  <RotateCcw size={12} strokeWidth={1.8} />
-                </button>
-              ) : null}
-              {row.onDelete ? (
-                <button
-                  type="button"
-                  aria-label="Delete voice note"
-                  onClick={row.onDelete}
-                  className="grid size-5 place-items-center rounded-full hover:bg-accent"
-                >
-                  <Trash2 size={12} strokeWidth={1.8} />
-                </button>
-              ) : null}
-            </div>
+              <div
+                data-testid="pending-voice-status"
+                aria-live="polite"
+                // off-scale: status under the voice note pill.
+                className={`flex max-w-full items-center gap-1.5 pe-1 text-[11px] leading-4 ${row.phase === "failed" ? "text-destructive" : "text-muted-foreground"}`}
+              >
+                <span className="truncate">{row.status}</span>
+                {row.phase === "transcribing" ? (
+                  <span aria-hidden="true" className="inline-flex gap-[2px]">
+                    {[0, 1, 2].map((dot) => (
+                      <span
+                        key={dot}
+                        className="vn-dot size-[3px] rounded-full bg-current"
+                        style={{ animationDelay: `${dot * 180}ms` }}
+                      />
+                    ))}
+                  </span>
+                ) : null}
+                {row.onRetry ? (
+                  <button
+                    type="button"
+                    aria-label="Retry voice note"
+                    onClick={row.onRetry}
+                    className="grid size-5 place-items-center rounded-full hover:bg-accent"
+                  >
+                    <RotateCcw size={12} strokeWidth={1.8} />
+                  </button>
+                ) : null}
+                {row.onDelete ? (
+                  <button
+                    type="button"
+                    aria-label="Delete voice note"
+                    onClick={row.onDelete}
+                    className="grid size-5 place-items-center rounded-full hover:bg-accent"
+                  >
+                    <Trash2 size={12} strokeWidth={1.8} />
+                  </button>
+                ) : null}
+              </div>
             )}
           </div>
         );

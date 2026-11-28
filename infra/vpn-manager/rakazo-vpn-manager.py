@@ -19,21 +19,45 @@ from __future__ import annotations
 import concurrent.futures
 import glob
 import hashlib
-import html
 import json
 import os
 import re
 import secrets
 import signal
-import socket
 import subprocess
 import sys
 import tempfile
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from socketserver import ThreadingMixIn, UnixStreamServer
-from urllib.parse import unquote
+from http.server import ThreadingHTTPServer
+
+# The sibling modules ship beside this file. A root daemon on a boot drive leaves no bytecode there.
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import rakazo_vpn_http  # noqa: E402
+from rakazo_vpn_http import (  # noqa: E402,F401
+    ApiHandler,
+    TcpApiHandler,
+    ThreadingUnixStreamServer,
+    render_dashboard_html,
+)
+from rakazo_vpn_profiles import (  # noqa: E402,F401
+    COUNTRY_NAMES,
+    MAX_CONFIG_BYTES,
+    OWNER_RE,
+    clean_name,
+    label_from_text,
+    log,
+    meta_path_for,
+    parse_profile_file,
+    parse_trace,
+    read_meta,
+    valid_country,
+    validate_config,
+    with_keepalive,
+    write_private,
+)
 
 PROFILES_DIR = os.environ.get("RAKAZO_VPN_PROFILES_DIR", "/boot/config/wireguard/rakazo-profiles")
 STATE_PATH = os.environ.get("RAKAZO_VPN_STATE_PATH", "/boot/config/rakazo-vpn-state.json")
@@ -56,45 +80,9 @@ IPT6 = ["ip6tables", "-w"]
 STALE_AFTER = 180
 STARTUP_GRACE = 25
 TRACE_URL = "https://1.1.1.1/cdn-cgi/trace"
-# Keeps handshakes fresh on idle tunnels, so "up" means the server still answers.
-KEEPALIVE_SEC = 25
-MAX_CONFIG_BYTES = 8192
 # wg-quick only reads a file whose name is a valid interface name: 15 characters at most.
 UPLOAD_ID_RE = re.compile(r"^vpn-[a-f0-9]{10}\Z")
-OWNER_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}\Z")
-WG_KEY_RE = re.compile(r"^[A-Za-z0-9+/]{43}=\Z")
-HOOK_KEYS = {"preup", "postup", "predown", "postdown"}
 
-COUNTRY_NAMES = {
-    "AU": "Australia",
-    "BR": "Brazil",
-    "CA": "Canada",
-    "CH": "Switzerland",
-    "DE": "Germany",
-    "FR": "France",
-    "GB": "United Kingdom",
-    "HK": "Hong Kong",
-    "JP": "Japan",
-    "KR": "South Korea",
-    "NL": "Netherlands",
-    "SG": "Singapore",
-    "TH": "Thailand",
-    "TW": "Taiwan",
-    "US": "United States",
-}
-
-# Two-letter country codes, so "wg" in a file name is not read as a country.
-ISO_COUNTRIES = frozenset("""
-AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ
-BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM
-DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS
-GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN
-KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ
-MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM
-PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV
-SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI
-VN VU WF WS XK YE YT ZA ZM ZW
-""".split())
 
 # \Z, not $: "$" would also accept a trailing newline.
 BRIDGE_RE = re.compile(r"^rakazo-c[a-f0-9]{7}\Z")
@@ -116,10 +104,6 @@ HOST_IP_CACHE: dict[str, object] = {"ip": None, "country": None, "at": 0.0}
 STARTED_AT = time.time()
 
 
-def valid_country(loc: object) -> str | None:
-    return loc if isinstance(loc, str) and re.fullmatch(r"[A-Z]{2}", loc) else None
-
-
 def sh(args: list[str], timeout: int = 12, input_text: str | None = None) -> tuple[int, str, str]:
     try:
         r = subprocess.run(
@@ -138,129 +122,6 @@ def bridge_for_home_key(home_key: str) -> str:
     return "rakazo-c" + hashlib.sha256(home_key.encode("utf-8")).hexdigest()[:7]
 
 
-def meta_path_for(conf_path: str) -> str:
-    return os.path.splitext(conf_path)[0] + ".json"
-
-
-def read_meta(conf_path: str) -> dict:
-    """The sidecar of an uploaded profile; operator files have none."""
-    try:
-        with open(meta_path_for(conf_path), "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        return {}
-    except Exception as exc:
-        log(f"ignoring unreadable profile metadata for {conf_path}: {exc}")
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def write_private(path: str, text: str) -> None:
-    """Write a root-only file atomically (it holds a private key)."""
-    tmp = f"{path}.tmp-{secrets.token_hex(4)}"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, path)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
-
-
-def iso_country(code: str) -> str | None:
-    cc = code.upper()
-    cc = "GB" if cc == "UK" else cc  # some providers name British servers UK
-    return cc if cc in ISO_COUNTRIES else None
-
-
-def label_from_text(stem: str, raw: str) -> tuple[str | None, str]:
-    """Country code and server label from a "# US-CA#759" comment or a name like wg-JP-412."""
-    for line in raw.splitlines():
-        m_srv = re.match(r"^#\s*([A-Za-z]{2}(?:-[A-Za-z]{2})?#\d+)\b", line.strip())
-        if m_srv:
-            label = m_srv.group(1).upper()
-            if iso_country(label[:2]):
-                return iso_country(label[:2]), label
-
-    tokens = re.split(r"[-_ .#()]+", stem)
-    for i, token in enumerate(tokens):
-        if not re.fullmatch(r"[A-Za-z]{2}", token) or not iso_country(token):
-            continue
-        rest = tokens[i + 1 : i + 3]
-        state = rest[0] if rest and re.fullmatch(r"[A-Za-z]{2}", rest[0]) else None
-        after = rest[1:] if state else rest[:1]
-        number = after[0] if after and after[0].isdigit() else None
-        # A lowercase pair is an ordinary word ("my-laptop") unless a server number follows.
-        if not token.isupper() and not number:
-            continue
-        server = token.upper() + (f"-{state.upper()}" if state else "")
-        return iso_country(token), f"{server}#{number}" if number else stem
-    return None, stem
-
-
-def parse_profile_file(path: str, used_tables: set[int], used_marks: set[int]) -> dict:
-    stem = os.path.splitext(os.path.basename(path))[0]
-    profile_id = re.sub(r"[^a-z0-9_-]+", "-", stem.lower()).strip("-") or "vpn"
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
-        raw = f.read()
-    meta = read_meta(path)
-    name = meta.get("name") if isinstance(meta.get("name"), str) and meta.get("name") else None
-    owner = meta.get("owner") if isinstance(meta.get("owner"), str) and OWNER_RE.fullmatch(meta.get("owner")) else None
-
-    country_code, server_label = label_from_text(name or stem, raw)
-    if valid_country(meta.get("countryCode")):
-        country_code = meta["countryCode"]
-    # "UN" until a test learns the exit country.
-    country_code = country_code or "UN"
-    if name is None:
-        name = stem
-
-    digest = hashlib.sha256(profile_id.encode("utf-8")).hexdigest()
-    iface = f"wgrk_{digest[:6]}"
-
-    table = 7110 + (int(digest[:4], 16) % 20000)
-    while table in used_tables:
-        table += 1
-    used_tables.add(table)
-
-    mark = 0x7101 + (int(digest[4:8], 16) % 0x0E00)
-    while mark in used_marks:
-        mark += 1
-    used_marks.add(mark)
-
-    addr_v4 = None
-    for line in raw.splitlines():
-        m_addr = re.match(r"^\s*Address\s*=\s*(.+)$", line, re.IGNORECASE)
-        if m_addr:
-            for part in m_addr.group(1).split(","):
-                p = part.strip()
-                if "." in p:
-                    addr_v4 = p
-                    break
-            break
-
-    return {
-        "id": profile_id,
-        "path": path,
-        "name": name,
-        "owner": owner,
-        "countryCode": country_code,
-        "countryName": COUNTRY_NAMES.get(country_code, country_code),
-        "serverLabel": server_label,
-        "iface": iface,
-        "table": table,
-        "mark": mark,
-        "markHex": f"0x{mark:x}",
-        "addrV4": addr_v4,
-    }
-
-
 def load_profiles() -> dict[str, dict]:
     used_tables: set[int] = set()
     used_marks: set[int] = set()
@@ -275,10 +136,6 @@ def load_profiles() -> dict[str, dict]:
             continue
         loaded[p["id"]] = p
     return loaded
-
-
-def log(msg: str) -> None:
-    print(f"[rakazo-vpn-manager] {time.strftime('%F %T')} {msg}", file=sys.stderr, flush=True)
 
 
 def read_state_file(path: str) -> dict[str, dict]:
@@ -421,29 +278,6 @@ def ensure_tunnel_up(profile: dict) -> None:
             log(f"TCPMSS clamp for {iface} failed: {err}")
 
 
-def with_keepalive(stripped: str) -> str:
-    """Add PersistentKeepalive to every peer that has none."""
-    out: list[str] = []
-    in_peer = False
-    has_keepalive = False
-
-    def close_peer() -> None:
-        if in_peer and not has_keepalive:
-            out.append(f"PersistentKeepalive = {KEEPALIVE_SEC}")
-
-    for line in stripped.splitlines():
-        s = line.strip()
-        if s.startswith("["):
-            close_peer()
-            in_peer = s.lower() == "[peer]"
-            has_keepalive = False
-        elif in_peer and s.split("=", 1)[0].strip().lower() == "persistentkeepalive":
-            has_keepalive = True
-        out.append(line)
-    close_peer()
-    return "\n".join(out)
-
-
 def clear_rules(mark: str, table: str) -> None:
     for selector in (["fwmark", f"{mark}/0xffff"], ["lookup", table]):
         for _ in range(64):
@@ -465,69 +299,6 @@ def teardown_tunnel(profile: dict) -> None:
 
 class ProfileInUse(Exception):
     pass
-
-
-def validate_config(text: object) -> str:
-    """Check an uploaded WireGuard file; the messages are shown to the person who uploaded it."""
-    if not isinstance(text, str) or not text.strip():
-        raise ValueError("This file is empty.")
-    if len(text.encode("utf-8")) > MAX_CONFIG_BYTES:
-        raise ValueError("This file is too big to be a WireGuard file.")
-    text = text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
-    if any((ord(c) < 32 and c not in "\n\t") or ord(c) == 127 for c in text):
-        raise ValueError("This is not a WireGuard file. Upload the .conf file your VPN gave you.")
-
-    section = None
-    interfaces: list[dict[str, str]] = []
-    peers: list[dict[str, str]] = []
-    for line in text.split("\n"):
-        s = line.split("#", 1)[0].strip()
-        if not s:
-            continue
-        if s.startswith("[") and s.endswith("]"):
-            section = s[1:-1].strip().lower()
-            if section == "interface":
-                interfaces.append({})
-            elif section == "peer":
-                peers.append({})
-            else:
-                raise ValueError(f"This file has an unknown section [{s[1:-1].strip()}].")
-            continue
-        if "=" not in s or section is None:
-            raise ValueError("This is not a WireGuard file. Upload the .conf file your VPN gave you.")
-        key, value = (part.strip() for part in s.split("=", 1))
-        if key.lower() in HOOK_KEYS:
-            raise ValueError("This file runs commands (PreUp, PostUp, PreDown or PostDown). Remove those lines and upload it again.")
-        (interfaces if section == "interface" else peers)[-1][key.lower()] = value
-
-    if len(interfaces) != 1:
-        raise ValueError("This is not a WireGuard file: it needs one [Interface] section.")
-    iface = interfaces[0]
-    if not WG_KEY_RE.fullmatch(iface.get("privatekey", "")):
-        raise ValueError("This file has no private key. Download the full file from your VPN again.")
-    addresses = [a.strip() for a in iface.get("address", "").split(",") if a.strip()]
-    if not any(re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}(?:/\d{1,2})?", a) for a in addresses):
-        raise ValueError("This file has no IPv4 address (Address = ...), which bots need.")
-    if not peers:
-        raise ValueError("This file has no server ([Peer] section).")
-    for peer in peers:
-        if not WG_KEY_RE.fullmatch(peer.get("publickey", "")):
-            raise ValueError("This file's server has no public key.")
-        if not peer.get("endpoint"):
-            raise ValueError("This file's server has no address (Endpoint = ...).")
-        allowed = [a.strip() for a in peer.get("allowedips", "").split(",")]
-        if "0.0.0.0/0" not in allowed:
-            raise ValueError("This file only sends some traffic through the VPN. Download one that sends all traffic (AllowedIPs = 0.0.0.0/0).")
-    return text if text.endswith("\n") else text + "\n"
-
-
-def clean_name(name: object) -> str:
-    raw = name if isinstance(name, str) else ""
-    raw = os.path.basename(raw.replace("\\", "/"))
-    if raw.lower().endswith(".conf"):
-        raw = raw[:-5]
-    raw = "".join(c for c in raw if c.isprintable()).strip()
-    return raw[:80] or "VPN"
 
 
 def add_profile(config: object, name: object, owner: object) -> dict:
@@ -589,14 +360,6 @@ def remove_profile(pid: str, owner: object) -> None:
                 pass
         PROFILES.pop(pid, None)
         log(f"profile {pid} removed")
-
-
-def parse_trace(out: str) -> tuple[str | None, str | None]:
-    info = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
-    ip = info.get("ip")
-    if not ip or not re.fullmatch(r"[0-9.]{7,15}", ip):
-        return None, None
-    return ip, valid_country(info.get("loc"))
 
 
 def trace_through(iface: str, max_time: int) -> tuple[str | None, str | None, int | None]:
@@ -1135,214 +898,14 @@ def reconcile_bridges(desired: dict[str, dict]) -> dict:
     return build_snapshot()
 
 
-class ApiHandler(BaseHTTPRequestHandler):
-    timeout = 15  # per-connection socket timeout, so a stalled client cannot pin a thread
+class _Manager:
+    """This module as the HTTP handlers see it, read at call time."""
 
-    def address_string(self) -> str:
-        return "local"
-
-    def log_message(self, *args) -> None:
-        pass
-
-    def send_json(self, code: int, payload: object) -> None:
-        body = json.dumps(payload).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def read_json(self) -> dict:
-        """Read a JSON object body; anything else raises ValueError (HTTP 400)."""
-        try:
-            length = int(self.headers.get("Content-Length", "0") or 0)
-        except ValueError:
-            raise ValueError("invalid Content-Length") from None
-        if length <= 0:
-            raise ValueError("request body required")
-        if length > 1_048_576:
-            self.close_connection = True  # the unread body must not be parsed as the next request
-            raise ValueError("request body too large")
-        raw = self.rfile.read(length)
-        if len(raw) != length:
-            raise ValueError("incomplete request body")
-        try:
-            data = json.loads(raw.decode("utf-8"))
-        except ValueError as exc:  # includes JSONDecodeError and UnicodeDecodeError
-            raise ValueError(f"invalid JSON body: {exc}") from None
-        if not isinstance(data, dict):
-            raise ValueError("request body must be a JSON object")
-        return data
-
-    def do_GET(self) -> None:
-        path = self.path.split("?", 1)[0]
-        if path == "/health":
-            self.send_json(200, {"ok": True})
-            return
-        if path == "/profiles":
-            snap = build_snapshot()
-            self.send_json(200, {
-                "hostIp": snap["hostIp"],
-                "hostCountry": snap["hostCountry"],
-                "profiles": snap["profiles"],
-            })
-            return
-        if path in ("/status", "/status.json"):
-            self.send_json(200, build_snapshot())
-            return
-        if path in ("/", "/index.html"):
-            body = render_dashboard_html().encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-        self.send_json(404, {"error": "Not found"})
-
-    def do_PUT(self) -> None:
-        path = self.path.split("?", 1)[0]
-        m = re.fullmatch(r"/bridges/([^/]+)", path)
-        if not m:
-            self.send_json(404, {"error": "Not found"})
-            return
-        bridge = unquote(m.group(1))
-        try:
-            data = self.read_json()
-            if "profile" not in data or "locked" not in data:
-                raise ValueError("profile and locked are required")
-            profile = data["profile"]
-            locked = data["locked"]
-            if profile is not None and not isinstance(profile, str):
-                raise ValueError("profile must be a string or null")
-            if not isinstance(locked, bool):
-                raise ValueError("locked must be a boolean")
-            res = set_bridge_policy(bridge, profile or None, locked)
-            self.send_json(200, res)
-        except ValueError as exc:
-            self.send_json(400, {"error": str(exc)})
-        except Exception as exc:
-            self.send_json(500, {"error": str(exc)})
-
-    def do_DELETE(self) -> None:
-        path = self.path.split("?", 1)[0]
-        m = re.fullmatch(r"/profiles/([a-z0-9_-]{1,64})", path)
-        if not m:
-            self.send_json(404, {"error": "Not found"})
-            return
-        try:
-            data = self.read_json()
-            remove_profile(m.group(1), data.get("owner"))
-            apply_iptables_policies()
-            self.send_json(200, {"ok": True})
-        except ProfileInUse as exc:
-            self.send_json(409, {"error": str(exc)})
-        except ValueError as exc:
-            self.send_json(400, {"error": str(exc)})
-        except Exception as exc:
-            self.send_json(500, {"error": str(exc)})
-
-    def do_POST(self) -> None:
-        path = self.path.split("?", 1)[0]
-        if path == "/profiles":
-            try:
-                data = self.read_json()
-                self.send_json(201, add_profile(data.get("config"), data.get("name"), data.get("owner")))
-            except ValueError as exc:
-                self.send_json(400, {"error": str(exc)})
-            except Exception as exc:
-                self.send_json(500, {"error": str(exc)})
-            return
-        m = re.fullmatch(r"/profiles/([a-z0-9_-]{1,64})/test", path)
-        if m:
-            try:
-                self.send_json(200, test_profile(m.group(1)))
-            except ValueError as exc:
-                self.send_json(400, {"error": str(exc)})
-            except Exception as exc:
-                self.send_json(500, {"error": str(exc)})
-            return
-        if path == "/reconcile":
-            try:
-                data = self.read_json()
-                bridges = data.get("bridges")
-                if not isinstance(bridges, dict):
-                    raise ValueError("bridges must be an object")
-                res = reconcile_bridges(bridges)
-                self.send_json(200, res)
-            except ValueError as exc:
-                self.send_json(400, {"error": str(exc)})
-            except Exception as exc:
-                self.send_json(500, {"error": str(exc)})
-            return
-        self.send_json(404, {"error": "Not found"})
+    def __getattr__(self, name: str):
+        return globals()[name]
 
 
-class TcpApiHandler(ApiHandler):
-    """The 127.0.0.1 listener: read-only status and dashboard only. Changes go through the unix socket."""
-
-    TCP_GET_PATHS = ("/", "/index.html", "/status", "/status.json")
-
-    def host_allowed(self) -> bool:
-        host = (self.headers.get("Host") or "").strip().lower()
-        return host in ALLOWED_HOSTS or bool(TAILSCALE_HOST_RE.fullmatch(host))
-
-    def do_GET(self) -> None:
-        if not self.host_allowed():
-            self.send_json(403, {"error": "Forbidden host"})
-            return
-        if self.path.split("?", 1)[0] not in self.TCP_GET_PATHS:
-            self.send_json(404, {"error": "Not found"})
-            return
-        super().do_GET()
-
-    def deny_write(self) -> None:
-        self.close_connection = True  # a body we refuse to read must not be parsed as the next request
-        self.send_json(405, {"error": "Read-only listener; use the unix socket"})
-
-    do_PUT = do_POST = do_DELETE = do_PATCH = deny_write
-
-
-class ThreadingUnixStreamServer(ThreadingMixIn, UnixStreamServer):
-    daemon_threads = True
-
-
-def render_dashboard_html() -> str:
-    return """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Rakazo Multi-VPN Status</title>
-<style>
-:root{--bg:#0e1013;--fg:#e8eaed;--mut:#98a2b3;--card:#171a1f;--bd:#262b33;--ok:#12a150;--warn:#d98a00;--bad:#d92d20;--dir:#2e6bd6}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif;padding:20px}
-main{max-width:780px;margin:0 auto;display:grid;gap:16px}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px 16px}
-h1,h2{margin:0 0 10px;font-size:16px}
-table{width:100%;border-collapse:collapse}th,td{padding:8px 6px;border-bottom:1px solid var(--bd);text-align:left}
-th{color:var(--mut);font-weight:500;font-size:12px}
-.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;color:#fff}
-.vpn{background:var(--ok)}.direct{background:var(--dir)}.fallback{background:var(--warn)}.blocked{background:var(--bad)}.stopped{background:#475467}
-</style></head><body><main>
-<div class="card"><h1>Rakazo Per-Computer VPN Manager</h1><div id="host" style="color:var(--mut)">Loading...</div></div>
-<div class="card"><h2>WireGuard Tunnels</h2><table><thead><tr><th>Profile</th><th>Country</th><th>Interface</th><th>Handshake</th><th>Endpoint</th></tr></thead><tbody id="tunnels"></tbody></table></div>
-<div class="card"><h2>Bot Computers</h2><table><thead><tr><th>Container</th><th>Bridge</th><th>Config</th><th>Lock</th><th>State</th><th>Exit IP</th></tr></thead><tbody id="bridges"></tbody></table></div>
-</main><script>
-const STATES=["vpn","direct","fallback","blocked","stopped"];
-function cell(v,tag){const td=document.createElement("td");if(tag){const e=document.createElement(tag);e.textContent=v;td.appendChild(e)}else{td.textContent=v}return td}
-function row(cells){const tr=document.createElement("tr");cells.forEach(c=>tr.appendChild(c));return tr}
-async function tick(){
-  const s=await (await fetch("status.json",{cache:"no-store"})).json();
-  document.getElementById("host").textContent="Host Direct IP: "+(s.hostIp||"?")+" ("+(s.hostCountry||"?")+")";
-  document.getElementById("tunnels").replaceChildren(...(s.profiles||[]).map(p=>row([cell(p.serverLabel),cell(p.countryName+" ("+p.countryCode+")"),cell(p.iface),cell(p.up?(p.handshakeAgeSec==null?"starting":p.handshakeAgeSec+"s ago"):"DOWN"),cell(p.endpoint||"\u2014")])));
-  document.getElementById("bridges").replaceChildren(...Object.values(s.bridges||{}).map(b=>{
-    const pill=cell(b.state,"span");pill.firstChild.className="pill "+(STATES.includes(b.state)?b.state:"stopped");
-    return row([cell(b.containerName||"\u2014"),cell(b.bridge,"code"),cell(b.profile||"Direct"),cell(b.locked?"LOCKED":"Unlocked"),pill,cell(b.exitIp?(b.exitIp+" ("+(b.exitCountry||"?")+")"):"\u2014")]);
-  }));
-}
-tick();setInterval(tick,5000);
-</script></body></html>"""
+rakazo_vpn_http.manager = _Manager()
 
 
 def monitor_loop(stop_event: threading.Event) -> None:

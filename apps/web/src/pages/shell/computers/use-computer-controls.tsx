@@ -466,7 +466,7 @@ export function useComputerControls({
     resetScreenReconnect();
     setComputerError(null);
     setComputerErrorFromScreen(false);
-    await refreshComputerScreen(id).catch(() => undefined);
+    await bestEffort("refresh the computer screen", refreshComputerScreen(id));
   }
 
   /** Local change: one tap on the docked screen takes control of it, without opening the window. */

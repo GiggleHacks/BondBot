@@ -12,6 +12,7 @@ The stack runs the locally committed image `rakazo-voice:local` (.env: RAKAZO_IM
 Pulling an upstream image or changing those two lines DROPS every patch below. Re-apply from the patch scripts, then rebuild.
 
 ## Always-on rules David asked for (universal, forever, all bots incl. new ones)
+
 1. Every reasoning-capable model always runs at HIGH effort. packages/adapters/src/pi-runtime-models.ts thinkingLevelFor() ignores the per-bot setting. (patch: reasoning-20261120/patch/patch7.mjs)
 2. Thinking is always ON for OpenAI-compatible models (connectionModelSettings in model-settings.ts forces reasoning:true). (patch6.mjs)
 3. Reasoning is captured for ALL bots and shown under replies (grey, open by default, foldable). /data/reasoning-bots.txt must contain `*` (it lives on the data volume). Inline <think>..</think> in a reply is moved into the block. (reasoning-capture.ts, patch6.mjs)
@@ -19,11 +20,12 @@ Pulling an upstream image or changing those two lines DROPS every patch below. R
 5. UI: BondBot Quake wordmark + version (ui-brand-20261120), model-vendor icons (ui-model-icons-20261120), Monitor badge (v0.1.2).
 
 ## How to deploy a change (gotcha learned 2026-11-20)
+
 Build in a scratch container from rakazo-voice:local, docker cp the new files into the running containers, restart, then
 BEFORE `docker commit rakazo-api-1 rakazo-voice:local` sync ALL THREE sets of files into rakazo-api-1 (commit is taken from api):
-  worker: /app/apps/worker/dist + /app/packages/adapters/src  (from rakazo-worker-1)
-  web:    /app/apps/web/dist + /app/apps/web/src              (from rakazo-web-1)  (use `docker exec -u root` for rm)
-  api:    /app/apps/api/dist
+worker: /app/apps/worker/dist + /app/packages/adapters/src (from rakazo-worker-1)
+web: /app/apps/web/dist + /app/apps/web/src (from rakazo-web-1) (use `docker exec -u root` for rm)
+api: /app/apps/api/dist
 Otherwise a container recreate silently reverts the other services. Verify with `docker run --rm --entrypoint sh rakazo-voice:local -c "grep -c ... "`.
 Rollback tags: pre-thinkon-20261120, pre-higheffort-20261120, pre-left-20261120, pre-brand-20261120, pre-reasoning-v2-20261120, pre-reasoning-20261120, pre-modelicons-20261120.
 Changelog: CHANGELOG-BONDBOT.md (bump apps/web/src/lib/bondbot-version.ts on UI deploys).
@@ -36,6 +38,7 @@ AUTO-PAY (2026-11-21): run-tool-gate.ts autoPaid (patch18.mjs in ui-autopay-2026
 MODEL SWITCH (2026-11-21): patch19.mjs in ui-modelswitch-20261121/ touches contracts (model_switch block, botModels.mostUsed), api (routes/model-usage.ts, model-switch-note.ts, bots.ts, router.ts) and the web header/Shell/message-view. Re-apply after an upstream update; rebuild api, worker and web.
 
 ## VPN manager: forgive one failed internet check (2026-11-21)
+
 - File: /boot/config/rakazo-vpn-manager.py (host daemon, started from /boot/config/go). Backup: rakazo-vpn-manager.py.bak-20261121 (in /boot/config and here).
 - Why: a single slow/failed `curl` probe (every ~12s) flipped a computer to "blocked" in the UI while the tunnel was fine (seen on YouTuber1 under heavy load, 04:10 UTC).
 - Change: a computer shows "blocked" only after 3 probe failures in a row (FAIL_TOLERANCE); probe curl --max-time 6; each failed probe is logged to /var/log/rakazo-vpn-manager.log with the reason. Tunnel-down and kill switch (iptables) logic untouched; policy changes (set/reconcile) are never smoothed.
@@ -43,7 +46,8 @@ MODEL SWITCH (2026-11-21): patch19.mjs in ui-modelswitch-20261121/ touches contr
 - Known, not changed: apply_iptables_policies() flushes then re-adds the KS/MANGLE chains every loop (non-atomic), a millisecond-scale gap. Could be made atomic with iptables-restore.
 
 ## 2026-11-23 audit fixes (v0.1.20 / 1.6.1)  see docs/bondbot/CHANGELOG-BONDBOT.md
-- Host VPN manager is now infra/vpn-manager/rakazo-vpn-manager.py in the repo (moved there from infra/compose in 0.6.0) (the deployed file; it is copied to /boot/config/rakazo-vpn-manager.py). Tests: `python3 infra/vpn-manager/test/test_vpn_manager.py` (all host commands mocked).
+
+- Host VPN manager is now infra/vpn-manager/rakazo-vpn-manager.py in the repo (moved there from infra/compose in 0.6.0) (the deployed file; it is copied to /boot/config/rakazo-vpn-manager.py, together with rakazo_vpn_http.py and rakazo_vpn_profiles.py beside it). Tests: `python3 infra/vpn-manager/test/test_vpn_manager.py` (all host commands mocked).
 - Restart the daemon WITHOUT touching kernel rules (they persist): send SIGTERM to the process whose cmdline is exactly `python3 /boot/config/rakazo-vpn-manager.py`, then run the /boot/config/go launch line. Do not `pgrep -f` a pattern that also appears in your own shell command line (it will match the shell).
 - Env for the daemon: RAKAZO_VPN_ALLOWED_HOSTS (extra Host headers for the :5174 dashboard; *.ts.net names are always accepted), RAKAZO_VPN_HTTP_PORT, RAKAZO_VPN_STATE_PATH, RAKAZO_VPN_SOCK. State file keeps a .bak next to it.
 - Supervisor (infra/sandboxes/supervisor/src/routes.ts, runs from source with tsx): PUT /vpn/homes refuses to lock or pick a VPN unless computer egress is restricted, and refuses to lock without SANDBOX_COMPUTER_DNS (needed so DNS cannot leave around the Kill Switch). Both are set live.
@@ -53,5 +57,6 @@ MODEL SWITCH (2026-11-21): patch19.mjs in ui-modelswitch-20261121/ touches contr
 - Known pre-existing test failures (24, identical on the baseline): ArtifactFileCard, SettingsOverlay, SpaceSettingOverrides, bot-panel, bot-settings, chat-header, message-hover-actions, type-scale; api voice.test.ts (ElevenLabs transcribe). Pre-existing type errors: ModelSwitcher.tsx:55, lib/voice-note.ts:21.
 
 ## Desktop downloads
+
 The server offers `BondBot.exe` and `BondBot.dmg` from `<data dir>/downloads`. The macOS download
 appears in the app only when `BondBot.dmg` is there.

@@ -88,6 +88,14 @@ describe("server image publish workflow", () => {
     expect(attest).toBeGreaterThan(manifest);
   });
 
+  it("publishes under a lowercased repository name, which the registry requires", () => {
+    for (const job of [workflow.jobs.build, workflow.jobs["build-depot"], workflow.jobs.publish]) {
+      const lowercase = job.steps.find((step) => step.id === "repo");
+      expect(lowercase?.run).toContain("${GITHUB_REPOSITORY,,}");
+      expect(JSON.stringify(job.steps)).not.toContain("ghcr.io/${{ github.repository }}");
+    }
+  });
+
   it("builds on Depot only when the repository names a project, and never for pull requests", () => {
     const depot = workflow.jobs["build-depot"];
     expect(depot.if).toBe("github.event_name != 'pull_request' && vars.DEPOT_PROJECT_ID != ''");

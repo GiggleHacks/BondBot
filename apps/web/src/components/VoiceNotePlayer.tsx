@@ -312,6 +312,7 @@ export function VoiceNotePlayer({
             />
           ))}
         </div>
+        {/* off-scale: time inside the small voice note pill. */}
         <div className="flex items-center justify-between text-[9px] leading-none tabular-nums">
           <span className="opacity-80">
             {status === "error" ? `Could not load. Tap play to retry.` : label}
@@ -322,6 +323,7 @@ export function VoiceNotePlayer({
                 type="button"
                 aria-label={`Playback speed ${speed}×`}
                 onClick={cycleSpeed}
+                // off-scale: speed pill inside the voice note.
                 className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${pillColors}`}
               >
                 {speed}×

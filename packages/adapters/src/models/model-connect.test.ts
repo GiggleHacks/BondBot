@@ -685,9 +685,8 @@ it.each([true, false])(
       ),
     ).toMatchObject({
       reasoning,
-      thinkingLevels: reasoning
-        ? ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
-        : ["off"],
+      // BondBot offers thinking on every compatible model, whatever the connection saved.
+      thinkingLevels: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
     });
   },
 );

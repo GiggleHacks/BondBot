@@ -2034,28 +2034,7 @@ describe("Pi runtime ordered model fallback", () => {
     expect(providerState.stream.mock.calls[1]?.[2]).toMatchObject({ reasoning: undefined });
   });
 
-  it("runs a reasoning backup at its own effort, not the main model's", async () => {
-    const reasoningPrimary = { ...primary, reasoning: true };
-    const reasoningBackup = { ...backupA, reasoning: true };
-    providerState.models.set(`${primary.provider}/${primary.id}`, reasoningPrimary);
-    providerState.models.set(`${backupA.provider}/${backupA.id}`, reasoningBackup);
-    const input = request([
-      { provider: backupA.provider, id: backupA.id, apiKey: "reasoning-backup-key" },
-    ]);
-    input.model.reasoning = true;
-    input.model.thinkingLevel = "high";
-    providerState.stream.mockImplementation((target: Model<"openai-completions">) =>
-      target.provider === primary.provider
-        ? stream(target, message(target, [], "error", "429 rate_limit_error"))
-        : stream(target, message(target, [{ type: "text", text: "backup answer" }], "stop")),
-    );
-
-    await run(input);
-
-    expect(providerState.stream.mock.calls[1]?.[2]).toMatchObject({ reasoning: "medium" });
-  });
-
-  it("keeps a backup's own effort when its role row sets one", async () => {
+  it("runs a reasoning backup at high even when its role row sets a lower effort", async () => {
     const reasoningPrimary = { ...primary, reasoning: true };
     providerState.models.set(`${primary.provider}/${primary.id}`, reasoningPrimary);
     providerState.models.set(`${backupA.provider}/${backupA.id}`, {
@@ -2080,7 +2059,7 @@ describe("Pi runtime ordered model fallback", () => {
 
     await run(input);
 
-    expect(providerState.stream.mock.calls[1]?.[2]).toMatchObject({ reasoning: "low" });
+    expect(providerState.stream.mock.calls[1]?.[2]).toMatchObject({ reasoning: "high" });
   });
 
   it.each([...IMAGE_RETURNING_COMPUTER_TOOLS, "write_effect"])(
@@ -3007,27 +2986,23 @@ describe("Pi runtime fallback error classes and mid-run switches", () => {
 });
 
 describe("Pi runtime reasoning efforts an endpoint refuses", () => {
-  const refused =
-    '400: {"message":"reasoning_effort must be one of: low, medium, high, max","type":"invalid_request_error","param":"","code":null}';
-
+  // BondBot asks for high, so that is the effort an endpoint can refuse.
   it.each([
-    [refused, "minimal", ["minimal", "low", "low"]],
-    [refused, "off", ["off", "off", "off"]],
     [
-      'Compatible API error (400): {"message":"Unsupported value: \'minimal\' is not supported with this model. Supported values are: \'medium\'.","type":"invalid_request_error","param":"reasoning.effort","code":"unsupported_value"}',
-      "minimal",
-      ["minimal", "medium", "medium"],
+      '400: {"message":"reasoning_effort must be one of: low, medium","type":"invalid_request_error","param":"","code":null}',
+    ],
+    [
+      'Compatible API error (400): {"message":"Unsupported value: \'high\' is not supported with this model. Supported values are: \'medium\'.","type":"invalid_request_error","param":"reasoning.effort","code":"unsupported_value"}',
     ],
   ] as const)(
-    "retries %s at %s with an accepted effort for the rest of the run",
-    async (errorMessage, thinkingLevel, sentLevels) => {
+    "retries %s with an accepted effort for the rest of the run",
+    async (errorMessage) => {
       providerState.models.set(`${primary.provider}/${primary.id}`, {
         ...primary,
         reasoning: true,
         thinkingLevelMap: { off: "none", xhigh: "xhigh", max: "max" },
       });
       const input = request();
-      input.model.thinkingLevel = thinkingLevel;
       providerState.stream
         .mockImplementationOnce((target: Model<"openai-completions">) =>
           stream(target, message(target, [], "error", errorMessage)),
@@ -3056,7 +3031,7 @@ describe("Pi runtime reasoning efforts an endpoint refuses", () => {
       ][];
       expect(
         calls.map(([target, , options]) => clampThinkingLevel(target, options?.reasoning ?? "off")),
-      ).toEqual(sentLevels);
+      ).toEqual(["high", "medium", "medium"]);
       expect(calls.slice(1).map(([target]) => target.thinkingLevelMap?.off)).toEqual([
         undefined,
         undefined,

@@ -287,6 +287,7 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
     "GitHub",
     "Linear",
     "Notion",
+    "Postiz",
     "Executor",
     "Browse MCP servers",
     "Search by domain",
@@ -412,12 +413,13 @@ test("sign-in, spawn, and stop work in the shell", async ({ page }, testInfo) =>
     if (message.type() === "error") browserErrors.push(message.text());
   });
   page.on("requestfailed", (request) => {
-    // Leaving a page closes its live streams. A live signal replaces any in-flight account read.
+    // Leaving a page closes its live streams. A live signal replaces any in-flight read it covers.
     const pathname = new URL(request.url()).pathname;
     if (
       (pathname === "/rpc/notifications/subscribe" ||
         pathname === "/rpc/notifications/subscribeCalls" ||
-        pathname === "/rpc/me") &&
+        pathname === "/rpc/me" ||
+        pathname === "/rpc/agentSkills/list") &&
       request.failure()?.errorText === "net::ERR_ABORTED"
     )
       return;
@@ -458,12 +460,12 @@ test("sign-in, spawn, and stop work in the shell", async ({ page }, testInfo) =>
   });
   await expect(composer).toHaveAttribute("placeholder", "Message Chief");
   await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
-  const holdToTalk = page
+  const recordNote = page
     .getByTestId("composer-bar")
-    .getByRole("button", { name: "Hold to talk", exact: true });
-  await expect(holdToTalk).toBeVisible();
+    .getByRole("button", { name: "Record voice note", exact: true });
+  await expect(recordNote).toBeVisible();
   await composer.fill("Use the newer report and keep the answer short.");
-  await expect(holdToTalk).toHaveCount(0);
+  await expect(recordNote).toHaveCount(0);
   // Stop can arrive over the live stream before the first send returns; Send stays disabled
   // until then, and Tab would skip it.
   await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();

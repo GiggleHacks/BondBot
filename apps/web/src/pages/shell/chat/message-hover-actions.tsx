@@ -154,11 +154,7 @@ export function MessageHoverActions({
             onClick={copyMessage}
             className={iconButtonClass}
           >
-            {copied ? (
-              <Check size={15} strokeWidth={1.7} />
-            ) : (
-              <Copy size={15} strokeWidth={1.7} />
-            )}
+            {copied ? <Check size={15} strokeWidth={1.7} /> : <Copy size={15} strokeWidth={1.7} />}
           </button>
         ) : null}
         <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>

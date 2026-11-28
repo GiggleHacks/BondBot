@@ -1,4 +1,4 @@
-import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
   ArtifactStore,
@@ -22,7 +22,7 @@ import {
   runAsTenant,
   withLease,
 } from "@rakazo/db";
-import { getLogger } from "@rakazo/logging";
+import { bestEffort, getLogger } from "@rakazo/logging";
 import type { Context, Hono } from "hono";
 import * as z from "zod";
 import { loadVoiceCredential, voiceContext, voiceProviderFor } from "./calls/voice.js";
@@ -30,6 +30,7 @@ import { deleteArtifactFamily, storeOwnedArtifact } from "./content/artifacts.js
 import { readBoundedBody, readBoundedBytes } from "./http/http-body.js";
 import type { ThreadTarget } from "./threads/thread-target.js";
 import { resolveThreadTarget, sendThreadMessage } from "./threads/thread-target.js";
+import { sweepOrphanDirs } from "./voice/voice-note-orphans.js";
 import {
   AudioConversionError,
   cutPiece,
@@ -46,7 +47,6 @@ import {
   MAX_CONCURRENT_JOBS,
   MAX_OPEN_NOTES,
   partProblem,
-  selectOrphanDirs,
 } from "./voice-note-guards.js";
 
 /** An hour, plus slack for the recorder's last slice. */
@@ -485,9 +485,12 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
       advanceAgain.delete(id);
     }
     // Sent while this pass held the note: finish it now rather than at the next sweep.
-    const after = await runAsSystem("voice note: check after live transcription", () =>
-      deps.prisma.voiceNote.findUnique({ where: { id }, select: { status: true } }),
-    ).catch(() => null);
+    const after = await bestEffort(
+      "check a voice note after live transcription",
+      runAsSystem("voice note: check after live transcription", () =>
+        deps.prisma.voiceNote.findUnique({ where: { id }, select: { status: true } }),
+      ),
+    );
     if (after?.status === "queued") void processNote(id);
   }
 
@@ -588,14 +591,17 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
         error instanceof NoteRejectedError;
       // The member sees a plain sentence; paths and ffmpeg output stay in the log above.
       const shown = publicError(error);
-      const row = await runAsSystem("voice note: record a failure", () =>
-        deps.prisma.voiceNote.update({
-          where: { id },
-          // Not given up: the sweep tries again once it is stale.
-          data: giveUp ? { status: "failed", error: shown } : { error: shown },
-          select: { spaceId: true },
-        }),
-      ).catch(() => null);
+      const row = await bestEffort(
+        "record a voice note failure",
+        runAsSystem("voice note: record a failure", () =>
+          deps.prisma.voiceNote.update({
+            where: { id },
+            // Not given up: the sweep tries again once it is stale.
+            data: giveUp ? { status: "failed", error: shown } : { error: shown },
+            select: { spaceId: true },
+          }),
+        ),
+      );
       if (row) await changed(row.spaceId);
       if (giveUp) tries.delete(id);
     } finally {
@@ -653,7 +659,7 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
     }
     if (Date.now() - lastOrphanSweep >= ORPHAN_SWEEP_MS) {
       lastOrphanSweep = Date.now();
-      await sweepOrphanDirs();
+      await sweepOrphanDirs(deps.prisma, deps.env.dataDir, ORPHAN_GRACE_MS);
     }
   }
 
@@ -673,30 +679,6 @@ export function createVoiceNotes(deps: VoiceNoteDeps) {
       log.warn("voice note audio was not removed", {
         reason: error instanceof Error ? error.message : String(error),
       });
-    }
-  }
-
-  /** Folders left by notes that no longer exist (or were sent), such as after a crash. */
-  async function sweepOrphanDirs() {
-    const root = path.join(deps.env.dataDir, "voice-notes");
-    const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
-    const dirs: Array<{ name: string; mtimeMs: number }> = [];
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const info = await stat(path.join(root, entry.name)).catch(() => null);
-      if (info) dirs.push({ name: entry.name, mtimeMs: info.mtimeMs });
-    }
-    for (let at = 0; at < dirs.length; at += 500) {
-      const batch = dirs.slice(at, at + 500);
-      const rows = await runAsSystem("voice note: find folders without a note", () =>
-        deps.prisma.voiceNote.findMany({
-          where: { id: { in: batch.map((dir) => dir.name) } },
-          select: { id: true, status: true },
-        }),
-      );
-      for (const name of selectOrphanDirs(batch, rows, Date.now(), ORPHAN_GRACE_MS)) {
-        await rm(path.join(root, name), { recursive: true, force: true });
-      }
     }
   }
 
@@ -1005,8 +987,9 @@ export function mountVoiceNoteRoutes(
       await rm(noteDir(deps, row.id), { recursive: true, force: true });
       // The audio stored for the chat goes too, unless the note reached sending.
       if (row.artifactId && row.transcript === null) {
-        await deleteArtifactFamily(deps, actor, { familyId: row.artifactId }).catch(
-          () => undefined,
+        await bestEffort(
+          "delete unsent voice note audio",
+          deleteArtifactFamily(deps, actor, { familyId: row.artifactId }),
         );
       }
       await changed(actor.spaceId);

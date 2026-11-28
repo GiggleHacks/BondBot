@@ -44,7 +44,7 @@ test("narrow settings reveals the active section and offers scroll controls", as
   await completeOnboarding(page);
   const settings = await openUserSettings(page, "organization");
   const nav = settings.getByTestId("settings-nav");
-  // The last section, so the nav has nothing further to scroll to.
+  // The last section; only the app version follows it.
   const last = settings.getByTestId("settings-nav-organization");
   const previous = settings.getByRole("button", { name: "Previous settings sections" });
   const next = settings.getByRole("button", { name: "Next settings sections" });
@@ -66,8 +66,10 @@ test("narrow settings reveals the active section and offers scroll controls", as
       })
       .toBe(true);
     await expect(previous).toBeEnabled();
-    await expect(next).toBeDisabled();
     await captureScreenshot(page, testInfo, `settings-tabs-${width}`);
+    await next.click();
+    await expect(settings.getByTestId("app-version")).toBeInViewport();
+    await expect(next).toBeDisabled();
     const offset = await nav.evaluate((node) => node.scrollLeft);
     await previous.click();
     await expect.poll(() => nav.evaluate((node) => node.scrollLeft)).toBeLessThan(offset);
@@ -96,7 +98,7 @@ test("narrow settings reveals the active section and offers scroll controls", as
   await expect(last).toHaveAttribute("aria-current", "page");
 });
 
-test("settings shell is two-pane and deep-links Models Memory Voice Usage", async ({
+test("settings shell is two-pane and deep-links Models Memory Usage", async ({
   page,
 }, testInfo) => {
   const stamp = Date.now();
@@ -178,7 +180,7 @@ test("settings shell is two-pane and deep-links Models Memory Voice Usage", asyn
   await expect(settings).toHaveAttribute("data-settings-section", "memory");
   await expect(settings.getByTestId("memory-settings")).toBeVisible();
   const memory = settings.getByTestId("memory-settings");
-  await memory.getByRole("button", { name: "Connect memory provider", exact: true }).click();
+  await memory.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(memory.getByLabel("Provider")).toBeVisible();
   await chooseOption(memory.getByLabel("Provider"), "Serenity");
   await expect(memory.getByLabel("MCP endpoint")).toBeVisible();
@@ -189,12 +191,9 @@ test("settings shell is two-pane and deep-links Models Memory Voice Usage", asyn
   await expect(memory.getByRole("button", { name: "Recall only" })).toBeVisible();
   await captureScreenshot(page, testInfo, "settings-shell-memory-serenity-advanced");
 
-  await settings.getByTestId("settings-nav-voice").click();
-  await expect(settings).toHaveAttribute("data-settings-section", "voice");
-  await expect(settings.getByTestId("voice-settings")).toBeVisible();
-  await captureScreenshot(page, testInfo, "settings-shell-voice");
-
-  await page.getByRole("button", { name: "Close voice settings" }).click();
+  // BondBot turns calls and read-aloud off, so Voice is not listed.
+  await expect(settings.getByTestId("settings-nav-voice")).toHaveCount(0);
+  await page.getByRole("button", { name: "Close memory settings" }).click();
   await expect(page.getByTestId("user-settings")).toHaveCount(0);
 
   await openUserSettings(page, "usage");
@@ -212,7 +211,7 @@ test("Honcho memory settings empty and filled", async ({ page }, testInfo) => {
   const memory = settings.getByTestId("memory-settings");
   await expect(memory.getByLabel("Provider")).toHaveCount(0);
   await captureScreenshot(page, testInfo, "memory-default");
-  await memory.getByRole("button", { name: "Connect memory provider", exact: true }).click();
+  await memory.getByRole("button", { name: "Connect", exact: true }).click();
   await chooseOption(memory.getByLabel("Provider"), "Honcho");
   await expect(memory.getByLabel("API key", { exact: true })).toBeVisible();
   await expect(memory.getByLabel("Workspace", { exact: true })).not.toBeVisible();

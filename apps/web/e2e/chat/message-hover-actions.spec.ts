@@ -5,6 +5,7 @@ import {
   captureScreenshot,
   completeOnboarding,
   expectStoredSend,
+  rpc,
   signup,
 } from "../helpers/helpers";
 
@@ -198,15 +199,17 @@ test("message hover shows beside-bubble actions; reply links to parent", async (
   const toolbar = parentRow.getByTestId("message-hover-actions");
   await expect(toolbar.getByRole("button", { name: "Reply" })).toBeVisible();
   await expect(toolbar.getByRole("button", { name: "More" })).toBeVisible();
-  const react = toolbar.getByRole("button", { name: "React" });
-  await expect(react).toBeVisible();
+  // BondBot drops the reaction button and puts Copy beside More.
+  await expect(toolbar.getByRole("button", { name: "React" })).toHaveCount(0);
+  const copy = toolbar.getByTestId("message-copy-button");
+  await expect(copy).toBeVisible();
   await expect
     .poll(async () => {
       const mutedColor = await toolbar
         .getByRole("button", { name: "More" })
         .evaluate((el) => getComputedStyle(el).color);
-      const reactionColor = await react.evaluate((el) => getComputedStyle(el).color);
-      return reactionColor === mutedColor;
+      const copyColor = await copy.evaluate((el) => getComputedStyle(el).color);
+      return copyColor === mutedColor;
     })
     .toBe(true);
 
@@ -288,20 +291,18 @@ test("message hover shows beside-bubble actions; reply links to parent", async (
   });
   await testInfo.attach("message-hover-toolbar", { contentType: "image/png", path: hoverPath });
 
-  await react.click();
-  for (const emoji of ["👍", "👎", "❤️", "😂", "🎉", "😮"]) {
-    await expect(page.getByRole("button", { name: emoji, exact: true })).toBeVisible();
+  // Reactions still show, though the row no longer offers them.
+  await expectStoredSend(parentRow);
+  const messageId = await parentRow.getAttribute("data-message-id");
+  for (const [index, reaction] of ["❤️", "👍", "❤️"].entries()) {
+    await rpc(page, "threads/react", {
+      botId: activeBotId(page),
+      messageId,
+      reaction,
+      clientNonce: `hover-reaction-${stamp}-${index}`,
+    });
   }
-  await captureScreenshot(page, testInfo, "message-reaction-picker");
-  await page.getByRole("button", { name: "❤️", exact: true }).click();
-  await expect(parentRow.getByTestId("message-reactions")).toHaveText("❤️");
-  await parentRow.hover();
-  await react.click();
-  await page.getByRole("button", { name: "👍", exact: true }).click();
   await expect(parentRow.getByTestId("message-reactions")).toContainText("👍");
-  await parentRow.hover();
-  await react.click();
-  await page.getByRole("button", { name: "❤️", exact: true }).click();
   await expect(parentRow.getByTestId("message-reactions")).toContainText("❤️ 2");
   await captureScreenshot(page, testInfo, "message-multiple-reactions");
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -445,14 +446,8 @@ test.describe("touch message actions", () => {
     expect(railBox!.x - bubbleBox!.x).toBeLessThan(8);
     await expectNoTouchSideGutter(row.getByTestId("message-bubble-frame"));
     await captureScreenshot(page, testInfo, "message-actions-touch-row");
-    await rail.getByRole("button", { name: "React", exact: true }).tap();
-    await expect(page.getByRole("button", { name: "🎉", exact: true })).toBeVisible();
-    await captureScreenshot(page, testInfo, "message-reaction-picker-touch");
-    await page.getByRole("button", { name: "🎉", exact: true }).tap();
-    await expect(row.getByTestId("message-reactions")).toHaveText("🎉");
-    await rail.getByRole("button", { name: "React", exact: true }).tap();
-    await page.getByRole("button", { name: "🎉", exact: true }).tap();
-    await expect(row.getByTestId("message-reactions")).toHaveText("🎉 2");
+    await expect(rail.getByRole("button", { name: "React", exact: true })).toHaveCount(0);
+    await expect(rail.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
     await rail.getByRole("button", { name: "More" }).tap();
     await expect(page.getByRole("menuitem", { name: "Copy" })).toBeVisible();
     await expect(page.getByRole("menu")).toBeVisible();
@@ -475,56 +470,4 @@ test.describe("touch message actions", () => {
     await rail.getByRole("button", { name: "Reply", exact: true }).tap();
     await expect(page.getByRole("button", { name: "Cancel reply" })).toBeVisible();
   });
-});
-
-test("a reaction receipt refreshes live work and exposes Stop", async ({ page }, testInfo) => {
-  await signup(page, `reaction-work-${Date.now()}@rakazo.test`, "password12", "Reaction Work");
-  await completeOnboarding(page);
-  await expect(page.getByText("What do you want me on first?", { exact: true })).toBeVisible({
-    timeout: 20_000,
-  });
-  await page.getByRole("button", { name: /Day-to-day work/ }).click();
-  const botText = page.getByText(/Got it\./);
-  await expect(botText).toBeVisible({ timeout: 20_000 });
-  const row = page
-    .getByTestId("transcript")
-    .locator("[data-message-id]")
-    .filter({ has: botText })
-    .first();
-  const botId = activeBotId(page);
-  let reacted = false;
-  // No run events are emitted: the receipt alone must refresh the active state.
-  await page.route("**/rpc/threads/react", async (route) => {
-    reacted = true;
-    await route.fulfill({ json: { json: { ok: true, runIds: ["reaction-run"] } } });
-  });
-  await page.route("**/rpc/threads/get", async (route) => {
-    const response = await route.fetch();
-    const body = await response.json();
-    if (reacted) {
-      const run = {
-        id: "reaction-run",
-        botId,
-        threadId: body.json.threadId,
-        taskId: "reaction-task",
-        status: "running",
-        trigger: "reaction",
-        routineId: null,
-        modelProvider: null,
-        modelId: null,
-        error: null,
-        startedAt: new Date().toISOString(),
-        completedAt: null,
-        createdAt: new Date().toISOString(),
-      };
-      body.json.run = run;
-      body.json.activeRuns = [run];
-    }
-    await route.fulfill({ response, json: body });
-  });
-  const rail = await revealHoverRail(row);
-  await rail.getByRole("button", { name: "React" }).click();
-  await page.getByRole("button", { name: "🎉", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
-  await captureScreenshot(page, testInfo, "reaction-run-working");
 });

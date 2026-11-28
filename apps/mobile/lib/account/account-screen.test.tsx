@@ -65,6 +65,8 @@ const { element, account } = vi.hoisted(() => ({
   },
 }));
 
+// The photo picker is native.
+vi.mock("./account-photo", () => ({ pickAccountPhoto: vi.fn(async () => null) }));
 vi.mock("../layout/side-insets", () => ({ useSideInsets: () => ({}) }));
 vi.mock("../thread/send/unsent-sends", () => ({ unsentSendsRestored: vi.fn(async () => true) }));
 // The unsent-message warning reads this without a screen subscription; tests flip it per case.
@@ -323,6 +325,7 @@ vi.mock("../appearance/appearance", () => ({
   getCachedAppearancePreference: () => "system",
   mobileTokens: () => ({}),
   setAppearancePreference: vi.fn(),
+  subscribeAppearance: () => () => undefined,
 }));
 vi.mock("../inbox/archived/archived-chats", () => ({
   archivedChatCounts: () => ({ bots: 0, groups: 0 }),

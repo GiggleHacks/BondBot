@@ -7,6 +7,7 @@ import {
   screenProbeUrl,
   waitForScreenPage,
 } from "@rakazo/core";
+import { bestEffort } from "@rakazo/logging/best-effort";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ComputerScreenResult } from "../../../lib/computers/computer-screen";
@@ -421,8 +422,16 @@ export function useComputerState({
     if (screenUrlLoadedBotId === activeId || screenAwaitsRetry.current || screenErrorShown.current)
       return;
     if (screenRef.current.botId === activeId && screenRef.current.url) return;
-    void refreshComputerScreen(activeId).catch(() => undefined);
-  }, [panel, docked, activeId, computerOpen, computer?.botId, computer?.state, screenUrlLoadedBotId]);
+    void bestEffort("refresh the docked computer screen", refreshComputerScreen(activeId));
+  }, [
+    panel,
+    docked,
+    activeId,
+    computerOpen,
+    computer?.botId,
+    computer?.state,
+    screenUrlLoadedBotId,
+  ]);
 
   function cacheComputerFor(botId: string, patch: Partial<CachedComputer>) {
     if (patch.computer?.botId && patch.computer.botId !== botId) return;

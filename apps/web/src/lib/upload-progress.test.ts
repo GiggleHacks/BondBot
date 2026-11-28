@@ -14,7 +14,9 @@ class FakeXhr {
   timeout = 0;
   aborted = false;
   headers: Record<string, string> = {};
-  upload: { onprogress: ((ev: { lengthComputable: boolean; loaded: number; total: number }) => void) | null } = {
+  upload: {
+    onprogress: ((ev: { lengthComputable: boolean; loaded: number; total: number }) => void) | null;
+  } = {
     onprogress: null,
   };
   onload: (() => void) | null = null;

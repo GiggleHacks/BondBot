@@ -197,11 +197,11 @@ describe("Pi agent thinking level", () => {
     vi.unstubAllEnvs();
   });
 
-  it("uses medium reasoning for a reasoning model", async () => {
+  it("uses high reasoning for a reasoning model", async () => {
     // Regression for OpenRouter mandatory-reasoning models (#114): forcing
     // thinkingLevel "off" becomes effort "none" and the provider returns 400.
     const levels = await runWithModel("reasoning-model");
-    expect(levels).toEqual(["medium"]);
+    expect(levels).toEqual(["high"]);
     expect(levels.every((level) => level !== "off")).toBe(true);
   });
 
@@ -326,7 +326,7 @@ describe("Pi agent thinking level", () => {
       maxTokens: 8192,
     });
     // Unknown OpenRouter PI_DEFAULT_MODEL must not force thinking off (#114).
-    expect(levels).toEqual(["medium"]);
+    expect(levels).toEqual(["high"]);
     expect(levels.every((level) => level !== "off")).toBe(true);
   });
 

@@ -5727,16 +5727,13 @@ describe("a click that completes a purchase on a website", () => {
     const over =
       "This would go over the user's spending limit of $200.00 a month ($100.00 spent), so nothing was paid. Don't retry; tell the user.";
 
-    it("counts a payment once it is approved and pressed, and only then", async () => {
+    // BondBot: a pay click the limit allows needs no approval.
+    it("presses a payment within the limit without asking, and counts it", async () => {
       const page = pageBrowser();
       const f = fixture({ builtin: true, browser: page.provider, spendingLimit: limit });
       f.setCalls([payCall()]);
       await f.run();
-      expect(f.pauseRunForInput).toHaveBeenCalledOnce();
-      expect(f.spending.payments).toEqual([]);
-      f.effects[0]!.status = "approved";
-      f.setCalls([payCall(undefined, "call-2")]);
-      await f.run();
+      expect(f.pauseRunForInput).not.toHaveBeenCalled();
       expect(page.acts).toHaveLength(1);
       expect(f.spending.payments).toEqual([
         expect.objectContaining({
@@ -5781,24 +5778,28 @@ describe("a click that completes a purchase on a website", () => {
       expect(f.pauseRunForInput).not.toHaveBeenCalled();
     });
 
-    it("refuses an approved payment when another used the room while the card waited", async () => {
+    it("refuses a payment when another uses the room before the press", async () => {
       const page = pageBrowser();
       const f = fixture({ builtin: true, browser: page.provider, spendingLimit: limit });
+      const findLimit = f.prisma.spendingLimit.findUnique;
+      // The gate's last read before it lets the click through.
+      f.prisma.spendingLimit.findUnique = (async (args: Parameters<typeof findLimit>[0]) => {
+        if ((args as { select?: unknown }).select) {
+          f.spending.payments.push({
+            operationKey: "meanwhile",
+            userId: "user-1",
+            site: "other.example.test",
+            amount: 10_000,
+            currency: "usd",
+            releasedAt: null,
+            createdAt: new Date(),
+          });
+        }
+        return findLimit(args);
+      }) as typeof findLimit;
       f.setCalls([payCall()]);
       await f.run();
-      f.spending.payments.push({
-        operationKey: "meanwhile",
-        userId: "user-1",
-        site: "other.example.test",
-        amount: 10_000,
-        currency: "usd",
-        releasedAt: null,
-        createdAt: new Date(),
-      });
-      f.effects[0]!.status = "approved";
-      f.setCalls([payCall(undefined, "call-2")]);
-      await f.run();
-      expect(f.results.at(-1)).toMatchObject({ error: over, uncertain: false });
+      expect(f.results).toEqual([expect.objectContaining({ error: over, uncertain: false })]);
       expect(page.acts).toEqual([]);
       expect(f.spending.payments).toHaveLength(1);
     });
@@ -5806,17 +5807,16 @@ describe("a click that completes a purchase on a website", () => {
     it("presses nothing when the limit can't be checked", async () => {
       const page = pageBrowser();
       const f = fixture({ builtin: true, browser: page.provider, spendingLimit: limit });
-      f.setCalls([payCall()]);
-      await f.run();
-      f.effects[0]!.status = "approved";
       f.prisma.payment.upsert = async () => {
         throw new Error("connection lost");
       };
-      f.setCalls([payCall(undefined, "call-2")]);
+      f.setCalls([payCall()]);
       await f.run();
-      expect(f.results.at(-1)).toMatchObject({
-        error: "The user's spending limit couldn't be checked, so nothing was paid. Try again.",
-      });
+      expect(f.results).toEqual([
+        expect.objectContaining({
+          error: "The user's spending limit couldn't be checked, so nothing was paid. Try again.",
+        }),
+      ]);
       expect(page.acts).toEqual([]);
     });
 

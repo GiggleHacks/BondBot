@@ -311,19 +311,15 @@ describe("a call that spends its whole output budget on thinking", () => {
       .mockImplementation(() => reply(reasoner));
     await run(request(reasoner, { maxTokens: 2_000 }));
     expect(sentOptions().map(({ maxTokens, reasoning }) => [maxTokens, reasoning])).toEqual([
+      [2_000, "high"],
       [2_000, "medium"],
-      [2_000, "low"],
     ]);
   });
 
-  it("never turns thinking on when the user turned it off", async () => {
-    providerState.stream.mockImplementation(() => thinkingOnly(reasoner, "length"));
-    await expect(
-      run(request(reasoner, { maxTokens: 2_000, thinkingLevel: "off" })),
-    ).rejects.toThrow("The model hit its output limit before writing a response.");
-    expect(sentOptions().map(({ maxTokens, reasoning }) => [maxTokens, reasoning])).toEqual([
-      [2_000, undefined],
-    ]);
+  it("runs a thinking model at high even when the bot saved thinking off", async () => {
+    providerState.stream.mockImplementation(() => reply(reasoner));
+    await run(request(reasoner, { thinkingLevel: "off" }));
+    expect(sentOptions().map(({ reasoning }) => reasoning)).toEqual(["high"]);
   });
 
   it("gives a backup model its own budget, not the raised one", async () => {
@@ -792,11 +788,11 @@ describe("a reply cut off at the output limit", () => {
   });
 
   it("still continues in a fresh call when there is no more room to give", async () => {
-    // A user-set budget and thinking turned off leave nothing to raise or lower.
+    // A user-set budget and a model that cannot think leave nothing to raise or lower.
     providerState.stream
-      .mockImplementationOnce(() => replyAtLimit(reasoner, "Your login just"))
-      .mockImplementation(() => streamedReply(reasoner, " expired."));
-    const events = await run(request(reasoner, { maxTokens: 2_000, thinkingLevel: "off" }));
+      .mockImplementationOnce(() => replyAtLimit(plain, "Your login just"))
+      .mockImplementation(() => streamedReply(plain, " expired."));
+    const events = await run(request(plain, { maxTokens: 2_000 }));
     expect(sentOptions().map(({ maxTokens, reasoning }) => [maxTokens, reasoning])).toEqual([
       [2_000, undefined],
       [2_000, undefined],

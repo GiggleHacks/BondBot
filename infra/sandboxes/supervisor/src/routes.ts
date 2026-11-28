@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { boundedSandboxCommandTimeoutMs } from "@rakazo/core/node/sandbox-command";
-import { getLogger } from "@rakazo/logging";
+import { bestEffort, getLogger } from "@rakazo/logging";
 import { requestLogging } from "@rakazo/logging/hono";
 import type Docker from "dockerode";
 import type { Context } from "hono";
@@ -235,7 +235,7 @@ app.put("/vpn/homes/:homeKey", async (c) => {
       profile: z.string().trim().min(1).max(64).nullable(),
       locked: z.boolean(),
     })
-    .safeParse(await c.req.json().catch(() => undefined));
+    .safeParse(await jsonBody(c));
   if (!body.success) {
     return c.json({ error: "invalid VPN policy payload" }, 400);
   }
@@ -245,7 +245,7 @@ app.put("/vpn/homes/:homeKey", async (c) => {
   // SANDBOX_COMPUTER_DNS, Docker 28+ forwards from the host namespace, past the Kill Switch.
   if (body.data.profile !== null || body.data.locked) {
     if (computerEgressSetting === "auto") {
-      await ensureComputerEgress().catch(() => undefined);
+      await bestEffort("set up computer egress for a VPN", ensureComputerEgress());
     }
     if (computerEgressMode !== "restricted") {
       return c.json(
@@ -277,7 +277,7 @@ app.post("/vpn/reconcile", async (c) => {
         }),
       ),
     })
-    .safeParse(await c.req.json().catch(() => undefined));
+    .safeParse(await jsonBody(c));
   if (!body.success) {
     return c.json({ error: "invalid reconcile payload" }, 400);
   }

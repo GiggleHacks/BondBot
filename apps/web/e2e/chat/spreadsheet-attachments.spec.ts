@@ -33,8 +33,9 @@ test("Excel files can be attached and uploaded without losing their bytes", asyn
   await captureScreenshot(page, testInfo, "excel-attachments-ready");
   await composer.fill("Here are the current statements");
   await composer.press("Enter");
+  // The bubble shows before the files upload; this one appears once the server stored the message.
   await expect(
-    page.getByTestId("transcript").getByText("Here are the current statements", { exact: true }),
+    page.getByTestId("message-user-bubble").filter({ hasText: "Here are the current statements" }),
   ).toBeVisible();
   const artifacts = await rpc<Artifact[]>(page, "artifacts/list", { botId: activeBotId(page) });
   for (const [index, file] of files.entries()) {

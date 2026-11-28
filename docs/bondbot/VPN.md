@@ -45,8 +45,9 @@ restricted computer network.
 
 ### Without Docker for the VPN manager
 
-The manager is one Python file, `infra/vpn-manager/rakazo-vpn-manager.py`, and can also run as
-root straight on the host (this is how the original Unraid install runs it). It needs
+The manager is `infra/vpn-manager/rakazo-vpn-manager.py` and the two `rakazo_vpn_*.py` modules
+beside it. Copy all three to one folder. It can also run as root straight on the host (this is how
+the original Unraid install runs it). It needs
 `python3`, `wg`, `wg-quick`, `ip`, `iptables`, `curl` and the `docker` CLI. Point it at a folder
 with `RAKAZO_VPN_PROFILES_DIR`, start it at boot, and mount `/var/run/rakazo-vpn` into the
 supervisor. Run its tests with `python3 infra/vpn-manager/test/test_vpn_manager.py`.
@@ -86,12 +87,12 @@ operator places straight in the VPN manager's folder are shared with every Space
 
 ## When a test fails
 
-| Message | What to do |
-| --- | --- |
-| No response | The file is old, was deleted in your VPN account, or the plan's connection limit is reached. Make a new file and upload it. |
-| No internet | The server is busy or blocking you. Try later or use another server. |
-| Not going through VPN | The file does not send all traffic through the VPN. Download it again with all traffic included. |
-| Test failed | The test could not be run. Check that the VPN manager is running, then try again. |
+| Message               | What to do                                                                                                                  |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| No response           | The file is old, was deleted in your VPN account, or the plan's connection limit is reached. Make a new file and upload it. |
+| No internet           | The server is busy or blocking you. Try later or use another server.                                                        |
+| Not going through VPN | The file does not send all traffic through the VPN. Download it again with all traffic included.                            |
+| Test failed           | The test could not be run. Check that the VPN manager is running, then try again.                                           |
 
 ## Security notes
 

@@ -1,9 +1,14 @@
 // Local addition (David, 2026-11-22): signal bars in the header. Three green bars = live, two amber =
 // slow or reconnecting, one red with a slash = offline. Tap for a small panel and an instant check.
+import { useNow } from "@rakazo/chat-ui/hooks";
 import { Button, Popover, PopoverContent, PopoverTrigger } from "@rakazo/ui-web";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import type { ConnectionLevel, ConnectionSnapshot } from "../lib/connection-status";
-import { ConnectionMonitor, connectionMonitor } from "../lib/connection-status";
+import type {
+  ConnectionLevel,
+  ConnectionMonitor,
+  ConnectionSnapshot,
+} from "../lib/connection-status";
+import { connectionMonitor } from "../lib/connection-status";
 
 const STYLES = `
 @keyframes cxblip{0%{filter:brightness(2.2)}100%{filter:brightness(1)}}
@@ -21,7 +26,13 @@ const LABEL: Record<ConnectionLevel, string> = {
   reconnecting: "Reconnecting…",
   offline: "Offline",
 };
-const LIT: Record<ConnectionLevel, number> = { checking: 0, good: 3, slow: 2, reconnecting: 2, offline: 1 };
+const LIT: Record<ConnectionLevel, number> = {
+  checking: 0,
+  good: 3,
+  slow: 2,
+  reconnecting: 2,
+  offline: 1,
+};
 const COLOR: Record<ConnectionLevel, string> = {
   checking: "bg-foreground/30",
   good: "bg-emerald-400",
@@ -42,9 +53,17 @@ export function describeConnection(snap: ConnectionSnapshot, now: number) {
   const since = ago(snap.lastOkAt, now);
   switch (snap.level) {
     case "good":
-      return { title: LABEL.good, line: `Server answered in ${snap.latencyMs ?? "?"} ms`, note: "Updates arrive in real time." };
+      return {
+        title: LABEL.good,
+        line: `Server answered in ${snap.latencyMs ?? "?"} ms`,
+        note: "Updates arrive in real time.",
+      };
     case "slow":
-      return { title: LABEL.slow, line: `Server answered in ${snap.latencyMs ?? "?"} ms`, note: "It works, just slowly. Updates may lag." };
+      return {
+        title: LABEL.slow,
+        line: `Server answered in ${snap.latencyMs ?? "?"} ms`,
+        note: "It works, just slowly. Updates may lag.",
+      };
     case "reconnecting":
       return {
         title: LABEL.reconnecting,
@@ -68,13 +87,7 @@ export function ConnectionBars({ monitor = connectionMonitor }: { monitor?: Conn
   const snap = useSyncExternalStore(monitor.subscribe, monitor.getSnapshot);
   useEffect(() => monitor.start(), [monitor]);
   const [open, setOpen] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!open) return;
-    setNow(Date.now());
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [open]);
+  const now = useNow(open ? 1000 : null);
   const level = snap.level;
   const lit = LIT[level];
   const info = describeConnection(snap, now);

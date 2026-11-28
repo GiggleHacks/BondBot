@@ -2,12 +2,12 @@ import type { AgentRuntimeEvent } from "@rakazo/adapter-kit";
 import { isBackgroundRunTrigger, redactSecrets, redactSecretsAfter } from "@rakazo/core";
 import { RunHistoryWriteError, recordUsage } from "@rakazo/db";
 import { bestEffort } from "@rakazo/logging";
-import { isStrategicInitiativeRun } from "../../routines/strategic-initiative.js";
 import {
   clearReasoningBuffer,
   reasoningEnabledFor,
   takeReasoningChunk,
 } from "../../reasoning-capture.js";
+import { isStrategicInitiativeRun } from "../../routines/strategic-initiative.js";
 import { withRuntimeCleanup } from "../../runtime/runtime-stream.js";
 import { snapshotReply } from "../assembly/reply-snapshot.js";
 import type { RunContext } from "../assembly/run-context.js";
@@ -103,7 +103,10 @@ export async function consumeRunEvents(
     }
   };
   const queueReasoning = (final: boolean) => {
-    reasoningChain = reasoningChain.then(() => publishReasoning(final)).catch(() => {});
+    reasoningChain = bestEffort(
+      "publish live reasoning",
+      reasoningChain.then(() => publishReasoning(final)),
+    );
     return reasoningChain;
   };
   const startReasoningTimer = () => {

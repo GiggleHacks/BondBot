@@ -337,7 +337,8 @@ test("changes and recovers an email password", async ({ page }, testInfo) => {
     "current-password",
   );
   await expect(settings.getByLabel("New password")).toHaveAttribute("autocomplete", "new-password");
-  await expect(settings.getByLabel("New password")).toHaveAttribute("minlength", "8");
+  // BondBot signs in with a PIN, so the shortest password is the PIN length.
+  await expect(settings.getByLabel("New password")).toHaveAttribute("minlength", "6");
   await expect(settings.getByLabel("Current password")).not.toHaveAttribute("minlength");
   await expect(settings.getByLabel("Confirm password")).toHaveAttribute(
     "autocomplete",
@@ -377,7 +378,7 @@ test("changes and recovers an email password", async ({ page }, testInfo) => {
       html: string;
     }>;
     return messages.filter(
-      (message) => message.to === email && message.subject === "Reset your Rakazo password",
+      (message) => message.to === email && message.subject === "Reset your BondBot password",
     );
   };
   await expect.poll(async () => (await sentToUser()).length).toBeGreaterThan(0);

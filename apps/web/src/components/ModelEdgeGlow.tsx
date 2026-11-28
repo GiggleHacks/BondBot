@@ -1,7 +1,8 @@
 // Local addition (David, 2026-11-21): a very faint colour around the chat that follows the bot's model maker.
-import { modelBrandKey } from "./ModelBrandIcon";
-import { glowShadow, MODEL_GLOW_COLORS } from "../lib/model-label";
+
 import { modelGlowPreference } from "../lib/model-glow-pref";
+import { glowShadow, MODEL_GLOW_COLORS } from "../lib/model-label";
+import { modelBrandKey } from "./ModelBrandIcon";
 
 export function modelGlowColorFor(
   provider: string | null | undefined,

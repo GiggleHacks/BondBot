@@ -73,7 +73,13 @@ export function BotContextMenu({
     currentProfile: string | null;
     locked: boolean;
     hostCountry: string | null;
-    profiles: Array<{ id: string; countryCode: string; countryName: string; serverLabel: string; up: boolean }>;
+    profiles: Array<{
+      id: string;
+      countryCode: string;
+      countryName: string;
+      serverLabel: string;
+      up: boolean;
+    }>;
     onSelectProfile: (profile: string | null, label: string) => void;
     onToggleLock: (locked: boolean) => void;
   };
@@ -171,7 +177,10 @@ export function BotContextMenu({
               <Globe />
               <span>VPN</span>
               <span className="ms-auto flex items-center gap-1">
-                <CountryFlag code={vpnMenu.currentCode} className="h-2.5 w-3.5 rounded-[2px] ring-1 ring-white/15" />
+                <CountryFlag
+                  code={vpnMenu.currentCode}
+                  className="h-2.5 w-3.5 rounded-[2px] ring-1 ring-white/15"
+                />
                 {vpnMenu.locked ? <Lock className="size-3 text-emerald-400" /> : null}
               </span>
             </ContextMenuSubTrigger>
@@ -180,7 +189,10 @@ export function BotContextMenu({
                 disabled={vpnMenu.locked}
                 onClick={() => vpnMenu.onSelectProfile(null, "Direct")}
               >
-                <CountryFlag code={vpnMenu.hostCountry ?? "TH"} className="h-2.5 w-3.5 rounded-[2px] ring-1 ring-white/15" />
+                <CountryFlag
+                  code={vpnMenu.hostCountry ?? "TH"}
+                  className="h-2.5 w-3.5 rounded-[2px] ring-1 ring-white/15"
+                />
                 <span>Direct (Thailand)</span>
                 {vpnMenu.currentProfile === null ? <Check className="ms-auto" /> : null}
               </ContextMenuItem>
@@ -191,7 +203,10 @@ export function BotContextMenu({
                     vpnMenu.onSelectProfile(prof.id, `${prof.countryName} (${prof.serverLabel})`)
                   }
                 >
-                  <CountryFlag code={prof.countryCode} className="h-2.5 w-3.5 rounded-[2px] ring-1 ring-white/15" />
+                  <CountryFlag
+                    code={prof.countryCode}
+                    className="h-2.5 w-3.5 rounded-[2px] ring-1 ring-white/15"
+                  />
                   <span>{prof.countryName}</span>
                   <span className="text-label text-muted-foreground">{prof.serverLabel}</span>
                   {vpnMenu.currentProfile === prof.id ? <Check className="ms-auto" /> : null}
@@ -203,9 +218,7 @@ export function BotContextMenu({
                 onClick={() => vpnMenu.onToggleLock(!vpnMenu.locked)}
               >
                 <Lock />
-                <span>
-                  {vpnMenu.locked ? "Unlock Kill Switch" : "Lock to VPN (Kill Switch)"}
-                </span>
+                <span>{vpnMenu.locked ? "Unlock Kill Switch" : "Lock to VPN (Kill Switch)"}</span>
                 {vpnMenu.locked ? <Check className="ms-auto" /> : null}
               </ContextMenuItem>
             </ContextMenuSubContent>

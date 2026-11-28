@@ -1,3 +1,4 @@
+import { bestEffort } from "@rakazo/logging/best-effort";
 import type { LocalVoiceNote, VoiceNoteStore, VoiceNoteTarget } from "./store";
 
 /** A slice of audio reaches storage this often, so a crash loses at most this much. */
@@ -92,7 +93,7 @@ export class VoiceNoteRecorder {
     } catch (error) {
       // The microphone is open but nothing can record or store: do not leave it running.
       this.release(stream);
-      await this.store.deleteNote(input.clientId).catch(() => undefined);
+      await bestEffort("delete the voice note", this.store.deleteNote(input.clientId));
       throw error;
     }
   }
@@ -179,8 +180,7 @@ export class VoiceNoteRecorder {
     return note;
   }
 
-  private readonly onTrackEnded = () =>
-    this.interrupt(INTERRUPTED);
+  private readonly onTrackEnded = () => this.interrupt(INTERRUPTED);
 
   /** Hidden pages (a call, the screen locking) may never fire the next slice: store it now. */
   private readonly onVisibility = () => {
@@ -283,7 +283,7 @@ export class VoiceNoteRecorder {
   private async releaseScreen() {
     const lock = this.wakeLock;
     this.wakeLock = null;
-    if (lock) await lock.release().catch(() => undefined);
+    if (lock) await bestEffort("release the screen wake lock", lock.release());
   }
 }
 

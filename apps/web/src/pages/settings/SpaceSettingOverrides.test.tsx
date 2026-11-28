@@ -163,27 +163,36 @@ it("follows the account until a setting is customized, then edits the Space's ow
   );
   await render();
   await vi.waitFor(() => expect(button("Customize Models")).not.toBeNull());
-  expect(button("Customize Voice")?.textContent).toBe("Customize");
-  expect(button("Customize Approvals")).not.toBeNull();
+  expect(button("Customize Approvals")?.textContent).toBe("Customize");
+  // BondBot has no voice settings to customize.
+  expect(button("Customize Voice")).toBeNull();
   expect(button("Customize Vault")).not.toBeNull();
-  expect(container.textContent?.match(/Same as your account/g)).toHaveLength(4);
+  expect(container.textContent?.match(/Same as your account/g)).toHaveLength(3);
   expect(panels).toEqual([]);
   // The calls go to the space these settings are bound to, not the selected one.
   expect(rpcForSpace).toHaveBeenCalledWith("space-a");
 
-  await click("Customize Voice");
-  expect(spaceSettings.setOverride).toHaveBeenLastCalledWith({ setting: "voice", enabled: true });
+  await click("Customize Approvals");
+  expect(spaceSettings.setOverride).toHaveBeenLastCalledWith({
+    setting: "confirmations",
+    enabled: true,
+  });
   await vi.waitFor(() =>
-    expect(container.querySelector('[data-testid="voice-panel"]')).not.toBeNull(),
+    expect(container.querySelector('[data-testid="confirmations-panel"]')).not.toBeNull(),
   );
-  expect(new Set(panels)).toEqual(new Set(["voice:space"]));
-  expect(button("Use account settings for Voice")?.textContent).toBe("Use account settings");
-  expect(container.textContent?.match(/Same as your account/g)).toHaveLength(3);
+  expect(new Set(panels)).toEqual(new Set(["confirmations:space"]));
+  expect(button("Use account settings for Approvals")?.textContent).toBe("Use account settings");
+  expect(container.textContent?.match(/Same as your account/g)).toHaveLength(2);
 
-  await click("Use account settings for Voice");
-  expect(spaceSettings.setOverride).toHaveBeenLastCalledWith({ setting: "voice", enabled: false });
-  await vi.waitFor(() => expect(container.querySelector('[data-testid="voice-panel"]')).toBeNull());
-  expect(button("Customize Voice")).not.toBeNull();
+  await click("Use account settings for Approvals");
+  expect(spaceSettings.setOverride).toHaveBeenLastCalledWith({
+    setting: "confirmations",
+    enabled: false,
+  });
+  await vi.waitFor(() =>
+    expect(container.querySelector('[data-testid="confirmations-panel"]')).toBeNull(),
+  );
+  expect(button("Customize Approvals")).not.toBeNull();
 });
 
 it("opens the panels a Space already customizes", async () => {
@@ -204,11 +213,11 @@ it("shows a lone Space's overrides only once one is customized", async () => {
   await act(flush);
   expect(container.querySelector('[data-testid="space-setting-overrides"]')).toBeNull();
 
-  spaceSettings.overrides.mockResolvedValue(["voice"]);
+  spaceSettings.overrides.mockResolvedValue(["confirmations"]);
   await act(async () => root.unmount());
   root = createRoot(container);
   await render(<SpaceSettingOverrides hideUntilCustomized onClose={() => undefined} />);
-  await vi.waitFor(() => expect(button("Use account settings for Voice")).not.toBeNull());
+  await vi.waitFor(() => expect(button("Use account settings for Approvals")).not.toBeNull());
 });
 
 it("asks before going back to the defaults deletes the Space's own vault", async () => {

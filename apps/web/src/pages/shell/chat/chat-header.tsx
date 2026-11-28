@@ -108,9 +108,9 @@ export function ChatHeader({
             trigger={
               <Button
                 variant="floating"
-                size="sm"
+                size="lg"
                 aria-label={`VPN settings for ${active.name}`}
-                className="app-no-drag h-[34px] rounded-full px-1.5"
+                className="app-no-drag rounded-full px-1.5"
               >
                 <ComputerVpnFlagChip
                   botVpn={vpn.overview.bots[active.id]}
@@ -127,11 +127,11 @@ export function ChatHeader({
           ) : (
             <Button
               variant="floating"
-              size="icon-sm"
+              size="icon-lg"
               data-testid="header-model-chip"
               aria-label={`Model: ${active.modelId ?? ""}`}
               onClick={onTogglePanel}
-              className="app-no-drag size-[34px] shrink-0 rounded-full p-0"
+              className="app-no-drag shrink-0 rounded-full p-0"
             >
               <ModelBrandIcon
                 modelProvider={active.modelProvider}

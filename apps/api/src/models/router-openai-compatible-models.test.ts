@@ -1293,7 +1293,8 @@ describe("openai-compatible enabled models", () => {
     );
   });
 
-  it("keeps a non-reasoning endpoint's bots at thinking off", async () => {
+  // BondBot keeps thinking on for every compatible model.
+  it("saves a thinking level even when the endpoint was saved as non-reasoning", async () => {
     const { call, prisma } = fixture({
       plaintext: secretText(["m-a", "m-b"], false),
       defaultModel: "m-a",
@@ -1306,8 +1307,8 @@ describe("openai-compatible enabled models", () => {
       thinkingLevel: "high",
     });
 
-    expect(result).toEqual({ status: 400, message: "Thinking level must be one of: off" });
-    expect(prisma.bot.update).not.toHaveBeenCalled();
+    expect(result.status).toBe(200);
+    expect(prisma.bot.update).toHaveBeenCalled();
   });
 
   it("saves a bot on this space's default when another space wrote the list", async () => {

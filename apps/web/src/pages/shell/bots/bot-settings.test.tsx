@@ -180,7 +180,7 @@ async function renderSettings(onSave: (patch: SavePatch) => Promise<void>, curre
 }
 
 describe("BotSettings rarely changed settings", () => {
-  const rows = ["-auto-speak", "-daily-check-ins", "-cross-space", "-fleet-management"];
+  const rows = ["-daily-check-ins", "-cross-space", "-fleet-management"];
 
   it("hides them while the bot keeps the defaults", async () => {
     await renderSettings(
@@ -195,15 +195,10 @@ describe("BotSettings rarely changed settings", () => {
     const onSave = vi.fn<(patch: SavePatch) => Promise<void>>(async () => undefined);
     await renderSettings(onSave, {
       ...bot,
-      autoSpeak: true,
       dailyCheckIns: false,
       crossSpaceCommunication: false,
       fleetManagement: false,
     });
-    const speechToggle = container.querySelector<HTMLButtonElement>('[id$="-auto-speak"]');
-    const speechRow = speechToggle?.closest("label");
-    expect(speechRow?.htmlFor).toBe(speechToggle?.id);
-    expect(speechRow?.textContent).toBe("Read replies aloud");
     expect(container.querySelector('label[for$="-daily-check-ins"]')?.textContent?.trim()).toBe(
       "Daily check-ins on unfinished work",
     );

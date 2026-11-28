@@ -110,6 +110,7 @@ export function UpdateProgress({ job }: { job: BondbotUpdateJob }) {
               aria-hidden="true"
             />
           </summary>
+          {/* off-scale: build log in a compact popover. */}
           <p className="mt-1.5 font-mono text-[11px] leading-snug break-all text-muted-foreground">
             {job.detail ?? job.message}
           </p>
@@ -126,8 +127,10 @@ export function UpdateProgress({ job }: { job: BondbotUpdateJob }) {
       ) : null}
       {job.error ? <p className="text-label break-words text-destructive">{job.error}</p> : null}
       {job.logTail && job.phase === "failed" ? (
+        // off-scale: build log disclosure.
         <details className="text-[11px] text-muted-foreground">
           <summary className="cursor-pointer font-medium select-none">Build output</summary>
+          {/* off-scale: build log lines. */}
           <pre className="mt-1.5 max-h-28 overflow-auto rounded bg-background/80 p-2 font-mono text-[10px] whitespace-pre-wrap">
             {job.logTail}
           </pre>

@@ -5,6 +5,7 @@ type Brand = { label: string; file: string; mono: boolean; color?: string };
 
 const BRANDS: Record<string, Brand> = {
   xai: { label: "xAI Grok", file: "xai.svg", mono: true },
+  // biome-ignore lint/plugin: the vendor's own brand colour.
   anthropic: { label: "Anthropic Claude", file: "anthropic.svg", mono: true, color: "#D97757" },
   deepseek: { label: "DeepSeek", file: "deepseek-color.svg", mono: false },
   openai: { label: "OpenAI", file: "openai.svg", mono: true },
@@ -59,7 +60,7 @@ export function ModelBrandIcon({
   const brand = BRANDS[key];
   if (!brand) return null;
   const url = `/model-icons/${brand.file}`;
-  const title = modelId ? `${brand.label} · ${modelId}` : brand.label;
+  const title = modelId ? `${brand.label}\n${modelId}` : brand.label;
   if (brand.mono) {
     return (
       <span

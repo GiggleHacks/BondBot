@@ -31,7 +31,10 @@ export function shortModelLabel(modelId: string): string {
   const tokens = id.split(/[-_:\s]+/).filter(Boolean);
   if (tokens.length === 0) return modelId;
   // DeepSeek's "flash" is its everyday tier; the version and variant are what tell them apart.
-  const kept = tokens[0]?.toLowerCase() === "deepseek" ? tokens.filter((token) => token.toLowerCase() !== "flash") : tokens;
+  const kept =
+    tokens[0]?.toLowerCase() === "deepseek"
+      ? tokens.filter((token) => token.toLowerCase() !== "flash")
+      : tokens;
   return kept
     .map((token) => WORDS[token.toLowerCase()] ?? token.charAt(0).toUpperCase() + token.slice(1))
     .join(" ");

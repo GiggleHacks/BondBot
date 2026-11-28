@@ -46,8 +46,8 @@ describe("createVoiceProvider", () => {
   it("exposes the hosted catalog behind one factory", () => {
     process.env.AGENT_RUNTIME = "pi";
     vi.stubEnv("RAKAZO_OPENAI_COMPAT_ALLOW_PUBLIC", "0");
+    // BondBot does not offer ElevenLabs.
     expect(listVoiceCatalog({ allowPrivateEndpoint: true }).map((entry) => entry.id)).toEqual([
-      "elevenlabs",
       "openai",
       "cartesia",
       "fish-audio",
@@ -56,19 +56,17 @@ describe("createVoiceProvider", () => {
       "openai-compatible",
     ]);
     expect(listVoiceCatalog().map((entry) => entry.id)).toEqual([
-      "elevenlabs",
       "openai",
       "cartesia",
       "fish-audio",
       "xai",
       "openrouter",
     ]);
-    expect(createVoiceProvider("elevenlabs").describe().id).toBe("elevenlabs");
     expect(createVoiceProvider("openai").describe().capabilities.transcribe).toBe(true);
     expect(createVoiceProvider("cartesia").describe().capabilities.transcribe).toBe(false);
     expect(createVoiceProvider("fish-audio").describe().capabilities.transcribe).toBe(true);
     expect(createVoiceProvider("openai-compatible").describe().capabilities.transcribe).toBe(true);
-    expect(isVoiceProviderId("elevenlabs")).toBe(true);
+    expect(isVoiceProviderId("elevenlabs")).toBe(false);
     expect(isVoiceProviderId("scripted")).toBe(false);
     expect(isVoiceProviderId("piper")).toBe(false);
     expect(() => createVoiceProvider("piper")).toThrow(/unknown voice provider/i);

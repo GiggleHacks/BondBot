@@ -1,33 +1,28 @@
 import { expect, test } from "@playwright/test";
-import { captureScreenshot, completeOnboarding, signup } from "../helpers/helpers";
+import { completeOnboarding, signup } from "../helpers/helpers";
 
-test("incoming calls show answer and decline controls in both themes", async ({
-  page,
-}, testInfo) => {
+// BondBot turns phone calls off in favour of voice notes.
+test("an incoming call does not ring in the chat", async ({ page }) => {
   await signup(page, `incoming-call-${Date.now()}@rakazo.test`, "password12", "Caller");
   await completeOnboarding(page);
+  let ringing = false;
   await page.route("**/rpc/spaces/list", async (route) => {
     const response = await route.fetch();
     const body = await response.json();
     const bot = body.json.current.bots[0];
-    if (bot)
+    if (bot) {
+      ringing = true;
       bot.incomingCall = {
         callId: "00000000-0000-4000-8000-000000000001",
         reason: "Review the report",
         opening: "Hello",
         expiresAt: new Date(Date.now() + 45000).toISOString(),
       };
+    }
     await route.fulfill({ response, json: body });
   });
   await page.reload();
-  const call = page.getByTestId("incoming-call");
-  await expect(call.getByRole("button", { name: "Decline", exact: true })).toBeVisible();
-  await expect(call.getByRole("button", { name: "Answer", exact: true })).toBeVisible();
-  for (const theme of ["light", "dark"]) {
-    await page.evaluate((theme) => {
-      document.documentElement.classList.toggle("dark", theme === "dark");
-      document.documentElement.dataset.theme = theme;
-    }, theme);
-    await captureScreenshot(page, testInfo, `incoming-call-${theme}`);
-  }
+  await expect.poll(() => ringing).toBe(true);
+  await expect(page.getByRole("combobox", { name: /Message/ })).toBeVisible();
+  await expect(page.getByTestId("incoming-call")).toHaveCount(0);
 });

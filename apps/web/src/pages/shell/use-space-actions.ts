@@ -36,19 +36,21 @@ export function useSpaceActions({
     });
   }
 
-  async function removeSpace(spaceId: string) {
+  /** Resolves true when the page is reloading into another space. */
+  async function removeSpace(spaceId: string): Promise<boolean> {
     const result = await rpc.spaces.remove({ spaceId });
-    if (!alive.current) return;
+    if (!alive.current) return false;
     closePanel();
     const effectiveSpaceId = selectedSpaceId() ?? bootstrapMe?.spaceId;
     if (effectiveSpaceId === spaceId) {
       // The auth boundary changed, so reload like a space switch.
       if (selectSpace(result.activeSpaceId)) {
         window.location.assign("/app");
-        return;
+        return true;
       }
     }
     await refreshBots(true);
+    return false;
   }
 
   async function leftSpace(spaceId: string, activeSpaceId: string) {

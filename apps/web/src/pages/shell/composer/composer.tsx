@@ -47,13 +47,11 @@ import {
 import { isFilePaste } from "../../../lib/composer/pending-attachments";
 import type { ArtifactTarget } from "../../../lib/pages/artifact-open";
 import { usePageSession } from "../../../lib/pages/pages";
-import { hasOpenDialog } from "../../../lib/platform/has-open-dialog";
 import { useEventListener } from "../../../lib/use-event-listener";
 import { voiceNotes, voiceNotesSupported } from "../../../lib/voice-notes/voice-notes";
 import { ComposerReplyPreview } from "../chat/chat-context";
 import type { PendingAttachment } from "../chat/chat-shared";
 import { previewMessageText } from "../chat/chat-shared";
-import { isApplePlatform, isEditableTarget, primaryModifier } from "../shell-shortcuts";
 import { ComposerError } from "./composer-error";
 import { ComposerChip, ComposerMentionHighlights } from "./composer-mentions";
 import {
@@ -66,6 +64,7 @@ import { HoldToTalkStrip, useHoldToTalk } from "./hold-to-talk";
 import { useComposerFileDrop } from "./use-composer-file-drop";
 import { useComposerLayout } from "./use-composer-layout";
 import { useComposerTriggers } from "./use-composer-triggers";
+import { useVoiceNoteShortcut } from "./use-voice-note-shortcut";
 
 export const LARGE_PASTE_THRESHOLD = 4_000;
 
@@ -354,56 +353,10 @@ const ComposerBody = memo(function Composer({
     composerFieldRef,
     expanded,
   } = useComposerLayout(draft, selectedSkill !== null);
-  // Cmd/Ctrl+D records a voice note like the mic button: tap to record hands-free (press
-  // again to send), or hold to talk and release to send. Escape discards. The field hides
-  // while recording, so the keys are heard window-wide.
-  const dictateKey = useRef({ talk, available: false, downAt: 0 });
-  dictateKey.current = {
+  useVoiceNoteShortcut({
     talk,
     available: !disabled && !onCall && voiceNotesSupported() && draft.trim().length === 0,
-    downAt: dictateKey.current.downAt,
-  };
-  useEventListener(window, "keydown", (event) => {
-    const { talk, available } = dictateKey.current;
-    if (talk.recording && event.key === "Escape" && !hasOpenDialog(document)) {
-      event.preventDefault();
-      talk.cancel();
-      return;
-    }
-    if (event.repeat || event.altKey || event.shiftKey || event.key?.toLowerCase() !== "d") return;
-    if (!primaryModifier(event, isApplePlatform())) return;
-    if (talk.recording) {
-      // Pressed while typing elsewhere, it belongs to that field rather than this recording.
-      if (!talk.recording.locked) return;
-      if (isEditableTarget(event.target) || hasOpenDialog(document)) return;
-      event.preventDefault();
-      talk.submit();
-    } else if (
-      available &&
-      (document.activeElement === textareaRef.current ||
-        (!isEditableTarget(event.target) && !hasOpenDialog(document)))
-    ) {
-      event.preventDefault();
-      dictateKey.current.downAt = Date.now();
-      talk.startHeld();
-    }
-  });
-  const releaseTalkKey = () => {
-    const { talk, downAt } = dictateKey.current;
-    if (!downAt || !talk.recording || talk.recording.locked) return;
-    dictateKey.current.downAt = 0;
-    talk.release(Date.now() - downAt);
-  };
-  useEventListener(window, "keyup", (event) => {
-    const key = event.key?.toLowerCase();
-    if (key !== "d" && key !== "control" && key !== "meta") return;
-    releaseTalkKey();
-  });
-  // The keyup never arrives when the window loses focus or the page hides while the key is
-  // held (alt-tab, a call, the screen locking): let go as if it had.
-  useEventListener(window, "blur", releaseTalkKey);
-  useEventListener(document, "visibilitychange", () => {
-    if (document.visibilityState === "hidden") releaseTalkKey();
+    textareaRef,
   });
   useLayoutEffect(() => {
     if (pendingCaret.current === null) return;

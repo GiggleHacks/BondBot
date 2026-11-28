@@ -1,6 +1,7 @@
 // Local addition (David, 2026-11-21): tap the model icon in the chat header, pick a model from a
 // dropdown. The pixel animation plays only after the server has saved the switch.
 
+import { useNow, useTimeout } from "@rakazo/chat-ui/hooks";
 import type { ConnectedModelChoice } from "@rakazo/core";
 import { connectedModelChoices, modelOptionKey } from "@rakazo/core";
 import { Button, Popover, PopoverContent, PopoverTrigger, toast } from "@rakazo/ui-web";
@@ -25,16 +26,13 @@ function iconSpecFor(
   return {
     url: `/model-icons/${info.file}`,
     mono: info.mono,
+    // biome-ignore lint/plugin: drawn on a canvas, which takes no theme token.
     tint: info.color ?? "#f4f4f5",
   };
 }
 
 function PixelDots() {
-  const [step, setStep] = useState(0);
-  useEffect(() => {
-    const timer = setInterval(() => setStep((value) => (value + 1) % 3), 140);
-    return () => clearInterval(timer);
-  }, []);
+  const step = Math.floor(useNow(140) / 140) % 3;
   return (
     <span aria-hidden="true" className="flex items-end gap-[3px]" data-testid="model-row-pending">
       {[0, 1, 2].map((i) => (
@@ -105,6 +103,7 @@ function StarButton({ choice, starred }: { choice: ConnectedModelChoice; starred
 
 function SectionLabel({ children }: { children: string }) {
   return (
+    // off-scale: menu section heading in a compact popover.
     <div className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
       {children}
     </div>
@@ -131,8 +130,7 @@ export function ModelSwitcherView({
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const chipRef = useRef<HTMLButtonElement>(null);
-  const errorTimerRef = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(errorTimerRef.current), []);
+  useTimeout(() => setErrorKey(null), errorKey ? 2500 : null, errorKey);
   const currentKey =
     bot.modelProvider && bot.modelId ? modelOptionKey(bot.modelProvider, bot.modelId) : "";
 
@@ -168,11 +166,6 @@ export function ModelSwitcherView({
     } catch {
       setPendingKey(null);
       setErrorKey(choice.key);
-      window.clearTimeout(errorTimerRef.current);
-      errorTimerRef.current = window.setTimeout(
-        () => setErrorKey((key) => (key === choice.key ? null : key)),
-        2500,
-      );
       return;
     }
     // The server has saved it: only now does anything celebrate.
@@ -187,6 +180,7 @@ export function ModelSwitcherView({
       chipBackground: style.backgroundColor,
       from: iconSpecFor(bot.modelProvider, bot.modelId),
       to: iconSpecFor(to.provider, to.modelId),
+      // biome-ignore lint/plugin: drawn on a canvas, which takes no theme token.
       color: modelGlowColorFor(to.provider, to.modelId) ?? "#d4d4d8",
     });
   }
@@ -226,6 +220,7 @@ export function ModelSwitcherView({
             className="size-[18px]"
           />
           <span className="min-w-0 flex-1 truncate">{shortModelLabel(choice.modelId)}</span>
+          {/* off-scale: secondary hint in a compact menu row. */}
           <span className="text-[11px] font-normal text-muted-foreground">High</span>
           <span className="grid w-4 place-items-center">
             {state === "pending" ? (
@@ -249,10 +244,10 @@ export function ModelSwitcherView({
           <Button
             ref={chipRef}
             variant="floating"
-            size="icon-sm"
+            size="icon-lg"
             data-testid="header-model-chip"
             aria-label={`Model: ${bot.modelId ?? ""}. Tap to switch.`}
-            className="app-no-drag size-[34px] shrink-0 rounded-full p-0"
+            className="app-no-drag shrink-0 rounded-full p-0"
           />
         }
       >

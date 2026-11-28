@@ -208,12 +208,7 @@ it.each([false, true])(
     expect(
       fake.stream.mock.calls.map((c) => [c[0].provider, c[0].id, c[2].apiKey, c[2].reasoning]),
     ).toEqual(
-      configs.map((c) => [
-        c.provider,
-        c.id,
-        c.oauth?.credential.access ?? c.apiKey,
-        c.thinkingLevel,
-      ]),
+      configs.map((c) => [c.provider, c.id, c.oauth?.credential.access ?? c.apiKey, "high"]),
     );
     expect(fake.stream.mock.calls.map((c) => c[0].baseUrl)).toEqual(
       configs.map((c) =>
@@ -311,13 +306,8 @@ it("requires entry even when main and computer are the same model", async () => 
   ]);
   await run(input);
   expect(input.executeTool).toHaveBeenCalledTimes(1);
-  expect(fake.stream.mock.calls.map((c) => c[2].reasoning)).toEqual([
-    "high",
-    "high",
-    "medium",
-    "medium",
-    "high",
-  ]);
+  // BondBot runs both roles at high, so one entry and one refusal are what separates the turns.
+  expect(fake.stream.mock.calls.map((c) => c[2].reasoning)).toEqual(Array(5).fill("high"));
 });
 it.each([false, true])(
   "resumes cross-provider takeover without repeating it (reverse=%s)",
@@ -495,12 +485,7 @@ it("switches main -> computer -> main before any GUI effect, preserving namespac
     "computer",
     "main",
   ]);
-  expect(fake.stream.mock.calls.map((c) => c[2].reasoning)).toEqual([
-    "high",
-    "medium",
-    "medium",
-    "high",
-  ]);
+  expect(fake.stream.mock.calls.map((c) => c[2].reasoning)).toEqual(Array(4).fill("high"));
   const names = (ctx: TranscriptContext) => getCurrentTools(ctx.messages).map((t) => t.name);
   expect(names(fake.stream.mock.calls[0]![1])).not.toContain("browser_act");
   expect(names(fake.stream.mock.calls[1]![1])).toContain("browser_act");

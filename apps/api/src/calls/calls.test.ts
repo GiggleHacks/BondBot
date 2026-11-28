@@ -71,7 +71,8 @@ describe("voice catalog", () => {
         expect(catalog.some((entry) => entry.id === "openai-compatible")).toBe(
           mcpAllowPrivateEndpoint,
         );
-        expect(catalog.some((entry) => entry.id === "elevenlabs")).toBe(true);
+        // BondBot does not offer ElevenLabs.
+        expect(catalog.some((entry) => entry.id === "elevenlabs")).toBe(false);
         expect(catalog.find((entry) => entry.id === "xai")).toMatchObject({ transcribe: true });
       } finally {
         vi.unstubAllEnvs();

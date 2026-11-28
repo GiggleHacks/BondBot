@@ -69,8 +69,30 @@ afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+// BondBot plays audio with its voice note player, which loads a small clip as it comes into view
+// (at once here, where there is no IntersectionObserver) and a large one only on play.
+const LARGE = 9 * 1024 * 1024;
+
+function renderClip(artifactId = "audio-1", size = 3) {
+  root?.render(
+    <ArtifactFileCard
+      target={{ groupId: "group-1" }}
+      artifactId={artifactId}
+      name="clip"
+      mimeType="audio/mpeg"
+      size={size}
+    />,
+  );
+}
+
+const playButton = () =>
+  container.querySelector<HTMLButtonElement>('button[aria-label="Play voice note"]')!;
+const downloadButton = () =>
+  container.querySelector<HTMLButtonElement>('button[aria-label="Download clip"]')!;
+const source = () => container.querySelector("audio")?.getAttribute("src") ?? null;
+
 it.each(["audio/mpeg", "audio/wav", "audio/ogg", "audio/mp4"])(
-  "renders %s controls, keeps download, and revokes playback URL",
+  "loads %s, keeps download, and revokes the playback URL",
   async (mimeType) => {
     await act(async () =>
       root?.render(
@@ -83,53 +105,27 @@ it.each(["audio/mpeg", "audio/wav", "audio/ogg", "audio/mp4"])(
         />,
       ),
     );
-    expect(mocks.fetch).not.toHaveBeenCalled();
-    expect(container.querySelector("audio")).toBeNull();
-    await act(async () =>
-      container.querySelector<HTMLButtonElement>('button[aria-label="Play clip"]')?.click(),
-    );
-    const audio = container.querySelector("audio");
-    expect(audio?.hasAttribute("controls")).toBe(true);
-    expect(audio?.getAttribute("preload")).toBe("metadata");
-    expect(audio?.getAttribute("aria-label")).toBe("clip");
-    expect(audio?.getAttribute("src")).toBe("blob:audio-preview");
-    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+    expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith({ botId: "bot-1" }, "audio-1");
+    expect(source()).toBe("blob:audio-preview");
     expect(mocks.create.mock.calls[0]?.[0].type).toBe(mimeType);
-    expect(mocks.fetch).toHaveBeenCalledWith({ botId: "bot-1" }, "audio-1");
-    const download = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Download clip"]',
-    );
-    expect(download).not.toBeNull();
-    await act(async () => download?.click());
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+    await act(async () => playButton().click());
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+    await act(async () => downloadButton().click());
     expect(mocks.download).toHaveBeenCalledWith({ botId: "bot-1" }, "audio-1", "clip", mimeType);
     await act(async () => root?.unmount());
     root = undefined;
     expect(mocks.revoke).toHaveBeenCalledExactlyOnceWith("blob:audio-preview");
   },
 );
+
 it("retains the download control when playback bytes fail to load", async () => {
   mocks.fetch.mockRejectedValueOnce(new Error("unavailable"));
-  await act(async () =>
-    root?.render(
-      <ArtifactFileCard
-        target={{ groupId: "group-1" }}
-        artifactId="audio-1"
-        name="clip"
-        mimeType="audio/mpeg"
-        size={3}
-      />,
-    ),
-  );
-  await act(async () =>
-    container.querySelector<HTMLButtonElement>('button[aria-label="Play clip"]')?.click(),
-  );
-  expect(container.querySelector("audio")).toBeNull();
-  expect(container.querySelector('[role="alert"]')).not.toBeNull();
-  expect(container.querySelector('button[aria-label="Download clip"]')).not.toBeNull();
+  await act(async () => renderClip());
+  expect(source()).toBeNull();
+  expect(container.textContent).toContain("Could not load. Tap play to retry.");
   expect(mocks.create).not.toHaveBeenCalled();
-  await act(async () =>
-    container.querySelector<HTMLButtonElement>('button[aria-label="Download clip"]')?.click(),
-  );
+  await act(async () => downloadButton().click());
   expect(mocks.download).toHaveBeenCalledWith(
     { groupId: "group-1" },
     "audio-1",
@@ -138,26 +134,12 @@ it("retains the download control when playback bytes fail to load", async () => 
   );
 });
 
-function renderClip(artifactId = "audio-1") {
-  root?.render(
-    <ArtifactFileCard
-      target={{ groupId: "group-1" }}
-      artifactId={artifactId}
-      name="clip"
-      mimeType="audio/mpeg"
-      size={3}
-    />,
-  );
-}
-
-it("downloads independently before playback", async () => {
-  await act(async () => renderClip());
-  await act(async () =>
-    container.querySelector<HTMLButtonElement>('button[aria-label="Download clip"]')?.click(),
-  );
+it("downloads a large clip without fetching it for playback", async () => {
+  await act(async () => renderClip("audio-1", LARGE));
+  await act(async () => downloadButton().click());
   expect(mocks.download).toHaveBeenCalledTimes(1);
   expect(mocks.fetch).not.toHaveBeenCalled();
-  expect(container.querySelector("audio")).toBeNull();
+  expect(source()).toBeNull();
 });
 
 it.each(["unmount", "change"])(
@@ -165,16 +147,15 @@ it.each(["unmount", "change"])(
   async (cleanup) => {
     const bytes = deferred<Uint8Array>();
     mocks.fetch.mockReturnValueOnce(bytes.promise);
-    await act(async () => renderClip());
-    const play = container.querySelector<HTMLButtonElement>('button[aria-label="Play clip"]')!;
+    await act(async () => renderClip("audio-1", LARGE));
     await act(async () => {
-      play.click();
-      play.click();
+      playButton().click();
+      playButton().click();
     });
     expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith({ groupId: "group-1" }, "audio-1");
-    expect(container.querySelector('[role="status"]')).not.toBeNull();
+    expect(playButton().getAttribute("aria-busy")).toBe("true");
     await act(async () => {
-      if (cleanup === "change") renderClip("audio-2");
+      if (cleanup === "change") renderClip("audio-2", LARGE);
       else {
         root?.unmount();
         root = undefined;
@@ -182,30 +163,24 @@ it.each(["unmount", "change"])(
     });
     await act(async () => bytes.resolve(new Uint8Array([1])));
     expect(mocks.create).not.toHaveBeenCalled();
-    expect(container.querySelector("audio")).toBeNull();
+    expect(source()).toBeNull();
   },
 );
 
-it("stops playback and revokes the old URL on artifact change", async () => {
+it("revokes the old URL on artifact change", async () => {
   await act(async () => renderClip());
-  await act(async () =>
-    container.querySelector<HTMLButtonElement>('button[aria-label="Play clip"]')?.click(),
-  );
+  mocks.create.mockReturnValue("blob:second");
   await act(async () => renderClip("audio-2"));
   expect(mocks.revoke).toHaveBeenCalledExactlyOnceWith("blob:audio-preview");
-  expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(1);
-  expect(container.querySelector("audio")).toBeNull();
-  expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  expect(source()).toBe("blob:second");
 });
 
-it("keeps controls when automatic playback is rejected", async () => {
+it("keeps controls when playback is rejected", async () => {
   vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValueOnce(new Error("blocked"));
   await act(async () => renderClip());
-  await act(async () =>
-    container.querySelector<HTMLButtonElement>('button[aria-label="Play clip"]')?.click(),
-  );
-  expect(container.querySelector("audio")?.hasAttribute("controls")).toBe(true);
-  expect(container.querySelector('[role="alert"]')).toBeNull();
+  await act(async () => playButton().click());
+  expect(playButton()).not.toBeNull();
+  expect(container.textContent).not.toContain("Could not load");
 });
 
 it("translates every size unit and rolls up instead of 1,024.0 KB or 1,536.0 MB", async () => {
@@ -292,23 +267,17 @@ it("retries failed audio loads in place without duplicate requests", async () =>
     .mockRejectedValueOnce(new Error("still offline"))
     .mockImplementationOnce(() => bytes.promise);
   await act(async () => renderClip());
-  const play = () => container.querySelector<HTMLButtonElement>('button[aria-label="Play clip"]')!;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    await act(async () => play().click());
-    expect(container.querySelector('[role="alert"]')).not.toBeNull();
-    expect(play()).not.toBeNull();
-    expect(play().disabled).toBe(false);
-  }
+  expect(container.textContent).toContain("Could not load");
+  await act(async () => playButton().click());
+  expect(container.textContent).toContain("Could not load");
   await act(async () => {
-    play().click();
-    play().click();
+    playButton().click();
+    playButton().click();
   });
   expect(mocks.fetch).toHaveBeenCalledTimes(3);
-  expect(play().disabled).toBe(true);
-  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.textContent).not.toContain("Could not load");
   await act(async () => bytes.resolve(new Uint8Array([1, 2, 3])));
-  expect(container.querySelector("audio")?.getAttribute("src")).toBe("blob:audio-preview");
-  expect(play()).toBeNull();
+  expect(source()).toBe("blob:audio-preview");
   expect(mocks.create).toHaveBeenCalledTimes(1);
   expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
 });
@@ -319,12 +288,7 @@ it.each(["unmount", "change"])("ignores a rejected retry after %s", async (clean
     .mockRejectedValueOnce(new Error("offline"))
     .mockImplementationOnce(() => late.promise);
   await act(async () => renderClip());
-  await act(async () =>
-    container.querySelector<HTMLButtonElement>('button[aria-label="Play clip"]')!.click(),
-  );
-  const retry = container.querySelector<HTMLButtonElement>('button[aria-label="Play clip"]');
-  expect(retry).not.toBeNull();
-  await act(async () => retry!.click());
+  await act(async () => playButton().click());
   await act(async () => {
     if (cleanup === "change") renderClip("audio-2");
     else {
@@ -333,15 +297,11 @@ it.each(["unmount", "change"])("ignores a rejected retry after %s", async (clean
     }
   });
   await act(async () => late.reject(new Error("late failure")));
-  expect(container.querySelector('[role="alert"]')).toBeNull();
-  expect(mocks.create).not.toHaveBeenCalled();
+  expect(container.textContent).not.toContain("Could not load");
   if (cleanup === "change") {
-    await act(async () =>
-      container.querySelector<HTMLButtonElement>('button[aria-label="Play clip"]')!.click(),
-    );
     expect(mocks.fetch).toHaveBeenLastCalledWith({ groupId: "group-1" }, "audio-2");
-    expect(container.querySelector("audio")).not.toBeNull();
-  }
+    expect(source()).toBe("blob:audio-preview");
+  } else expect(mocks.create).not.toHaveBeenCalled();
 });
 
 async function openFilePreview(mimeType = "text/markdown") {

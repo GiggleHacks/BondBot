@@ -710,7 +710,7 @@ export function BotSettings({
                     side="left"
                     align="end"
                     trigger={
-                      <Button variant="outline" size="sm" className="h-7 gap-2 px-2.5">
+                      <Button variant="outline" size="sm" className="gap-2 px-2.5">
                         <ComputerVpnFlagChip
                           botVpn={vpn.overview.bots[bot.id]}
                           overview={vpn.overview}

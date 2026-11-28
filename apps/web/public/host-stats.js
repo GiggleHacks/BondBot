@@ -1,4 +1,4 @@
-(function () {
+(() => {
   var style = document.createElement("style");
   style.id = "bb-host-stats-style";
   style.textContent =
@@ -43,35 +43,33 @@
     place();
     if (!el.isConnected) return;
     fetch("/host-stats", { cache: "no-store" })
-      .then(function (r) {
-        return r.ok ? r.json() : null;
-      })
-      .then(function (s) {
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => {
         if (!s) return;
         var cpu = el.querySelector('[data-k="cpu"]');
         var cpuBar = el.querySelector('[data-k="cpu-bar"]');
         var ram = el.querySelector('[data-k="ram"]');
         var ramBar = el.querySelector('[data-k="ram-bar"]');
         if (typeof s.cpu === "number") {
-          var pct = Math.round(s.cpu * 100);
+          const pct = Math.round(s.cpu * 100);
           cpu.textContent = pct + "%";
           paint(cpu, cpuBar, pct);
         }
         if (s.ramTotal) {
-          var used = Math.round((s.ramUsed / s.ramTotal) * 100);
+          const used = Math.round((s.ramUsed / s.ramTotal) * 100);
           ram.textContent = gb(s.ramUsed) + " / " + gb(s.ramTotal);
           paint(ram, ramBar, used);
           el.title = "Available " + gb(s.ramAvailable) + " GB";
         }
       })
-      .catch(function () {});
+      .catch(() => {});
   }
   function calmThinking() {
     var buttons = document.querySelectorAll('button[aria-expanded="true"]');
-    for (var i = 0; i < buttons.length; i++) {
-      var label = buttons[i].textContent || "";
+    for (let i = 0; i < buttons.length; i++) {
+      const label = buttons[i].textContent || "";
       if (label.indexOf("Thinking") === -1) continue;
-      var box = buttons[i].nextElementSibling;
+      const box = buttons[i].nextElementSibling;
       if (!box || box.tagName !== "DIV") continue;
       box.style.height = "8.5rem";
       box.style.maxHeight = "8.5rem";

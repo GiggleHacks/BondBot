@@ -260,6 +260,7 @@ export function MultiviewTile({
             <ChevronDown size={13} className="shrink-0 text-muted-foreground" aria-hidden="true" />
           </PopoverTrigger>
           <PopoverContent align="start" className="w-56 gap-0 p-1.5">
+            {/* off-scale: menu section heading in a tile. */}
             <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
               {t`Choose computer`}
             </div>
@@ -290,6 +291,7 @@ export function MultiviewTile({
                       {candidate.name}
                     </span>
                     {candidate.computerMode === "dedicated" ? (
+                      // off-scale: badge in a tile menu.
                       <span className="text-[10px] text-muted-foreground">{t`Dedicated`}</span>
                     ) : null}
                     {selected ? <Check size={14} className="shrink-0 text-emerald-400" /> : null}
@@ -583,6 +585,7 @@ export function MultiviewTile({
                     onDoubleClick={requestControl}
                     className="group absolute inset-0 flex items-end justify-end p-2 focus:outline-none"
                   >
+                    {/* off-scale: overlay caption on a computer tile. */}
                     <span className="pointer-events-none rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white/75 opacity-0 ring-1 ring-white/15 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                       {t`Double-click to control`}
                     </span>

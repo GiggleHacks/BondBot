@@ -12,8 +12,8 @@ type ExistingBot = {
 
 /**
  * After a saved switch to a different model, adds a textless system note to the bot's chat, so the
- * model never reads it and the chat shows where the model changed. Best effort: a failure here must
- * never undo or hide the switch itself.
+ * model never reads it and the chat shows where the model changed. An empty chat gets no note: there
+ * is nothing it would divide. Best effort: a failure here must never undo or hide the switch itself.
  */
 export async function recordModelSwitch(
   deps: Pick<RouterDeps, "prisma" | "events">,
@@ -27,6 +27,11 @@ export async function recordModelSwitch(
     if (!provider || !modelId || !existing.thread) return;
     if (existing.modelProvider === provider && existing.modelId === modelId) return;
     const threadId = existing.thread.id;
+    const earlier = await deps.prisma.message.findFirst({
+      where: { threadId },
+      select: { id: true },
+    });
+    if (!earlier) return;
     const blocks = [
       {
         kind: "model_switch" as const,

@@ -1,7 +1,9 @@
 // Local addition: a send lands in the chat immediately, then uploads with speed and a bar.
+import { isModelRequiredSendError } from "@rakazo/core";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { ArtifactTarget } from "../lib/pages/artifact-open";
-import { sendQueue, type SendItem } from "../lib/send-queue";
+import type { SendItem } from "../lib/send-queue";
+import { sendQueue } from "../lib/send-queue";
 import { UploadMeter } from "./UploadMeter";
 
 function sameTarget(item: SendItem, target: ArtifactTarget): boolean {
@@ -15,13 +17,23 @@ function label(item: SendItem, online: boolean): string {
   if (item.state === "confirm") return "This model can't read images";
   if (!online) return "Waiting for connection";
   if (item.state === "pending") {
-    return item.retryAt ? (item.error ? `Retrying: ${item.error}` : "Will retry soon") : "Waiting for connection";
+    return item.retryAt
+      ? item.error
+        ? `Retrying: ${item.error}`
+        : "Will retry soon"
+      : "Waiting for connection";
   }
   return "Sending";
 }
 
 /** Messages already handed to the chat, still waiting to reach the server. */
-export function PendingOutbox({ target }: { target: ArtifactTarget }) {
+export function PendingOutbox({
+  target,
+  onConnectModel,
+}: {
+  target: ArtifactTarget;
+  onConnectModel?: () => void;
+}) {
   const state = useSyncExternalStore(sendQueue.subscribe, sendQueue.getSnapshot);
   useEffect(() => sendQueue.start(), []);
   const items = state.items.filter((item) => sameTarget(item, target));
@@ -67,6 +79,7 @@ export function PendingOutbox({ target }: { target: ArtifactTarget }) {
                   {otherFiles.map((file) => (
                     <span
                       key={file.id}
+                      // off-scale: file chip in a pending message.
                       className="max-w-[240px] truncate rounded-xl bg-chat-user/85 px-2.5 py-1 text-[12px] text-chat-user-foreground"
                     >
                       {file.name}
@@ -86,20 +99,28 @@ export function PendingOutbox({ target }: { target: ArtifactTarget }) {
               fraction={waiting && item.loaded === 0 ? 0 : item.fraction}
               bps={item.state === "uploading" ? item.bps : 0}
               label={label(item, state.online)}
+              onLabelClick={
+                item.state === "failed" && isModelRequiredSendError(item.error)
+                  ? onConnectModel
+                  : undefined
+              }
               onCancel={() => void sendQueue.cancel(item.clientNonce)}
             />
             {item.state === "confirm" ? (
               <button
                 type="button"
+                // off-scale: inline action under a pending bubble.
                 className="text-[11px] text-foreground/80 underline"
                 onClick={() => void sendQueue.sendAsFile(item.clientNonce)}
               >
                 Send as file
               </button>
             ) : null}
-            {item.state === "failed" || (item.state === "pending" && item.retryAt && state.online) ? (
+            {item.state === "failed" ||
+            (item.state === "pending" && item.retryAt && state.online) ? (
               <button
                 type="button"
+                // off-scale: inline action under a pending bubble.
                 className="text-[11px] text-foreground/80 underline"
                 onClick={() => void sendQueue.retry(item.clientNonce)}
               >

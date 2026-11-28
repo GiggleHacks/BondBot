@@ -13,7 +13,9 @@ function enabled() {
   let all = false;
   let ids = new Set<string>();
   try {
-    const parts = readFileSync(FILE, "utf8").split(/[\s,]+/).filter(Boolean);
+    const parts = readFileSync(FILE, "utf8")
+      .split(/[\s,]+/)
+      .filter(Boolean);
     all = parts.includes("*");
     ids = new Set(parts);
   } catch {
@@ -97,10 +99,13 @@ export function appendReasoningBlock<T>(
       shown.push(block);
       continue;
     }
-    const stripped = candidate.text.replace(/<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/gi, (_match, inner: string) => {
-      if (inner.trim()) inline.push(inner.trim());
-      return "";
-    });
+    const stripped = candidate.text.replace(
+      /<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/gi,
+      (_match, inner: string) => {
+        if (inner.trim()) inline.push(inner.trim());
+        return "";
+      },
+    );
     if (stripped === candidate.text) {
       shown.push(block);
     } else {

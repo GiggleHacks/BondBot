@@ -18,7 +18,7 @@ test("asks before fetching a site the message did not name", async ({ page }, te
   const card = always.locator("xpath=../..");
   const rail = row.getByTestId("message-hover-rail");
   await row.hover();
-  await rail.getByRole("button", { name: "React", exact: true }).focus();
+  await rail.getByRole("button", { name: "Reply", exact: true }).focus();
   await expect(rail).toHaveCSS("opacity", "1");
   await expect
     .poll(async () => {
@@ -32,10 +32,7 @@ test("asks before fetching a site the message did not name", async ({ page }, te
     })
     .toEqual({ gap: 4, centered: true });
   await captureScreenshot(page, testInfo, "fetch-approval-card");
-  await rail.getByRole("button", { name: "React", exact: true }).click();
-  await expect(page.getByRole("button", { name: "👍", exact: true })).toBeVisible();
-  await captureScreenshot(page, testInfo, "fetch-approval-reaction-picker");
-  await page.keyboard.press("Escape");
+  await expect(rail.getByRole("button", { name: "React", exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Deny", exact: true }).click();
   await expect(page.getByTestId("transcript").getByText("Denied", { exact: true })).toBeVisible();
