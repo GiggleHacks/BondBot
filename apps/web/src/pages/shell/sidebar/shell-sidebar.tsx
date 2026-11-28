@@ -81,12 +81,10 @@ export function ShellSidebar({
   chatMenu,
   roster,
   archived,
-  footerLogos,
   user,
   boardEnabled,
   navLinks,
   openSettings,
-  openIntegrations,
   openSkills,
   openSpaceChat,
   multiviewOpen = false,
@@ -115,12 +113,10 @@ export function ShellSidebar({
   chatMenu: ChatMenuState;
   roster: ReactNode;
   archived: ReactNode;
-  footerLogos: Array<{ name: string; logo?: string | null }>;
   user: User | undefined;
   boardEnabled: boolean;
   navLinks: NavLink[];
   openSettings: (section: SettingsSection) => void;
-  openIntegrations: () => void;
   openSkills: () => void;
   openSpaceChat: (spaceId: string, path: string) => void;
   multiviewOpen?: boolean;
@@ -322,14 +318,12 @@ export function ShellSidebar({
         </div>
         <ShellSidebarFooter
           mini={mini}
-          logos={footerLogos}
           user={user}
           boardEnabled={boardEnabled}
           navLinks={navLinks}
           closeMobileSidebar={() => setMobileOpen(false)}
           navigate={navigate}
           openSettings={openSettings}
-          openIntegrations={openIntegrations}
           openSkills={openSkills}
           openSpaceChat={openSpaceChat}
         />
@@ -340,26 +334,22 @@ export function ShellSidebar({
 
 function ShellSidebarFooter({
   mini,
-  logos,
   user,
   boardEnabled,
   navLinks,
   closeMobileSidebar,
   navigate,
   openSettings,
-  openIntegrations,
   openSkills,
   openSpaceChat,
 }: {
   mini: boolean;
-  logos: Array<{ name: string; logo?: string | null }>;
   user: User | undefined;
   boardEnabled: boolean;
   navLinks: NavLink[];
   closeMobileSidebar: () => void;
   navigate: (path: string) => void;
   openSettings: (section: SettingsSection) => void;
-  openIntegrations: () => void;
   openSkills: () => void;
   openSpaceChat: (spaceId: string, path: string) => void;
 }) {
@@ -402,7 +392,6 @@ function ShellSidebarFooter({
       ) : null}
       <SidebarFooter
         mini={mini}
-        logos={logos}
         name={userName}
         initials={initials}
         image={user?.image}
@@ -411,10 +400,6 @@ function ShellSidebarFooter({
         onOpenChange={(open) => {
           setMenuOpen(open);
           if (!open) setLogOutError(null);
-        }}
-        onIntegrations={() => {
-          setMenuOpen(false);
-          openIntegrations();
         }}
         onSkills={() => {
           setMenuOpen(false);

@@ -146,7 +146,7 @@ export function BotLookPicker({
                 onClick={() => onChange(botLookWithColor(value, color))}
                 aria-label={t`Color ${color}`}
                 aria-pressed={selected}
-                className={`size-6 rounded-full border transition-transform hover:scale-110 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring ${
+                className={`size-6 rounded-full border transition-[transform,opacity] hover:opacity-80 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring ${
                   selected
                     ? "scale-105 border-transparent ring-2 ring-foreground ring-offset-2 ring-offset-popover"
                     : "border-border"
@@ -225,7 +225,7 @@ export function AvatarStudioPopover({
         type="button"
         disabled={disabled}
         onClick={() => setOpen(true)}
-        className="group relative cursor-pointer rounded-2xl outline-none transition-transform hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-ring"
+        className="group relative cursor-pointer rounded-2xl outline-none transition-shadow hover:ring-2 hover:ring-foreground/15 focus-visible:ring-2 focus-visible:ring-ring"
         aria-label={t`Customize bot avatar`}
         data-testid="avatar-studio-trigger"
       >
@@ -236,7 +236,7 @@ export function AvatarStudioPopover({
           status={status}
           avatarSet={avatarSet}
         />
-        <div className="absolute -right-1 -bottom-1 flex size-6 items-center justify-center rounded-full border-2 border-background bg-secondary text-foreground shadow-md opacity-0 transition group-hover:scale-110 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100">
+        <div className="absolute -right-1 -bottom-1 flex size-6 items-center justify-center rounded-full border-2 border-background bg-secondary text-foreground shadow-md opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100">
           <Pencil size={12} strokeWidth={2.2} />
         </div>
       </button>

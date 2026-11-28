@@ -35,6 +35,7 @@ import type { RpcClient } from "../../lib/query/rpc";
 import { SpaceRpcProvider } from "../../lib/query/space-rpc";
 import { useEventListener } from "../../lib/use-event-listener";
 import { ModelSettingsOverlay } from "../model-settings/ModelSettingsOverlay";
+import { PluginsOverlay } from "../plugins/PluginsOverlay";
 import type { SettingsSpace } from "../shell/create-delete-dialogs";
 import type { SettingsSection } from "../shell/shell-overlay-url";
 import {
@@ -67,6 +68,9 @@ export function SettingsOverlay({
   image,
   section: requestedSection,
   onSectionChange,
+  activeBotId,
+  onOpenMcp,
+  onOpenTemplates,
   onNameSaved,
   timezone,
   onTimezoneChange,
@@ -103,6 +107,10 @@ export function SettingsOverlay({
   image?: string | null;
   section: SettingsSection;
   onSectionChange: (section: SettingsSection) => void;
+  /** The chat Integrations acts for, and the dialogs it can hand over to. */
+  activeBotId?: string;
+  onOpenMcp?: () => void;
+  onOpenTemplates?: () => void;
   onNameSaved?: () => Promise<void>;
   timezone: string | null;
   onTimezoneChange: (timezone: string, client: RpcClient) => Promise<void>;
@@ -408,7 +416,7 @@ export function SettingsOverlay({
                 key={spaceId ?? "selected"}
                 data-testid="settings-scroll"
                 className={`min-h-0 flex-1 ${
-                  section === "memory"
+                  section === "memory" || section === "integrations"
                     ? "flex flex-col overflow-hidden"
                     : "rk-scroll overflow-y-auto overscroll-contain px-6 pb-6 pt-6 sm:px-8 sm:pb-8"
                 }`}
@@ -416,7 +424,7 @@ export function SettingsOverlay({
                 {/* Memory scrolls its own body and applies the same width there; Usage's table needs the room. */}
                 <div
                   className={
-                    section === "memory" || section === "usage"
+                    section === "memory" || section === "integrations" || section === "usage"
                       ? "contents"
                       : SETTINGS_CONTENT_WIDTH
                   }
@@ -508,6 +516,18 @@ export function SettingsOverlay({
                   {section === "updates" && showUpdates ? <UpdatesSettingsPanel /> : null}
                   {section === "models" ? (
                     <ModelSettingsOverlay embedded scope="account" onClose={requestClose} />
+                  ) : null}
+                  {section === "integrations" ? (
+                    <PluginsOverlay
+                      embedded
+                      onClose={requestClose}
+                      activeBotId={activeBotId}
+                      onOpenMcp={onOpenMcp}
+                      onOpenTemplates={onOpenTemplates}
+                      onOpenMessaging={
+                        messagingEnabled ? () => onSectionChange("messaging") : undefined
+                      }
+                    />
                   ) : null}
                   {section === "memory" ? (
                     <MemorySettingsOverlay

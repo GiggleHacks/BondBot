@@ -130,7 +130,8 @@ export function RobotBackdrop({ slotRef }: { slotRef: RefObject<HTMLElement | nu
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!host || !canvas || !ctx) return;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // BondBot: the robot is drawn once, settled, and holds still.
+    const reduced = true;
     let disposed = false;
     let frame = 0;
     let observer: ResizeObserver | null = null;

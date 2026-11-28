@@ -4,6 +4,7 @@ const SETTINGS_SECTIONS = [
   "spaces",
   "space",
   "models",
+  "integrations",
   "memory",
   "voice",
   "confirmations",

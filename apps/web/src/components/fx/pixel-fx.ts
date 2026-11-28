@@ -1,5 +1,5 @@
-// Local addition (BondBot): a pixel trail behind the mouse pointer on the sign-in screens. Hover
-// effects are CSS (styles/pixel-fx.css); both follow `html[data-pixel-fx]` and reduced motion.
+// Local addition (BondBot): a pixel trail behind the mouse pointer on the sign-in screens.
+// Reduced motion turns it off.
 
 const GRID = 4;
 const LIFE_MS = 360;
@@ -50,7 +50,7 @@ export function startPixelFx(): () => void {
   }
 
   function enabled() {
-    return root.dataset.pixelFx !== "off" && !reduced.matches;
+    return !reduced.matches;
   }
 
   function spawn(x: number, y: number, now: number) {

@@ -14,6 +14,7 @@
     "pack": "pnpm --filter @rakazo/web build && pnpm build && electron-builder --mac --win --linux",
     "pack:dir": "pnpm --filter @rakazo/web build && pnpm build && electron-builder --dir",
     "pack:win": "node scripts/build.mjs && node scripts/copy-static.mjs && electron-builder --win portable --x64 --publish never",
+    "pack:linux": "node scripts/build.mjs && node scripts/copy-static.mjs && electron-builder --linux AppImage --x64 --publish never",
     "check": "tsrs --noEmit -p tsconfig.json && tsrs --noEmit -p tsconfig.jsdom.json && tsrs --noEmit -p e2e/tsconfig.json && tsrs --noEmit -p scripts/tsconfig.json",
     "test": "vitest run --root ../.. apps/desktop/src",
     "test:e2e": "pnpm build && playwright test --config e2e/playwright.config.ts",
@@ -139,6 +140,9 @@
     "portable": {
       "artifactName": "BondBot.exe"
     },
+    "appImage": {
+      "artifactName": "BondBot.AppImage"
+    },
     "win": {
       "icon": "assets/icon.ico",
       "target": [
@@ -154,6 +158,7 @@
     "linux": {
       "executableName": "rakazo",
       "icon": "assets/icon.png",
+      "category": "Network",
       "target": [
         "AppImage"
       ]

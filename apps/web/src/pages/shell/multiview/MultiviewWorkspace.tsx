@@ -1,7 +1,16 @@
 import { useLingui } from "@lingui/react/macro";
 import type { Bot, Me } from "@rakazo/contracts";
 import { Button, cn } from "@rakazo/ui-web";
-import { Columns3, LayoutGrid, Menu, PanelLeft, Plus, X } from "lucide-react";
+import {
+  Columns3,
+  LayoutGrid,
+  Menu,
+  PanelLeft,
+  PanelTop,
+  PictureInPicture2,
+  Plus,
+  X,
+} from "lucide-react";
 import type { TouchEvent as ReactTouchEvent, RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useBondbotUpdate } from "../../../components/bondbot-update/BondbotUpdateProvider";
@@ -139,8 +148,16 @@ export function MultiviewWorkspace({
     setMobilePage((page) => (dx < 0 ? Math.min(mobilePages - 1, page + 1) : Math.max(0, page - 1)));
   }
 
-  const desktopGridClass =
-    visibleBots.length <= 1
+  const chats = config.layout === "chats";
+  const desktopGridClass = chats
+    ? visibleBots.length >= 4
+      ? "md:grid-cols-2 md:grid-rows-2 xl:grid-cols-4 xl:grid-rows-1"
+      : visibleBots.length === 3
+        ? "md:grid-cols-3"
+        : visibleBots.length === 2
+          ? "md:grid-cols-2"
+          : "md:grid-cols-1"
+    : visibleBots.length <= 1
       ? "md:grid-cols-1"
       : visibleBots.length === 2
         ? "md:grid-cols-2"
@@ -212,7 +229,7 @@ export function MultiviewWorkspace({
                   </Button>
                 );
               })}
-              {tileIds.length === 3 ? (
+              {tileIds.length === 3 && !chats ? (
                 <Button
                   type="button"
                   variant="ghost"
@@ -270,6 +287,31 @@ export function MultiviewWorkspace({
         </div>
 
         <div className="app-no-drag flex items-center gap-1.5">
+          <fieldset
+            aria-label="Layout"
+            className="m-0 inline-flex items-center gap-0.5 rounded-full border-0 bg-muted/70 p-0.5"
+          >
+            {(
+              [
+                ["screens", "Large screens", PanelTop],
+                ["chats", "Large chats", PictureInPicture2],
+              ] as const
+            ).map(([layout, label, Icon]) => (
+              <Button
+                key={layout}
+                type="button"
+                variant={config.layout === layout ? "secondary" : "ghost"}
+                size="icon-xs"
+                aria-label={label}
+                title={label}
+                aria-pressed={config.layout === layout}
+                onClick={() => updateConfig((prev) => ({ ...prev, layout }))}
+                className="rounded-full"
+              >
+                <Icon size={13} aria-hidden="true" />
+              </Button>
+            ))}
+          </fieldset>
           <ConnectionBars />
           {!isMobile && tileIds.length < MULTIVIEW_MAX_TILES && liveBotCount > tileIds.length ? (
             <Button
@@ -351,6 +393,7 @@ export function MultiviewWorkspace({
                   vpn={vpn}
                   maximizedHere={maximizedBotId === bot.id}
                   isMobile={isMobile}
+                  layout={config.layout}
                   chatHeight={config.chatHeights[bot.id]}
                   canRemove={tileIds.length > 2}
                   onChangeChatHeight={(height) =>

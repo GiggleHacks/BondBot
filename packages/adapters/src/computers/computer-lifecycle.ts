@@ -680,6 +680,9 @@ export async function provisionComputer(
       runningSince,
       existing.state === "running" ? "gone" : "reconciled",
     );
+    // The sidebar shows which computers are asleep, so a wake re-reads it.
+    if (existing.state !== "running")
+      void deps.events?.publishRosterChange?.({ spaceIds: [existing.spaceId] });
     logProvisioned(ref, replacement ? "create" : ref.started ? "resume" : "reuse");
     return { ...ref, startSize: size };
   } catch (error) {

@@ -6,7 +6,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DesktopUpdatesProvider } from "../../../components/DesktopUpdates";
-import { SidebarFooter, sidebarMarkCount } from "./sidebar-footer";
+import { SidebarFooter } from "./sidebar-footer";
 
 vi.mock("@lingui/react/macro", () => ({
   useLingui: () => ({
@@ -28,19 +28,12 @@ afterEach(async () => {
   delete window.rakazoDesktop;
   vi.restoreAllMocks();
 });
-async function render(
-  name = "Demo User",
-  image?: string,
-  onIntegrations = vi.fn(),
-  onBoard?: () => void,
-  logos?: Array<{ name: string; logo?: string }>,
-) {
+async function render(name = "Demo User", image?: string, onBoard?: () => void) {
   const email = "account@rakazo.test";
   await act(async () =>
     root.render(
       <DesktopUpdatesProvider>
         <SidebarFooter
-          logos={logos}
           name={name}
           initials={name
             .split(" ")
@@ -52,7 +45,6 @@ async function render(
           email={email}
           open
           onOpenChange={() => {}}
-          onIntegrations={onIntegrations}
           onSkills={vi.fn()}
           onBoard={onBoard}
           onArtifacts={() => {}}
@@ -130,14 +122,9 @@ it("shows the account image and falls back to the initial after a load error", a
   expect(trigger.textContent).toBe("AL");
 });
 
-it("opens integrations and keeps the existing account actions and links", async () => {
-  const onIntegrations = vi.fn();
-  await render("Demo User", undefined, onIntegrations, vi.fn());
-  const connect = [...host.querySelectorAll("button")].find((button) =>
-    button.textContent?.includes("Connect apps"),
-  )!;
-  await act(async () => connect.click());
-  expect(onIntegrations).toHaveBeenCalledOnce();
+it("keeps the account actions and links, with no apps pill beside them", async () => {
+  await render("Demo User", undefined, vi.fn());
+  expect(host.textContent).not.toContain("Connect apps");
   const menu = document.querySelector('[data-slot="popover-content"]')!;
   expect([...menu.querySelectorAll("button, a")].map((row) => row.textContent)).toEqual([
     "DUDemo Useraccount@rakazo.test",
@@ -169,21 +156,6 @@ it("links to the standalone Windows BondBot.exe download outside the desktop app
   expect(winLink.getAttribute("download")).toBe("BondBot.exe");
 });
 
-it("falls back when app artwork fails and accepts replacement artwork", async () => {
-  await render("Demo User", undefined, undefined, undefined, [
-    { name: "Slack", logo: "https://example.test/slack.svg" },
-  ]);
-  const pill = [...host.querySelectorAll("button")].find((button) =>
-    button.textContent?.includes("Connect apps"),
-  )!;
-  await act(async () => pill.querySelector("img")!.dispatchEvent(new Event("error")));
-  expect(pill.querySelector("img")).toBeNull();
-  expect(pill.textContent).toContain("S");
-  await render("Demo User", undefined, undefined, undefined, [
-    { name: "Slack", logo: "https://example.test/new-slack.svg" },
-  ]);
-  expect(pill.querySelector("img")?.src).toBe("https://example.test/new-slack.svg");
-});
 it.each(["throw", "state"] as const)(
   "reveals a %s install failure after Later",
   async (failure) => {
@@ -218,31 +190,6 @@ it.each(["throw", "state"] as const)(
   },
 );
 
-it.each([
-  [-20, 0],
-  [25, 0],
-  [26, 1],
-  [48, 2],
-  [69, 2],
-  [70, 3],
-  [200, 3],
-])("fits marks into %ipx without consuming label or padding space", (width, count) => {
-  expect(sidebarMarkCount(width)).toBe(count);
-});
-
-it("keeps at most three marks with the same tile and a missing-logo fallback", async () => {
-  await render("Demo User", undefined, undefined, undefined, [
-    { name: "Gmail", logo: "https://example.test/gmail.svg" },
-    { name: "Notion" },
-    { name: "GitHub", logo: "https://example.test/github.svg" },
-    { name: "Slack" },
-  ]);
-  const tiles = [...host.querySelectorAll('span[aria-hidden="true"] > span')];
-  expect(tiles).toHaveLength(3);
-  expect(new Set(tiles.map((tile) => tile.className)).size).toBe(1);
-  expect(tiles[1]!.textContent).toBe("N");
-});
-
 const personal = {
   id: "org-personal",
   name: "Personal",
@@ -276,7 +223,6 @@ async function renderOrganizations(
           email="account@rakazo.test"
           open
           onOpenChange={() => {}}
-          onIntegrations={() => {}}
           onSkills={() => {}}
           onArtifacts={() => {}}
           onSettings={() => {}}

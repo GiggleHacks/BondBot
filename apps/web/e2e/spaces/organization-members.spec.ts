@@ -3,6 +3,7 @@ import {
   captureScreenshot,
   chooseOption,
   completeOnboarding,
+  openIntegrations,
   openUserSettings,
   rpc,
   signup,
@@ -109,7 +110,7 @@ test("an owner invites someone to the organization, who joins with a private Spa
 
   await test.step("the owner can connect an app for Acme and the member sees it read-only", async () => {
     await ownerPage.keyboard.press("Escape");
-    await ownerPage.getByRole("button", { name: "Connect apps", exact: true }).click();
+    await openIntegrations(ownerPage);
     const ownerIntegrations = ownerPage.getByRole("dialog", { name: "Integrations" });
     const gmail = ownerIntegrations.getByTestId("featured-connectors");
     await gmail.getByRole("button", { name: "Add Gmail", exact: true }).click();
@@ -125,7 +126,7 @@ test("an owner invites someone to the organization, who joins with a private Spa
     await captureScreenshot(ownerPage, testInfo, "organization-app-owner-account");
     await ownerIntegrations.getByRole("button", { name: "Close integrations" }).click();
 
-    await inviteePage.getByRole("button", { name: "Connect apps", exact: true }).click();
+    await openIntegrations(inviteePage);
     const memberIntegrations = inviteePage.getByRole("dialog", { name: "Integrations" });
     const shared = memberIntegrations.getByTestId("connection-tile-gmail");
     await expect(shared.getByText("Organization", { exact: true })).toBeVisible();

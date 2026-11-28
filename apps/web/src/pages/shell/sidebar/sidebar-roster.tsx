@@ -27,6 +27,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
+import { AsleepMoon } from "../../../components/computers/AsleepMoon";
 import { IconTooltip } from "../../../components/IconTooltip";
 import { ModelBrandIcon } from "../../../components/ModelBrandIcon";
 import {
@@ -34,6 +35,7 @@ import {
   rosterHasUndismissedRunError,
   rosterWorkStatusLabel,
 } from "../../../lib/chat/roster-status";
+import { ASLEEP_AVATAR_CLASS, ASLEEP_LABEL, isBotAsleep } from "../../../lib/computers/bot-asleep";
 import type { BotsSidebarDensity } from "../../../lib/preferences/bots-sidebar-density-pref";
 import type { ChatMenuState } from "../chat/chat-context-menu";
 import { ChatMenu } from "../chat/chat-context-menu";
@@ -316,6 +318,8 @@ export function SidebarRoster({
                     : item.kind === "group"
                       ? item.chat.members
                       : [];
+                const asleep = item.kind === "bot" && isBotAsleep(item.chat);
+                const asleepId = `roster-asleep-${item.kind}-${item.chat.id}`;
                 const avatarSize = tiles ? 56 : mini ? 40 : compact ? 28 : 38;
                 const avatar =
                   item.kind === "bot" ? (
@@ -325,6 +329,7 @@ export function SidebarRoster({
                       identity={item.chat.id}
                       size={avatarSize}
                       status={item.chat.status}
+                      className={asleep ? ASLEEP_AVATAR_CLASS : undefined}
                     />
                   ) : (
                     <GroupAvatar members={groupMembers} size={avatarSize} />
@@ -339,16 +344,17 @@ export function SidebarRoster({
                     aria-current={selected ? "page" : undefined}
                     aria-label={mini ? item.chat.name : undefined}
                     aria-describedby={
-                      mini || tiles
-                        ? [
-                            item.chat.unread ? `roster-unread-${item.kind}-${item.chat.id}` : null,
-                            compactStatusLabel
-                              ? `roster-status-${item.kind}-${item.chat.id}`
-                              : null,
-                          ]
-                            .filter(Boolean)
-                            .join(" ") || undefined
-                        : undefined
+                      [
+                        (mini || tiles) && item.chat.unread
+                          ? `roster-unread-${item.kind}-${item.chat.id}`
+                          : null,
+                        (mini || tiles) && compactStatusLabel
+                          ? `roster-status-${item.kind}-${item.chat.id}`
+                          : null,
+                        asleep ? asleepId : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" ") || undefined
                     }
                     aria-keyshortcuts={
                       item.kind === "bot" ? "Alt+ArrowUp Alt+ArrowDown" : undefined
@@ -414,9 +420,16 @@ export function SidebarRoster({
                         : "group-hover/row:bg-accent"
                     }`}
                   >
+                    {asleep ? (
+                      // Hidden from the row's name; read as its description.
+                      <span id={asleepId} aria-hidden="true" className="sr-only">
+                        {ASLEEP_LABEL}
+                      </span>
+                    ) : null}
                     {!mini && !tiles && hasDedicatedComputer ? (
                       <DedicatedComputerBadge
                         botVpn={botVpn}
+                        asleep={item.kind === "bot" ? item.chat.computerAsleep : undefined}
                         className="absolute start-1.5 top-1/2 w-10 -translate-y-[calc(50%+8px)]"
                       />
                     ) : null}
@@ -425,6 +438,7 @@ export function SidebarRoster({
                         {avatar}
                         <DedicatedComputerBadge
                           botVpn={botVpn}
+                          asleep={item.kind === "bot" ? item.chat.computerAsleep : undefined}
                           className="absolute -start-0.5 top-0 rounded bg-sidebar/90 p-px"
                         />
                         {rowError ? (
@@ -493,6 +507,7 @@ export function SidebarRoster({
                             >
                               {item.chat.name}
                             </span>
+                            {asleep ? <AsleepMoon /> : null}
                             {item.chat.unread ? (
                               <span className="sr-only">
                                 <Trans> (unread)</Trans>
@@ -641,7 +656,7 @@ export function SidebarRoster({
                             type="button"
                             aria-label={`VPN for ${item.chat.name}`}
                             onClick={(event) => event.stopPropagation()}
-                            className={`absolute z-10 transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-ring ${
+                            className={`absolute z-10 opacity-90 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                               mini || tiles
                                 ? "bottom-0.5 start-0.5 rounded-md bg-sidebar"
                                 : hasDedicatedComputer
@@ -649,11 +664,7 @@ export function SidebarRoster({
                                   : "start-1.5 top-1/2 -translate-y-1/2 rounded-md"
                             }`}
                           >
-                            <ComputerVpnFlagChip
-                              botVpn={botVpn}
-                              overview={vpn!.overview}
-                              compact
-                            />
+                            <ComputerVpnFlagChip botVpn={botVpn} overview={vpn!.overview} compact />
                           </button>
                         }
                       />

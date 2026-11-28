@@ -30,6 +30,9 @@ type ComputerPanelProps = {
   onRecovered: (sandboxProvider: string) => void;
   onRecoveryDismissed: () => void;
   onOpenComputerSettings?: () => void;
+  /** Starts an asleep computer where it is. */
+  onWake: () => void;
+  /** Opens the full window. */
   onOpen: () => void;
   cleaningUpDisk?: boolean;
   onCleanUpDisk?: () => void;
@@ -103,6 +106,7 @@ function ComputerPreview({
   onRecovered,
   onRecoveryDismissed,
   onOpenComputerSettings,
+  onWake,
   onOpen,
 }: Omit<ComputerPanelProps, "cleaningUpDisk" | "onCleanUpDisk" | "onDismissDiskWarning">) {
   // A clickable preview invites a boot that costs money, so an idle computer only wakes from its button.
@@ -136,17 +140,13 @@ function ComputerPreview({
         <span className="text-body text-muted-foreground">
           <Trans>Asleep</Trans>
         </span>
-        <Button variant="secondary" size="sm" data-testid="computer-preview-open" onClick={onOpen}>
+        <Button variant="secondary" size="sm" data-testid="computer-preview-wake" onClick={onWake}>
           <Trans>Wake</Trans>
         </Button>
       </div>
     );
   }
   const canOpen = !computerScreenError && !showingRecoveryHint;
-  // The Open pill replaces the status text on hover; fade it so they never overlap.
-  const hideOnHover = canOpen
-    ? "transition-opacity group-hover:opacity-0 group-has-[:focus-visible]:opacity-0"
-    : "";
   return (
     <div>
       <div
@@ -154,20 +154,16 @@ function ComputerPreview({
         data-state={
           computer?.state === "running" && !runsOnUserMachine(computer) ? "running" : undefined
         }
-        className={`group relative rounded-xl bg-muted/50 ${
+        className={`relative rounded-xl bg-muted/50 ${
           showingRecoveryHint ? "" : "aspect-[16/10] overflow-hidden"
         }`}
       >
         {computerOpen ? (
-          <div
-            className={`grid h-full place-items-center text-body text-muted-foreground/80 ${hideOnHover}`}
-          >
+          <div className="grid h-full place-items-center text-body text-muted-foreground/80">
             <Trans>Open in full window</Trans>
           </div>
         ) : runsOnUserMachine(computer) ? (
-          <DesktopKindEmptyState
-            className={`grid h-full place-items-center px-6 text-center text-body text-muted-foreground/80 ${hideOnHover}`}
-          />
+          <DesktopKindEmptyState className="grid h-full place-items-center px-6 text-center text-body text-muted-foreground/80" />
         ) : computer?.state === "running" && embeddedScreenUrl && !computerScreenError ? (
           screenFrames(screenFrameKey, embeddedScreenUrl, heldScreen).map((frame) => (
             <iframe
@@ -184,9 +180,7 @@ function ComputerPreview({
             />
           ))
         ) : (
-          <div
-            className={`grid h-full place-items-center px-6 text-center text-body text-muted-foreground/80 ${hideOnHover}`}
-          >
+          <div className="grid h-full place-items-center px-6 text-center text-body text-muted-foreground/80">
             {computerScreenError ??
               (showComputerRecoveryHint ? (
                 <ComputersUnavailableHint
@@ -201,18 +195,17 @@ function ComputerPreview({
           </div>
         )}
         {canOpen ? (
-          <button
-            type="button"
+          <Button
+            variant="floating"
+            size="icon-sm"
             data-testid="computer-preview-open"
-            className="absolute inset-0 flex cursor-pointer items-center justify-center bg-overlay/40 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-            aria-label={t`Open`}
+            className="absolute end-2 top-2"
+            aria-label="Full screen"
+            title="Full screen"
             onClick={onOpen}
           >
-            <span className="inline-flex items-center gap-2 rounded-full bg-background px-3.5 py-2 text-body text-foreground shadow-md">
-              <Maximize2 size={15} strokeWidth={1.9} aria-hidden />
-              <Trans>Open</Trans>
-            </span>
-          </button>
+            <Maximize2 strokeWidth={1.9} aria-hidden />
+          </Button>
         ) : null}
       </div>
     </div>

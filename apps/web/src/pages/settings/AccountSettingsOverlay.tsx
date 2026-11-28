@@ -47,7 +47,6 @@ import { fetchAuthCapabilities } from "../../lib/auth/auth-capabilities";
 import { usePasskeysSupported } from "../../lib/auth/passkeys";
 import { toolActivityPreference } from "../../lib/chat/tool-activity-preference";
 import { composerEnterToSendPreference } from "../../lib/composer/composer-enter-to-send-pref";
-import { pixelFxPreference } from "../../lib/fx/pixel-fx-pref";
 import { getActiveUiLocale, setUiLocale } from "../../lib/locale/i18n";
 import { keepTimezone } from "../../lib/locale/kept-timezone";
 import { timezoneOptions } from "../../lib/locale/local-timezone";
@@ -152,7 +151,6 @@ export function GeneralSettingsPanels({
   const showToolActivityId = useId();
   const showReasoning = reasoningPreference.use();
   const modelGlow = modelGlowPreference.use();
-  const pixelFx = pixelFxPreference.use();
   const showReasoningId = useId();
   const enterToSend = composerEnterToSendPreference.use();
   const enterToSendId = useId();
@@ -334,24 +332,6 @@ export function GeneralSettingsPanels({
               onChange={(next) => {
                 setAppearance(next);
                 setUiAppearance(next);
-              }}
-            />
-          }
-        />
-        <SettingsRow
-          label={
-            <Label htmlFor="pixel-fx-toggle" className="text-body font-normal text-foreground">
-              Pixel effects
-            </Label>
-          }
-          control={
-            <Switch
-              id="pixel-fx-toggle"
-              data-testid="pixel-fx-toggle"
-              checked={pixelFx}
-              onCheckedChange={(checked) => {
-                pixelFxPreference.set(checked);
-                document.documentElement.dataset.pixelFx = checked ? "on" : "off";
               }}
             />
           }
@@ -587,7 +567,7 @@ export function GeneralSettingsPanels({
         />
       </SettingsGroup>
 
-      {desktopBridge() && me?.chatPreferences?.notificationSounds !== undefined ? (
+      {me?.chatPreferences?.notificationSounds !== undefined ? (
         <SettingsGroup title={<Trans>Notifications</Trans>}>
           <SettingsRow
             label={
@@ -595,7 +575,7 @@ export function GeneralSettingsPanels({
                 htmlFor={notificationSoundsId}
                 className="text-body font-normal text-foreground"
               >
-                <Trans>Sound for alerts that need attention</Trans>
+                <Trans>Play sounds while bots work</Trans>
               </Label>
             }
             control={

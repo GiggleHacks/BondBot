@@ -1,12 +1,15 @@
 import type { Bot } from "@rakazo/contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   mobileMultiviewPageCount,
+  readMultiviewConfig,
   removeMultiviewTile,
+  resizedChatHeight,
   resizeMultiviewTiles,
   resolveMultiviewTileIds,
   swapMultiviewTile,
   visibleMobileTileIds,
+  wheelPixels,
 } from "./multiview-state";
 
 function makeBot(id: string, overrides: Partial<Bot> = {}): Bot {
@@ -65,5 +68,27 @@ describe("multiview-state", () => {
     expect(visibleMobileTileIds(["b1", "b2", "b3", "b4"], 0)).toEqual(["b1", "b2"]);
     expect(visibleMobileTileIds(["b1", "b2", "b3", "b4"], 1)).toEqual(["b3", "b4"]);
     expect(visibleMobileTileIds(["b1", "b2"], 1)).toEqual(["b1", "b2"]);
+  });
+
+  it.each([
+    [200, 100, 300],
+    [200, -500, 96],
+    [0, 120, 120],
+    [0, -120, 0],
+  ])("resizes a %ipx chat by %i to %ipx", (height, delta, expected) => {
+    expect(resizedChatHeight(height, delta)).toBe(expected);
+  });
+
+  it("reads a wheel step given in lines as pixels", () => {
+    expect(wheelPixels({ deltaY: -3, deltaMode: 1 })).toBe(-48);
+  });
+
+  it("keeps large screens for a layout saved before there was a choice", () => {
+    const store = new Map([["bondbot.multiview:s1", JSON.stringify({ tileBotIds: ["b1"] })]]);
+    vi.stubGlobal("localStorage", { getItem: (key: string) => store.get(key) ?? null });
+    expect(readMultiviewConfig("s1").layout).toBe("screens");
+    store.set("bondbot.multiview:s1", JSON.stringify({ layout: "chats" }));
+    expect(readMultiviewConfig("s1").layout).toBe("chats");
+    vi.unstubAllGlobals();
   });
 });

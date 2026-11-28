@@ -25,6 +25,7 @@ import {
   SandboxUnresponsiveError,
   WorkspaceTooLargeError,
 } from "@rakazo/adapter-kit";
+import type { ComputerStats } from "@rakazo/contracts";
 import { COMPUTER_UNRESPONSIVE_ERROR } from "@rakazo/contracts";
 import {
   cancelResponseBody,
@@ -74,6 +75,8 @@ async function safeBody(res: Response, signal?: AbortSignal): Promise<string> {
   });
   return text.slice(0, 200);
 }
+
+const STATS_TIMEOUT_MS = 10_000;
 
 async function readSandboxJson<T>(
   res: Response,
@@ -196,6 +199,22 @@ export class DockerSandboxProvider implements SandboxProvider {
     this.stalls += 1;
     this.unresponsive.set(computer.id, this.stalls);
     return new SandboxUnresponsiveError(COMPUTER_UNRESPONSIVE_ERROR, { cause: error });
+  }
+
+  /** A failed or missing reading is no sign of trouble, so it never marks the computer. */
+  async stats(computer: ComputerRef, context: AdapterContext): Promise<ComputerStats | null> {
+    if (computer.kind !== "docker") return null;
+    const signal = deadlineSignal(STATS_TIMEOUT_MS, context.signal);
+    const res = await fetch(this.url(`/computers/${computer.id}/stats`), {
+      headers: this.headers(context, computer.botId),
+      signal,
+    });
+    // An older supervisor has no such route.
+    if (!res.ok) {
+      cancelResponseBody(res);
+      return null;
+    }
+    return (await readSandboxJson<{ stats: ComputerStats | null }>(res, signal)).stats;
   }
 
   async isRunning(computer: ComputerRef, context: AdapterContext): Promise<boolean> {

@@ -37,14 +37,15 @@
     mv-control-pulse 2.4s ease-in-out infinite;
 }
 
-.mv-chat-drawer {
+/* Only showing and hiding animates; resizing follows the pointer exactly. */
+.mv-chat-drawer[data-animate] {
   transition: height 200ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .mv-tile,
   .mv-tile-controlled,
-  .mv-chat-drawer {
+  .mv-chat-drawer[data-animate] {
     animation: none;
     transition: none;
   }

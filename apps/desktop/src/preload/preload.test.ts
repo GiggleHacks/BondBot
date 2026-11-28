@@ -37,11 +37,11 @@ function runPreload(
 
 describe("desktop preload bridge", () => {
   it.each(["win32", "darwin", "linux"])(
-    "advertises native framing only on Windows (%s)",
+    "advertises native framing everywhere but macOS (%s)",
     (platform) => {
       const { exposeInMainWorld } = runPreload("preload.cjs", {}, platform);
       const [, bridge] = exposeInMainWorld.mock.calls[0] as [string, RakazoDesktop];
-      expect(bridge.nativeWindowFrame).toBe(platform === "win32");
+      expect(bridge.nativeWindowFrame).toBe(platform !== "darwin");
     },
   );
 

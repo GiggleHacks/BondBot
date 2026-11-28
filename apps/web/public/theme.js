@@ -26,12 +26,6 @@
   const tinted = { blue: "#0b1220", purple: "#16141c" }[palette];
   const plain = theme === "light" ? "#ffffff" : "#0a0a0a";
   if (meta) meta.setAttribute("content", tinted || plain);
-  // Pixel cursor trail and hover effects: on unless turned off in Settings on this device.
-  let pixelFx = "on";
-  try {
-    if (localStorage.getItem("bondbot.pixelFx") === "off") pixelFx = "off";
-  } catch {}
-  root.dataset.pixelFx = pixelFx;
   // macOS draws regular text at 420 (see --font-weight-normal); iPads report a Mac platform too.
   const nav = typeof navigator === "object" ? navigator : undefined;
   if (nav && /^Mac/.test(nav.platform || "") && !(nav.maxTouchPoints > 1)) {

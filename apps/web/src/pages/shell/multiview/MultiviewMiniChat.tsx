@@ -12,13 +12,21 @@ import { ArrowUp, ChevronDown, ChevronUp, ExternalLink, Square } from "lucide-re
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { useRef, useState } from "react";
 import type { createSpaceRpc } from "../../../lib/query/rpc";
-import { useEventListener } from "../../../lib/use-event-listener";
 import { Transcript } from "../chat/transcript";
 import type { useTranscriptView } from "../chat/use-transcript-view";
-import { clampMultiviewChatHeight, MULTIVIEW_DEFAULT_CHAT_HEIGHT } from "./multiview-state";
+import {
+  MULTIVIEW_DEFAULT_CHAT_HEIGHT,
+  MULTIVIEW_MAX_CHAT_HEIGHT,
+  MULTIVIEW_MIN_CHAT_HEIGHT,
+  wheelPixels,
+} from "./multiview-state";
+
+/** How far one arrow key press moves the divider. */
+const KEY_STEP = 24;
 
 /**
- * Collapsible, resizable compact chat drawer under each Multiview computer screen.
+ * A Multiview tile's chat. Under a screen it is a drawer with a divider that drags, scrolls or
+ * takes arrow keys; with `fill` it is the tile's whole chat column.
  * Reuses `Transcript` so live streaming, tool steps, and inline cards stay identical.
  */
 export function MultiviewMiniChat({
@@ -31,8 +39,11 @@ export function MultiviewMiniChat({
   loadingOlder,
   followRequest,
   scrollRef,
+  fill = false,
   chatHeight,
+  drawerRef,
   onChangeChatHeight,
+  onResizeChat,
   sending,
   sendError,
   stopping,
@@ -57,8 +68,12 @@ export function MultiviewMiniChat({
   loadingOlder: boolean;
   followRequest: number;
   scrollRef: RefObject<HTMLDivElement | null>;
+  fill?: boolean;
   chatHeight: number;
+  drawerRef: RefObject<HTMLDivElement | null>;
   onChangeChatHeight: (height: number) => void;
+  /** Grows the drawer by this many pixels; negative shrinks it. */
+  onResizeChat: (delta: number) => void;
   sending: boolean;
   sendError: string | null;
   stopping: boolean;
@@ -93,25 +108,11 @@ export function MultiviewMiniChat({
   const lastOpenHeightRef = useRef(chatHeight > 0 ? chatHeight : MULTIVIEW_DEFAULT_CHAT_HEIGHT);
   if (chatHeight > 0) lastOpenHeightRef.current = chatHeight;
 
-  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
-  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<number | null>(null);
+  // Set by the show and hide button, so only that animates.
+  const [animate, setAnimate] = useState(false);
 
-  useEventListener(dragging ? window : null, "pointermove", (event: PointerEvent) => {
-    const drag = dragRef.current;
-    if (!drag) return;
-    const delta = drag.startY - event.clientY;
-    onChangeChatHeight(clampMultiviewChatHeight(drag.startHeight + delta));
-  });
-  useEventListener(dragging ? window : null, "pointerup", () => {
-    dragRef.current = null;
-    setDragging(false);
-  });
-  useEventListener(dragging ? window : null, "pointercancel", () => {
-    dragRef.current = null;
-    setDragging(false);
-  });
-
-  const collapsed = chatHeight === 0;
+  const collapsed = !fill && chatHeight === 0;
   const trimmed = draft.trim();
 
   function submit() {
@@ -119,68 +120,116 @@ export function MultiviewMiniChat({
     onSend(trimmed, () => setDraft(""));
   }
 
+  function resize(delta: number) {
+    setAnimate(false);
+    onResizeChat(delta);
+  }
+
   function startDrag(event: ReactPointerEvent<HTMLDivElement>) {
-    if (collapsed) return;
+    if (collapsed || (event.target as Element).closest("button")) return;
     event.preventDefault();
-    dragRef.current = { startY: event.clientY, startHeight: chatHeight };
-    setDragging(true);
+    // Captured, so the drag keeps following over the screen's frame.
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    dragRef.current = event.clientY;
+  }
+
+  function drag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (dragRef.current === null) return;
+    const delta = dragRef.current - event.clientY;
+    dragRef.current = event.clientY;
+    if (delta) resize(delta);
+  }
+
+  function endDrag() {
+    dragRef.current = null;
   }
 
   return (
-    <div className="flex shrink-0 flex-col border-t border-border/70 bg-background/95">
-      <div
-        onPointerDown={startDrag}
-        className={cn(
-          "flex items-center justify-between gap-2 px-2.5 py-1 text-caption text-muted-foreground select-none",
-          !collapsed && "cursor-ns-resize",
-        )}
-      >
-        <button
-          type="button"
-          onClick={() => onChangeChatHeight(collapsed ? lastOpenHeightRef.current : 0)}
-          aria-expanded={!collapsed}
-          aria-label={collapsed ? t`Show chat for ${bot.name}` : t`Hide chat for ${bot.name}`}
-          className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-caption font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          {collapsed ? (
-            <ChevronUp size={13} strokeWidth={2} aria-hidden="true" />
-          ) : (
-            <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />
-          )}
-          <span>{collapsed ? t`Show chat` : t`Chat`}</span>
-          {running ? (
-            <span className="ms-1 inline-block size-1.5 rounded-full bg-emerald-400" />
-          ) : null}
-        </button>
+    <div
+      className={cn(
+        "flex min-h-0 flex-col bg-background/95",
+        fill ? "flex-1" : "border-t border-border/70",
+      )}
+    >
+      {fill ? null : (
         <div
-          aria-hidden="true"
+          data-testid={`multiview-divider-${bot.id}`}
+          onPointerDown={startDrag}
+          onPointerMove={drag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onWheel={(event) => resize(-wheelPixels(event))}
           className={cn(
-            "h-1 w-8 rounded-full bg-border/80 transition-colors",
-            !collapsed && "hover:bg-foreground/40",
+            "group/divider flex shrink-0 touch-none items-center justify-between gap-2 px-2.5 py-1 text-caption text-muted-foreground select-none",
+            !collapsed && "cursor-ns-resize",
           )}
-        />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label={t`Open full chat for ${bot.name}`}
-          onClick={onOpenFullChat}
-          className="text-muted-foreground"
         >
-          <ExternalLink size={12} strokeWidth={1.9} aria-hidden="true" />
-        </Button>
-      </div>
+          <button
+            type="button"
+            onClick={() => {
+              setAnimate(true);
+              onChangeChatHeight(collapsed ? lastOpenHeightRef.current : 0);
+            }}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? t`Show chat for ${bot.name}` : t`Hide chat for ${bot.name}`}
+            className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-caption font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            {collapsed ? (
+              <ChevronUp size={13} strokeWidth={2} aria-hidden="true" />
+            ) : (
+              <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />
+            )}
+            <span>{collapsed ? t`Show chat` : t`Chat`}</span>
+            {running ? (
+              <span className="ms-1 inline-block size-1.5 rounded-full bg-emerald-400" />
+            ) : null}
+          </button>
+          {/* biome-ignore lint/a11y/useSemanticElements: a draggable divider is a custom separator. */}
+          <div
+            role="separator"
+            tabIndex={0}
+            aria-orientation="horizontal"
+            aria-label={`Resize chat for ${bot.name}`}
+            aria-valuemin={MULTIVIEW_MIN_CHAT_HEIGHT}
+            aria-valuemax={MULTIVIEW_MAX_CHAT_HEIGHT}
+            aria-valuenow={chatHeight}
+            title="Drag or scroll to resize"
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+              event.preventDefault();
+              resize(event.key === "ArrowUp" ? KEY_STEP : -KEY_STEP);
+            }}
+            className="flex h-4 flex-1 items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="h-1 w-12 rounded-full bg-border transition-colors group-hover/divider:bg-foreground/40" />
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={t`Open full chat for ${bot.name}`}
+            onClick={onOpenFullChat}
+            className="text-muted-foreground"
+          >
+            <ExternalLink size={12} strokeWidth={1.9} aria-hidden="true" />
+          </Button>
+        </div>
+      )}
 
       <div
-        className={cn(
-          "mv-chat-drawer flex flex-col overflow-hidden",
-          dragging && "transition-none",
-        )}
-        style={{ height: collapsed ? 0 : chatHeight }}
+        ref={drawerRef}
+        data-animate={animate || undefined}
+        className={cn("mv-chat-drawer flex min-h-0 flex-col overflow-hidden", fill && "flex-1")}
+        style={fill ? undefined : { height: collapsed ? 0 : chatHeight }}
         aria-hidden={collapsed || undefined}
         inert={collapsed || undefined}
       >
-        <div className="relative flex min-h-0 flex-1 flex-col text-body-sm [&_.rk-scroll]:px-2.5 [&_.rk-scroll]:pt-2 [&_.rk-scroll]:pb-2">
+        <div
+          className={cn(
+            "relative flex min-h-0 flex-1 flex-col [&_.rk-scroll]:px-2.5 [&_.rk-scroll]:pt-2 [&_.rk-scroll]:pb-2",
+            fill ? "text-body" : "text-body-sm",
+          )}
+        >
           {(view.activeSnapshot?.messages.length ?? 0) === 0 && !running ? (
             <div className="grid flex-1 place-items-center px-3 text-center text-caption text-muted-foreground">
               <span>{t`Send a message to ${bot.name}`}</span>
@@ -237,7 +286,7 @@ export function MultiviewMiniChat({
           className="flex items-end gap-1.5 border-t border-border/50 px-2 py-1.5"
         >
           <textarea
-            rows={1}
+            rows={fill ? 2 : 1}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -248,7 +297,10 @@ export function MultiviewMiniChat({
             }}
             placeholder={t`Message ${bot.name}`}
             aria-label={t`Message ${bot.name}`}
-            className="max-h-20 min-h-7 flex-1 resize-none rounded-lg bg-muted/60 px-2.5 py-1 text-body-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            className={cn(
+              "min-h-7 flex-1 resize-none rounded-lg bg-muted/60 px-2.5 py-1 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring",
+              fill ? "max-h-40 field-sizing-content text-body" : "max-h-20 text-body-sm",
+            )}
           />
           {running && !trimmed ? (
             <Button

@@ -14,7 +14,10 @@ import { notificationIcon, prepareNotificationIcons } from "../../lib/platform/n
 import { followStream } from "../../lib/query/follow-stream";
 import type { RpcClient } from "../../lib/query/rpc";
 import { isReadChangeKind, spaceChanged } from "../../lib/query/space-changes";
+import { chatSoundForAlert } from "../../lib/sounds/chat-sound-events";
+import { chatSounds } from "../../lib/sounds/chat-sounds";
 import { organizationsChanged } from "../../lib/spaces/organizations";
+import { useEventListener } from "../../lib/use-event-listener";
 import { voiceNotes } from "../../lib/voice-notes/voice-notes";
 
 type PendingBrowserNotification = {
@@ -103,6 +106,10 @@ export function useBrowserNotifications(
   meIdRef.current = meId;
   const soundEnabled = useRef(false);
   soundEnabled.current = notificationSounds === true;
+  chatSounds.setEnabled(soundEnabled.current);
+  const unlockSounds = useCallback(() => chatSounds.unlock(), []);
+  useEventListener(window, "pointerdown", unlockSounds);
+  useEventListener(window, "keydown", unlockSounds);
   useEffect(() => prepareNotificationIcons(bots), [bots]);
   const openChatRef = useRef(openChat);
   openChatRef.current = openChat;
@@ -111,6 +118,9 @@ export function useBrowserNotifications(
   const shown = useRef(new Set<Notification>());
   useEffect(() => {
     const show = (alert: ChatAlert) => {
+      // The open chat's own stream reports the same moment; the player plays it once.
+      const cue = soundEnabled.current ? chatSoundForAlert(alert.kind) : null;
+      if (cue) chatSounds.play(cue, alert.threadId);
       if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
       const isOpen = alert.groupId
         ? alert.groupId === activeGroupId.current
@@ -138,7 +148,8 @@ export function useBrowserNotifications(
           ...(icon ? { icon } : {}),
           // Per chat and kind: a repeat replaces its copy, but a question after a reply still pops up.
           tag,
-          ...(desktop ? { silent: !playSound } : {}),
+          // With sounds on, the app's own sound replaces the system one.
+          ...(desktop || soundEnabled.current ? { silent: true } : {}),
         });
         openChatOnClick(notification, shown.current, () => openChatRef.current(alert));
       } catch {
@@ -198,7 +209,7 @@ export function useBrowserNotifications(
             body,
             tag,
             ...(icon ? { icon } : {}),
-            ...(desktopBridge() ? { silent: true } : {}),
+            ...(desktopBridge() || soundEnabled.current ? { silent: true } : {}),
           });
           openChatOnClick(notification, shown.current, () =>
             openChatRef.current({ botId: pending.botId, groupId: pending.groupId }),

@@ -1,6 +1,5 @@
 @import "tailwindcss";
 @import "@rakazo/ui-web/styles.css";
-@import "./styles/pixel-fx.css";
 
 @source "../../packages/ui-web/src/**/*.{ts,tsx}";
 @source "./src/**/*.{ts,tsx}";
@@ -75,6 +74,16 @@ body,
   from {
     opacity: 0;
     transform: translateY(6px);
+  }
+}
+
+/* BondBot: every scroll area gets the thin themed scrollbar instead of the platform's classic
+   one (Linux and Windows draw a wide grey bar). In the base layer, so utilities like
+   no-scrollbar still win. */
+@layer base {
+  * {
+    scrollbar-color: var(--scrollbar) transparent;
+    scrollbar-width: thin;
   }
 }
 

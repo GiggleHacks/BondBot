@@ -30,6 +30,7 @@ export const SpaceBotSchema = ListedBotSchema.pick({
   runErrorId: true,
   modelProvider: true,
   modelId: true,
+  computerAsleep: true,
   updatedAt: true,
 });
 export type SpaceBot = z.infer<typeof SpaceBotSchema>;

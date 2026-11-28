@@ -90,6 +90,11 @@ export class FakeSandboxProvider implements SandboxProvider {
     return this.boxes.get(computer.id)?.running === true;
   }
 
+  async stats(computer: ComputerRef, context: AdapterContext) {
+    if (!(await this.isRunning(computer, context))) return null;
+    return { memoryBytes: 1.2 * 1024 ** 3, memoryLimitBytes: 4 * 1024 ** 3, cpuPercent: 8 };
+  }
+
   async prepare(_computer: ComputerRef, _context: AdapterContext): Promise<void> {}
 
   async *execute(

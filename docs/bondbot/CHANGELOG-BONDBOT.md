@@ -204,3 +204,17 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Rehearsed first on a copy of the live database: the 15 new migrations applied (338 to 353), and the new API, booted on a network with no internet, passed health, refused an easy PIN, and handled PIN and password sign-up and sign-in.
 - Verified live: services healthy, no error logs, 353 migrations, API reports 1.9.1, the web bundle carries 0.4.1, page title BondBot, speech server reachable. Not exercised: a real bot run, voice notes, VPN switching, the new organization features, the screen in a browser.
 - Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v041-20261127/rollback.sh (image pre-v041-20261127; a database dump from just before is beside it).
+
+## v0.5.0 / 1.10.0 (2026-11-28)
+- Multiview: the divider between a screen and its chat drags, scrolls (wheel up gives the chat more room) and takes arrow keys, up to nearly the whole tile. A second layout, picked in the Multiview header, gives each bot a full-height chat column with its screen as a small window at the top end (click it for full screen; it can be hidden). That column's composer is text only.
+- Wake in the bot panel starts the computer where it is. A separate Full screen button on the preview opens the full window.
+- Sleeping bots are drawn grey with a moon (sidebar, chat header, Multiview). The roster is re-read when a computer wakes or stops.
+- The bot panel shows the computer's memory and processor use faintly under the name (Docker computers). Read on opening and focus, never polled. Needs the updated supervisor.
+- "Connect apps" left the foot of the sidebar; it is now Settings > Integrations (the command palette entry stays).
+- Hover no longer flickers or lifts, which is what made the VPN chip jump; hover scaling is gone too. The "Pixel effects" setting is removed; the sign-in cursor trail stays and follows reduced motion.
+- Sounds while bots work (message sent, soft ticking while a reply streams, working, needs you, error), turned on with Settings > Play sounds while bots work, now in browsers too. The app's own sound replaces the system notification sound. The sounds are synthesized for BondBot.
+- Linux desktop app uses the desktop's own window frame and buttons, and can be packed as BondBot.AppImage (pnpm --filter @rakazo/desktop pack:linux).
+- Scrollbars follow the theme.
+- Sign-in page is smaller and holds still: the robot and the BOND BOT wordmark are drawn once.
+- Checked: type-check passes (the two old billing errors aside); unit tests and repo checks match 0.4.1's failures; 87 targeted browser tests pass and 4 fail the same way on 0.4.1. Not heard or seen on a real server before deploy: the sounds in a live chat, real memory and CPU figures in the panel.
+

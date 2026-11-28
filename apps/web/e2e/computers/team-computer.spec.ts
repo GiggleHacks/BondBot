@@ -5,6 +5,7 @@ import {
   captureScreenshot,
   completeOnboarding,
   openBotPanel,
+  openComputerFullScreen,
   rpc,
   signup,
 } from "../helpers/helpers";
@@ -20,8 +21,7 @@ test("opening and releasing the computer keep a view-only stream; a failed relea
   });
   await openComputerPanel(page);
   await captureScreenshot(page, testInfo, "computer-tab-asleep");
-  await page.getByTestId("computer-preview").hover();
-  await page.getByTestId("computer-preview-open").click();
+  await openComputerFullScreen(page);
   const chrome = page.getByTestId("computer-chrome");
   const screen = page.getByTitle("Bot screen").last();
   const take = chrome.getByRole("button", { name: "Take control", exact: true });
@@ -108,8 +108,7 @@ test("a person can take control while a Team bot works", async ({ page }, testIn
   // A person can take control while the bot works; the bot's screen actions wait or are refused.
   await openBotPanel(page);
   const sidePanel = page.getByTestId("side-panel");
-  await page.getByTestId("computer-preview").hover();
-  await sidePanel.getByTestId("computer-preview-open").click();
+  await openComputerFullScreen(sidePanel);
   const chrome = page.getByTestId("computer-chrome");
   await chrome.getByRole("button", { name: "Take control", exact: true }).click();
   await expect(
@@ -134,7 +133,9 @@ test("a person can take control while a Team bot works", async ({ page }, testIn
 async function openComputerPanel(page: Page) {
   await openBotPanel(page);
   await expect(page.getByTestId("computer-preview")).toBeVisible();
-  await expect(page.getByTestId("computer-preview-open")).toHaveCount(1);
+  await expect(
+    page.getByTestId("computer-preview-open").or(page.getByTestId("computer-preview-wake")),
+  ).toHaveCount(1);
 }
 
 async function sendMessage(page: Page, text: string) {

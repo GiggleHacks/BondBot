@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { captureScreenshot, completeOnboarding, signup } from "../helpers/helpers";
+import {
+  captureScreenshot,
+  completeOnboarding,
+  openIntegrations,
+  signup,
+} from "../helpers/helpers";
 
 test("ordinary accounts can add personal MCP connections without server setup", async ({
   page,
@@ -85,7 +90,7 @@ test("GitHub is discoverable without a managed app catalog", async ({ page }, te
   await signup(page, `direct-mcp-${Date.now()}@rakazo.test`, "password12", "Direct MCP");
   await completeOnboarding(page);
   await page.route("**/rpc/connections/catalog", (route) => route.fulfill({ json: { json: [] } }));
-  await page.getByRole("button", { name: "Connect apps", exact: true }).click();
+  await openIntegrations(page);
   await page
     .getByRole("dialog", { name: "Integrations" })
     .getByRole("textbox", { name: "Search apps" })

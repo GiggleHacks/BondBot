@@ -30,6 +30,7 @@ export function ShellSidePanel({
   refreshGroupThread,
   computerOpen,
   computerPanel,
+  computerUsage,
   vpn,
   routineList,
   routineEditorProps,
@@ -54,6 +55,7 @@ export function ShellSidePanel({
   refreshGroupThread: (groupId: string) => Promise<ThreadSnapshot>;
   computerOpen: boolean;
   computerPanel: ReactNode;
+  computerUsage?: ReactNode;
   vpn?: ComputerVpnController;
   routineList: Omit<ComponentProps<typeof RoutineList>, "preview">;
   routineEditorProps: ComponentProps<typeof RoutineEditor> | null;
@@ -159,6 +161,7 @@ export function ShellSidePanel({
               onViewChange={setPanel}
               onClose={() => setPanel(null)}
               computer={computerPanel}
+              usage={computerUsage}
               vpn={vpn}
               routines={routineList}
               focusModel={modelFocusRequest}

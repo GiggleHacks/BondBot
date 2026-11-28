@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { computerControlEndpoint, controlDesktop } from "./computer-control.js";
 import { computerGpuMatches, resolveComputerGpu } from "./computer-gpu.js";
+import { computerUsage } from "./computer-limits.js";
 import {
   computerLocaleFields,
   computerLocaleMatches,
@@ -484,6 +485,25 @@ app.get("/computers/:id", async (c) => {
       running: Boolean(info.State.Running),
       image: info.Config.Image,
     });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logRequestFailure(error);
+    return c.json({ error: message }, 404);
+  }
+});
+
+app.get("/computers/:id/stats", async (c) => {
+  const headers = identityHeaders(c);
+  try {
+    const { container, info } = await managedContainer(
+      c.req.param("id"),
+      headers.botId,
+      headers.spaceId,
+    );
+    if (!info.State.Running) return c.json({ stats: null });
+    // Not one-shot: Docker then samples twice, which the processor figure needs.
+    const reading = await container.stats({ stream: false });
+    return c.json({ stats: computerUsage(reading, info.HostConfig?.NanoCpus) });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logRequestFailure(error);
@@ -1324,7 +1344,10 @@ app.delete("/computers/:id", async (c) => {
       }
       if (vpnSocketPath()) {
         await setHomeVpnPolicy(botId, { profile: null, locked: false }).catch((error) => {
-          getLogger().warn("vpn cleanup on computer delete failed", { botId, error: String(error) });
+          getLogger().warn("vpn cleanup on computer delete failed", {
+            botId,
+            error: String(error),
+          });
         });
       }
       return c.json({ ok: true });

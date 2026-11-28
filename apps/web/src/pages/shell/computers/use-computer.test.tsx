@@ -849,6 +849,52 @@ it("reads a running computer's screen for the bot panel without keeping it awake
   expect(rpc.computer.boot).not.toHaveBeenCalled();
 });
 
+it("wakes from the bot panel in place, and again once the run that refused it ends", async () => {
+  const stopped = { botId: "bot-1", state: "stopped" };
+  const boot = vi
+    .fn(async () => ({ botId: "bot-1", state: "running" }))
+    .mockRejectedValueOnce(new Error("busy"));
+  const rpc = {
+    computer: { boot, screenUrl: vi.fn(async () => ({ url: null })) },
+  } as never;
+  const bot = { id: "bot-1" } as never;
+  let controls!: ReturnType<typeof useComputerControls>;
+  function Controls({ runStatus }: { runStatus: "running" | undefined }) {
+    state = useComputerState({
+      rpc,
+      panel: "settings",
+      activeId: "bot-1",
+      activeBotId: { current: "bot-1" },
+    });
+    controls = useComputerControls({
+      rpc,
+      state,
+      panel: "settings",
+      active: bot,
+      bots: [bot],
+      botsRef: { current: [bot] },
+      activeBotId: { current: "bot-1" },
+      activeGroupId: { current: undefined },
+      runStatus,
+      sandboxProvider: undefined,
+      refreshThread: vi.fn(async () => ({}) as never),
+      refreshGroupThread: vi.fn(),
+      onUpgrade: vi.fn(),
+      onSendError: vi.fn(),
+    });
+    return null;
+  }
+  await act(async () => root.render(<Controls runStatus="running" />));
+  await act(async () => state.commitComputer({ ...stopped, busyBotName: "Ada" } as never));
+  await act(async () => controls.panelProps(bot).onWake());
+  expect(boot).toHaveBeenCalledOnce();
+  expect(controls.panelProps(bot).computerOpen).toBe(false);
+
+  await act(async () => root.render(<Controls runStatus={undefined} />));
+  expect(boot).toHaveBeenCalledTimes(2);
+  expect(controls.panelProps(bot).computerOpen).toBe(false);
+});
+
 /** Renders the computer controls for bot-1 with a running computer this page can take. */
 async function renderTakingControl(
   takeover: () => Promise<{ leaseId: string; expiresAt: string }> = async () => ({

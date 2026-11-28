@@ -2,7 +2,7 @@ import { Readable } from "node:stream";
 import { createLogger, createTestSink, installLogger, runWithLogContext } from "@rakazo/logging";
 import type Docker from "dockerode";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { warnNearLimits } from "./computer-limits.js";
+import { computerUsage, warnNearLimits } from "./computer-limits.js";
 import { runContainerCommand } from "./exec.js";
 
 function computer(id: string, reading: object = {}) {
@@ -84,5 +84,26 @@ describe("computer limits", () => {
       "memory.current": 2_100_000_000,
       "memory.limit": limit,
     });
+  });
+});
+
+describe("computer usage", () => {
+  const reading = {
+    memory_stats: { usage: 3_000, limit: 8_000, stats: { inactive_file: 1_000 } },
+    cpu_stats: { cpu_usage: { total_usage: 300 }, system_cpu_usage: 4_000, online_cpus: 8 },
+    precpu_stats: { cpu_usage: { total_usage: 200 }, system_cpu_usage: 3_200 },
+  } as unknown as Docker.ContainerStats;
+
+  it("leaves idle file cache out and measures the processor against the allowance", () => {
+    // One of eight host processors for the sample, out of an allowance of two.
+    expect(computerUsage(reading, 2e9)).toEqual({
+      memoryBytes: 2_000,
+      memoryLimitBytes: 8_000,
+      cpuPercent: 50,
+    });
+  });
+
+  it("reports nothing without memory figures", () => {
+    expect(computerUsage({ ...reading, memory_stats: {} } as Docker.ContainerStats)).toBeNull();
   });
 });

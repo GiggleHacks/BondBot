@@ -7,6 +7,7 @@ import {
   captureScreenshot,
   chooseOption,
   completeOnboarding,
+  openIntegrations,
   openIntegrationsAdd,
   signup,
 } from "../helpers/helpers";
@@ -95,7 +96,7 @@ test("connects an MCP server through the OAuth popup callback", async ({ page },
     });
   });
 
-  await page.getByRole("button", { name: "Connect apps", exact: true }).click();
+  await openIntegrations(page);
   await openIntegrationsAdd(page, "Manage MCP servers");
   await expect(page.getByText("Linear MCP", { exact: true })).toBeVisible();
   await captureScreenshot(page, testInfo, "mcp-oauth-ready");
@@ -183,7 +184,7 @@ test("adds an MCP server with a pre-registered OAuth client", async ({ page }, t
     });
   });
 
-  await page.getByRole("button", { name: "Connect apps", exact: true }).click();
+  await openIntegrations(page);
   await openIntegrationsAdd(page, "Manage MCP servers");
 
   await page.getByLabel("Server name").fill("Gmail");
@@ -283,7 +284,7 @@ test("adds a custom MCP server and signs it in with OAuth", async ({ page }, tes
     });
   });
 
-  await page.getByRole("button", { name: "Connect apps", exact: true }).click();
+  await openIntegrations(page);
   await openIntegrationsAdd(page, "MCP server");
   const form = page.getByTestId("integrations-source-form");
   await form.getByLabel("Name", { exact: true }).fill("Custom MCP");
@@ -373,7 +374,7 @@ test("sends a custom MCP server without client registration to its settings", as
     });
   });
 
-  await page.getByRole("button", { name: "Connect apps", exact: true }).click();
+  await openIntegrations(page);
   await openIntegrationsAdd(page, "MCP server");
   const form = page.getByTestId("integrations-source-form");
   await form.getByLabel("Name", { exact: true }).fill("Custom MCP");
@@ -449,7 +450,7 @@ test("asks for a client ID when the MCP server cannot register one", async ({ pa
     });
   });
 
-  await page.getByRole("button", { name: "Connect apps", exact: true }).click();
+  await openIntegrations(page);
   await openIntegrationsAdd(page, "Manage MCP servers");
   await page.getByRole("button", { name: "Connect OAuth", exact: true }).click();
 

@@ -123,6 +123,26 @@ export async function refocus(page: Page) {
   await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange")));
 }
 
+/** Opens the full computer window from the bot panel, waking an asleep computer first. */
+export async function openComputerFullScreen(scope: Page | Locator) {
+  const wake = scope.getByTestId("computer-preview-wake");
+  const fullScreen = scope.getByTestId("computer-preview-open");
+  await expect(wake.or(fullScreen)).toBeVisible({ timeout: 30_000 });
+  if (await wake.isVisible()) await wake.click();
+  await fullScreen.click();
+}
+
+/** Opens the Integrations dialog from the command palette. */
+export async function openIntegrations(page: Page) {
+  const palette = page.getByTestId("command-palette");
+  await expect(async () => {
+    if (!(await palette.isVisible())) await page.keyboard.press("ControlOrMeta+k");
+    await expect(palette).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
+  await page.getByTestId("command-palette-search").fill("Connect apps");
+  await page.getByTestId("command-palette-action-integrations").click();
+}
+
 /** Opens Integrations' add menu and picks one of its custom sources. */
 export async function openIntegrationsAdd(page: Page, item: string) {
   const dialog = page.getByRole("dialog", { name: "Integrations", exact: true });
@@ -244,6 +264,7 @@ export async function openUserSettings(
   section?:
     | "general"
     | "models"
+    | "integrations"
     | "memory"
     | "voice"
     | "vault"

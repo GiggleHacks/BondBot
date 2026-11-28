@@ -11,6 +11,7 @@ import {
   Layers,
   MessageCircle,
   Monitor,
+  Plug,
   Settings,
   ShieldCheck,
   Wallet,
@@ -41,6 +42,12 @@ export function useSettingsNavItems(available: {
     // the account's usage and admin pages.
     { id: "general", label: t`General`, icon: Settings },
     { id: "models", label: t`Models`, icon: Cpu, description: t`Which LLMs your bots use.` },
+    {
+      id: "integrations",
+      label: t`Integrations`,
+      icon: Plug,
+      description: "Apps your bots can use.",
+    },
     {
       id: "confirmations",
       label: t`Approvals`,

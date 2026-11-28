@@ -34,6 +34,7 @@ import {
   providerCatalogCache,
   providerLiveCatalogsForSpace,
   runsOnHostedCredits,
+  sandboxKindCapabilities,
   savedCatalogSelections,
   scriptedCatalogEntry,
   spaceCanRunCatalogModel,
@@ -113,6 +114,7 @@ export function createRouterContext(deps: RouterDeps) {
   const repos = createRepos(deps.prisma, {
     phoneCallsEnabled: deps.env?.phoneCallsEnabled,
     phoneCallRingSeconds: deps.env?.phoneCallRingSeconds,
+    computerCanSleep: (kind) => kind !== "none" && !sandboxKindCapabilities(kind).runsOnUserMachine,
   });
   const onboardingDeps = { prisma: deps.prisma, events: deps.events, connectors: deps.connectors };
   const mcpOAuth = deps.mcpOAuth ?? new McpOAuthBroker(deps.prisma, deps.secrets);

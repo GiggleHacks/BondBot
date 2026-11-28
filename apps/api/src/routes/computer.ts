@@ -49,6 +49,12 @@ import {
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import {
+  assembleVpnOverview,
+  buildBotVpnStatus,
+  fetchSupervisorVpnStatus,
+  setSupervisorHomeVpn,
+} from "../computer-vpn.js";
+import {
   acquireBootLease,
   answerComputerRequest,
   assertNotAnotherPersonsControl,
@@ -66,12 +72,6 @@ import {
   withViewOnly,
 } from "../computers/computer-control.js";
 import { scrollPoint } from "../computers/computer-input.js";
-import {
-  assembleVpnOverview,
-  buildBotVpnStatus,
-  fetchSupervisorVpnStatus,
-  setSupervisorHomeVpn,
-} from "../computer-vpn.js";
 import type { RouterContext } from "./context.js";
 import { computerContext } from "./shared.js";
 
@@ -115,6 +115,22 @@ export function computerRoutes(ctx: RouterContext) {
       status: authed.computer.status.handler(async ({ context, input }) =>
         computerStatus(deps, context.actor, input.botId),
       ),
+      // A reading only: it never wakes the computer, delays its idle sleep, or marks it gone.
+      stats: authed.computer.stats.handler(async ({ context, input }) => {
+        const bot = await repos.getBot(context.actor, input.botId);
+        const computer = bot.computer;
+        if (computer?.state !== "running" || !computer.providerRef) return null;
+        try {
+          const reading = await deps.sandbox.stats?.(
+            toComputerRef(computer),
+            computerContext(context.actor, bot.id, "stats"),
+          );
+          return reading ?? null;
+        } catch (error) {
+          getLogger().warn("computer.stats_failed", { "computer.id": computer.id, error });
+          return null;
+        }
+      }),
       vpnState: authed.computer.vpnState.handler(async ({ context }) => {
         const [bots, supervisorStatus] = await Promise.all([
           deps.prisma.bot.findMany({
@@ -190,13 +206,7 @@ export function computerRoutes(ctx: RouterContext) {
           },
         });
 
-        return buildBotVpnStatus(
-          bot.id,
-          updatedComputer,
-          bridgeState,
-          null,
-          null,
-        );
+        return buildBotVpnStatus(bot.id, updatedComputer, bridgeState, null, null);
       }),
       boot: authed.computer.boot.handler(async ({ context, input }) => {
         const bot = await repos.getBot(context.actor, input.botId);

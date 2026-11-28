@@ -4,6 +4,7 @@ import type { McpServer } from "@rakazo/contracts";
 import {
   captureScreenshot,
   completeOnboarding,
+  openIntegrations,
   openIntegrationsAdd,
   signup,
 } from "../helpers/helpers";
@@ -89,7 +90,7 @@ test("adds a stdio MCP server with encrypted environment variables", async ({ pa
     });
   });
 
-  await page.getByRole("button", { name: "Connect apps", exact: true }).click();
+  await openIntegrations(page);
   await openIntegrationsAdd(page, "Manage MCP servers");
 
   await page.getByLabel("Server name").fill("Invoices");

@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { captureScreenshot, completeOnboarding, openBotPanel, signup } from "../helpers/helpers";
+import {
+  captureScreenshot,
+  completeOnboarding,
+  openBotPanel,
+  openComputerFullScreen,
+  signup,
+} from "../helpers/helpers";
 
 test("the full-window computer saves a screenshot of the bot's screen", async ({
   page,
@@ -8,7 +14,7 @@ test("the full-window computer saves a screenshot of the bot's screen", async ({
   await completeOnboarding(page);
 
   await openBotPanel(page);
-  await page.getByTestId("side-panel").getByTestId("computer-preview-open").click();
+  await openComputerFullScreen(page.getByTestId("side-panel"));
   const chrome = page.getByTestId("computer-chrome");
   await chrome.getByRole("button", { name: "Take control", exact: true }).click();
   const save = chrome.getByRole("button", { name: "Save screenshot", exact: true });

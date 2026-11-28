@@ -23,10 +23,15 @@ test("teach a task records interaction and saves a draft", async ({ page }, test
   await expect(sidePanel.getByTestId("computer-preview")).toBeVisible();
   await captureScreenshot(page, testInfo, "teach-sidepanel-simple");
 
-  const openButton = sidePanel.getByTestId("computer-preview-open");
-  await expect(openButton).toHaveText("Wake");
+  const wake = sidePanel.getByTestId("computer-preview-wake");
+  await expect(wake).toHaveText("Wake");
 
-  await openButton.click();
+  // Waking starts the computer in the panel; the full window opens only from its own button.
+  await wake.click();
+  await expect(sidePanel.getByTitle("Bot screen preview")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Close computer" })).toHaveCount(0);
+  await captureScreenshot(page, testInfo, "teach-woken-in-panel");
+  await sidePanel.getByTestId("computer-preview-open").click();
   await expect(page.getByRole("button", { name: "Close computer" })).toBeVisible();
   const chrome = page.getByTestId("computer-chrome");
   await chrome.getByRole("button", { name: "Take control", exact: true }).click();

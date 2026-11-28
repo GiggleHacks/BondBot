@@ -611,6 +611,7 @@ export async function sleepComputerIfIdle(
       if (cleared.count === 1) {
         await recordComputerRunEnd(deps.prisma, computer, "gone");
         await endTeachingWithLease(deps, computer.spaceId, computer.controlLeaseId);
+        void deps.events?.publishRosterChange?.({ spaceIds: [computer.spaceId] });
       }
       return;
     }

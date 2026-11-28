@@ -21,6 +21,8 @@ import {
   Globe,
   Hand,
   Maximize2,
+  Monitor,
+  MonitorOff,
   MoreHorizontal,
   Power,
   PowerOff,
@@ -28,9 +30,11 @@ import {
   Trash2,
 } from "lucide-react";
 import type { RefObject } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AsleepMoon } from "../../../components/computers/AsleepMoon";
 import { screenshotFileName } from "../../../components/computers/SaveScreenshotButton";
 import { ModelBrandIcon, modelBrandKey } from "../../../components/ModelBrandIcon";
+import { ASLEEP_AVATAR_CLASS, isBotAsleep } from "../../../lib/computers/bot-asleep";
 import { runsOnUserMachine } from "../../../lib/computers/computer-sandbox";
 import { screenFrames, screenIframeSandbox } from "../../../lib/computers/computer-screen";
 import { shortModelLabel } from "../../../lib/model-label";
@@ -42,7 +46,8 @@ import { ComputerVpnFlagChip, ComputerVpnPopover } from "../computer-vpn-control
 import { DesktopKindEmptyState, resolveOwnedComputerScreen } from "../computers/computer-view";
 import type { ComputerVpnController } from "../use-computer-vpn";
 import { MultiviewMiniChat } from "./MultiviewMiniChat";
-import { MULTIVIEW_DEFAULT_CHAT_HEIGHT } from "./multiview-state";
+import type { MultiviewLayout } from "./multiview-state";
+import { MULTIVIEW_DEFAULT_CHAT_HEIGHT, resizedChatHeight, wheelPixels } from "./multiview-state";
 import { useMultiviewTile } from "./use-multiview-tile";
 
 const DATA_URL = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i;
@@ -65,6 +70,7 @@ export function MultiviewTile({
   vpn,
   maximizedHere,
   isMobile,
+  layout = "screens",
   chatHeight,
   canRemove,
   onChangeChatHeight,
@@ -91,6 +97,7 @@ export function MultiviewTile({
   vpn: ComputerVpnController;
   maximizedHere: boolean;
   isMobile: boolean;
+  layout?: MultiviewLayout;
   chatHeight: number | undefined;
   canRemove: boolean;
   onChangeChatHeight: (height: number) => void;
@@ -125,6 +132,10 @@ export function MultiviewTile({
   const [moreOpen, setMoreOpen] = useState(false);
   const [confirmTakeover, setConfirmTakeover] = useState(false);
   const [taking, setTaking] = useState(false);
+  const [screenHidden, setScreenHidden] = useState(false);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  /** Chat column with the computer as a small window at its top end. */
+  const chats = layout === "chats";
 
   const owned = resolveOwnedComputerScreen(
     bot.id,
@@ -144,6 +155,7 @@ export function MultiviewTile({
     Boolean(embeddedScreenUrl) &&
     !tile.computerControls.computerScreenError;
   const controlling = Boolean(tile.computerControls.hasControl && showing);
+  const drawnAsleep = isBotAsleep(bot, computer?.state);
   const asleep =
     !maximizedHere &&
     !showing &&
@@ -190,6 +202,12 @@ export function MultiviewTile({
 
   const defaultChatHeight = isMobile ? 124 : MULTIVIEW_DEFAULT_CHAT_HEIGHT;
   const effectiveChatHeight = chatHeight ?? defaultChatHeight;
+  function resizeChat(delta: number) {
+    const height =
+      effectiveChatHeight === 0 ? 0 : drawerRef.current?.offsetHeight || effectiveChatHeight;
+    const next = resizedChatHeight(height, delta);
+    if (next !== effectiveChatHeight) onChangeChatHeight(next);
+  }
   const botVpn = vpn.overview?.supported ? vpn.overview.bots[bot.id] : undefined;
   const liveBots = bots.filter((candidate) => !candidate.archivedAt);
 
@@ -220,10 +238,12 @@ export function MultiviewTile({
               identity={bot.id}
               size={22}
               status={bot.status}
+              className={drawnAsleep ? ASLEEP_AVATAR_CLASS : undefined}
             />
             <span className="truncate text-body-sm font-medium text-foreground" dir="auto">
               {bot.name}
             </span>
+            {drawnAsleep ? <AsleepMoon /> : null}
             <span
               aria-hidden="true"
               className={cn(
@@ -292,7 +312,7 @@ export function MultiviewTile({
               <Hand size={12} aria-hidden="true" />
               <span>{t`Hand back`}</span>
             </Button>
-          ) : showing ? (
+          ) : showing && !chats ? (
             <Button
               type="button"
               variant="ghost"
@@ -301,6 +321,25 @@ export function MultiviewTile({
               onClick={requestControl}
             >
               <span>{t`Control`}</span>
+            </Button>
+          ) : null}
+
+          {chats ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`${screenHidden ? "Show" : "Hide"} screen of ${bot.name}`}
+              title={screenHidden ? "Show screen" : "Hide screen"}
+              aria-pressed={screenHidden}
+              onClick={() => setScreenHidden((hidden) => !hidden)}
+              className="text-muted-foreground"
+            >
+              {screenHidden ? (
+                <MonitorOff size={13} strokeWidth={1.85} aria-hidden="true" />
+              ) : (
+                <Monitor size={13} strokeWidth={1.85} aria-hidden="true" />
+              )}
             </Button>
           ) : null}
 
@@ -428,22 +467,24 @@ export function MultiviewTile({
               ) : null}
 
               <div className="border-t border-border/60 pt-1">
-                <MenuRow
-                  icon={
-                    effectiveChatHeight === 0 ? (
-                      <ChevronDown size={14} aria-hidden="true" />
-                    ) : (
-                      <ChevronDown size={14} className="rotate-180" aria-hidden="true" />
-                    )
-                  }
-                  label={effectiveChatHeight === 0 ? t`Show mini chat` : t`Hide mini chat`}
-                  onClick={() => {
-                    onChangeChatHeight(
-                      effectiveChatHeight === 0 ? MULTIVIEW_DEFAULT_CHAT_HEIGHT : 0,
-                    );
-                    setMoreOpen(false);
-                  }}
-                />
+                {chats ? null : (
+                  <MenuRow
+                    icon={
+                      effectiveChatHeight === 0 ? (
+                        <ChevronDown size={14} aria-hidden="true" />
+                      ) : (
+                        <ChevronDown size={14} className="rotate-180" aria-hidden="true" />
+                      )
+                    }
+                    label={effectiveChatHeight === 0 ? t`Show mini chat` : t`Hide mini chat`}
+                    onClick={() => {
+                      onChangeChatHeight(
+                        effectiveChatHeight === 0 ? MULTIVIEW_DEFAULT_CHAT_HEIGHT : 0,
+                      );
+                      setMoreOpen(false);
+                    }}
+                  />
+                )}
                 {canRemove ? (
                   <MenuRow
                     icon={<Trash2 size={14} aria-hidden="true" />}
@@ -461,105 +502,139 @@ export function MultiviewTile({
         </div>
       </header>
 
-      <div className="relative flex min-h-24 flex-1 items-center justify-center overflow-hidden bg-muted/50">
-        {maximizedHere ? (
-          <div className="grid h-full place-items-center px-4 text-center text-body-sm text-muted-foreground">
-            <span>{t`Open in full window`}</span>
-          </div>
-        ) : runsOnUserMachine(computer) ? (
-          <DesktopKindEmptyState className="grid h-full place-items-center px-4 text-center text-body-sm text-muted-foreground" />
-        ) : showing && embeddedScreenUrl ? (
-          <>
-            {screenFrames(tile.computerState.screenFrameKey, embeddedScreenUrl, heldScreen).map(
-              (frame) => (
-                <iframe
-                  key={frame.key}
-                  title={frame.held ? undefined : t`${bot.name} screen`}
-                  aria-hidden={frame.held || undefined}
-                  tabIndex={controlling && !frame.held ? 0 : -1}
-                  ref={frame.held ? undefined : tile.computerState.setScreenFrame}
-                  src={frame.url}
-                  sandbox={screenIframeSandbox(frame.url)}
-                  allow="clipboard-read; clipboard-write"
-                  style={{ pointerEvents: controlling && !frame.held ? "auto" : "none" }}
-                  className={cn(
-                    "h-full w-full border-0 bg-black",
-                    frame.held && "absolute inset-0",
-                  )}
-                />
-              ),
-            )}
-            {!controlling ? (
-              confirmTakeover ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/40 p-2">
-                  <div className="flex max-w-64 flex-col items-center gap-2.5 rounded-xl bg-black/85 px-4 py-3 text-center text-body-sm text-white ring-1 ring-white/15 backdrop-blur-sm">
-                    <span>{t`${bot.name} is using the computer.`}</span>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="xs"
-                        onClick={() => setConfirmTakeover(false)}
-                      >
-                        {t`Cancel`}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="default"
-                        size="xs"
-                        disabled={taking}
-                        onClick={() => void takeControl()}
-                      >
-                        {t`Take control`}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
+      {/* The same elements in both layouts, so switching never reloads the screen's frame. */}
+      <div className={chats ? "relative z-10 h-0 shrink-0" : "contents"}>
+        <div
+          data-testid={`multiview-screen-${bot.id}`}
+          onWheel={chats || controlling ? undefined : (event) => resizeChat(-wheelPixels(event))}
+          className={cn(
+            "flex items-center justify-center overflow-hidden",
+            chats
+              ? "absolute end-2 top-2 aspect-[16/10] w-2/5 max-w-72 min-w-36 rounded-lg border border-border bg-muted shadow-md"
+              : "relative min-h-24 flex-1 bg-muted/50",
+            chats && screenHidden && "hidden",
+          )}
+        >
+          {maximizedHere ? (
+            <div className="grid h-full place-items-center px-4 text-center text-body-sm text-muted-foreground">
+              <span>{t`Open in full window`}</span>
+            </div>
+          ) : runsOnUserMachine(computer) ? (
+            <DesktopKindEmptyState className="grid h-full place-items-center px-4 text-center text-body-sm text-muted-foreground" />
+          ) : showing && embeddedScreenUrl ? (
+            <>
+              {screenFrames(tile.computerState.screenFrameKey, embeddedScreenUrl, heldScreen).map(
+                (frame) => (
+                  <iframe
+                    key={frame.key}
+                    title={frame.held ? undefined : t`${bot.name} screen`}
+                    aria-hidden={frame.held || undefined}
+                    tabIndex={controlling && !frame.held ? 0 : -1}
+                    ref={frame.held ? undefined : tile.computerState.setScreenFrame}
+                    src={frame.url}
+                    sandbox={screenIframeSandbox(frame.url)}
+                    allow="clipboard-read; clipboard-write"
+                    style={{ pointerEvents: controlling && !frame.held ? "auto" : "none" }}
+                    className={cn(
+                      "h-full w-full border-0 bg-black",
+                      frame.held && "absolute inset-0",
+                    )}
+                  />
+                ),
+              )}
+              {chats && !controlling ? (
                 <button
                   type="button"
-                  aria-label={t`Double-click to take control of ${bot.name}`}
-                  onDoubleClick={requestControl}
-                  className="group absolute inset-0 flex items-end justify-end p-2 focus:outline-none"
-                >
-                  <span className="pointer-events-none rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white/75 opacity-0 ring-1 ring-white/15 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                    {t`Double-click to control`}
-                  </span>
-                </button>
-              )
-            ) : null}
-          </>
-        ) : asleep ? (
-          <div className="flex flex-col items-center gap-1.5 px-4 py-3 text-center">
-            <span aria-hidden="true" className="relative">
-              <BotAvatar
-                avatarSet={bot.avatarSet}
-                color={bot.color}
-                identity={bot.id}
-                size={32}
-                className="opacity-50 grayscale"
-              />
-              <span className="absolute -end-3 -top-1 text-caption font-medium leading-none text-muted-foreground/70">
-                z<sup>z</sup>
+                  aria-label={`Full screen ${bot.name}`}
+                  title="Full screen"
+                  onClick={() => onMaximize(bot.id)}
+                  className="absolute inset-0 rounded-lg outline-none hover:ring-2 hover:ring-foreground/25 hover:ring-inset focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                />
+              ) : !controlling ? (
+                confirmTakeover ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 p-2">
+                    <div className="flex max-w-64 flex-col items-center gap-2.5 rounded-xl bg-black/85 px-4 py-3 text-center text-body-sm text-white ring-1 ring-white/15 backdrop-blur-sm">
+                      <span>{t`${bot.name} is using the computer.`}</span>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="xs"
+                          onClick={() => setConfirmTakeover(false)}
+                        >
+                          {t`Cancel`}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="xs"
+                          disabled={taking}
+                          onClick={() => void takeControl()}
+                        >
+                          {t`Take control`}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={t`Double-click to take control of ${bot.name}`}
+                    onDoubleClick={requestControl}
+                    className="group absolute inset-0 flex items-end justify-end p-2 focus:outline-none"
+                  >
+                    <span className="pointer-events-none rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white/75 opacity-0 ring-1 ring-white/15 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                      {t`Double-click to control`}
+                    </span>
+                  </button>
+                )
+              ) : null}
+            </>
+          ) : asleep && chats ? (
+            <div className="flex flex-col items-center gap-1 px-2 text-center">
+              <span className="text-caption text-muted-foreground">{t`Asleep`}</span>
+              <Button type="button" variant="secondary" size="xs" onClick={tile.wakeComputer}>
+                {t`Wake`}
+              </Button>
+            </div>
+          ) : asleep ? (
+            <div className="flex flex-col items-center gap-1.5 px-4 py-3 text-center">
+              <span aria-hidden="true" className="relative">
+                <BotAvatar
+                  avatarSet={bot.avatarSet}
+                  color={bot.color}
+                  identity={bot.id}
+                  size={32}
+                  className="opacity-50 grayscale"
+                />
+                <span className="absolute -end-3 -top-1 text-caption font-medium leading-none text-muted-foreground/70">
+                  z<sup>z</sup>
+                </span>
               </span>
-            </span>
-            <span className="text-body-sm text-muted-foreground">{t`Asleep`}</span>
-            <Button type="button" variant="secondary" size="xs" onClick={tile.wakeComputer}>
-              {t`Wake`}
-            </Button>
-          </div>
-        ) : (
-          <div className="grid h-full place-items-center px-4 text-center text-body-sm text-muted-foreground">
-            {tile.computerControls.computerScreenError ?? tile.computerControls.computerBooting ?? (
-              <div className="flex flex-col items-center gap-2">
-                {booting || computer?.state === "booting" ? (
-                  <Spinner aria-label={t`Connecting…`} />
-                ) : null}
-                <span>{computerPreviewPlaceholder(computer?.state, booting)}</span>
-              </div>
-            )}
-          </div>
-        )}
+              <span className="text-body-sm text-muted-foreground">{t`Asleep`}</span>
+              <Button type="button" variant="secondary" size="xs" onClick={tile.wakeComputer}>
+                {t`Wake`}
+              </Button>
+            </div>
+          ) : (
+            <div
+              className={cn(
+                "grid h-full place-items-center text-center text-muted-foreground",
+                chats ? "overflow-auto px-2 text-caption" : "px-4 text-body-sm",
+              )}
+            >
+              {tile.computerControls.computerScreenError ??
+                tile.computerControls.computerBooting ?? (
+                  <div className="flex flex-col items-center gap-2">
+                    {booting || computer?.state === "booting" ? (
+                      <Spinner aria-label={t`Connecting…`} />
+                    ) : null}
+                    <span>{computerPreviewPlaceholder(computer?.state, booting)}</span>
+                  </div>
+                )}
+            </div>
+          )}
+        </div>
       </div>
 
       {tile.powerOff.error ? (
@@ -582,8 +657,11 @@ export function MultiviewTile({
         loadingOlder={tile.loadingOlder}
         followRequest={tile.followRequest}
         scrollRef={tile.thread.messageScroll}
+        fill={chats}
         chatHeight={effectiveChatHeight}
+        drawerRef={drawerRef}
         onChangeChatHeight={onChangeChatHeight}
+        onResizeChat={resizeChat}
         sending={tile.send.pending}
         sendError={tile.send.error?.message ?? null}
         stopping={tile.stop.pending}

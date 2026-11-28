@@ -92,7 +92,7 @@ export function ComputerOverlay({
   // to connect; a user's own machine has no screen here to take.
   const canSaveScreenshot = !runsOnUserMachine(computer) && computer?.state === "running";
   return (
-    <div className="fixed inset-0 z-30 bg-background">
+    <div className="fixed inset-0 z-30 animate-in bg-background fade-in-0 duration-150 motion-reduce:animate-none">
       <div
         data-testid="computer-viewport"
         className="fixed inset-x-0 top-0 flex flex-col bg-background pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"

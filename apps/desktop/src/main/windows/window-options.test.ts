@@ -34,9 +34,9 @@ describe("desktop window chrome", () => {
     }
   });
 
-  it("keeps Linux frameless so its in-app buttons control the window", () => {
+  it("uses the desktop's own window frame and buttons on Linux", () => {
     const opts = browserWindowOptions("linux", laptop);
-    expect(opts.frame).toBe(false);
+    expect(opts.frame).toBe(true);
     expect(opts.titleBarStyle).toBeUndefined();
   });
 });

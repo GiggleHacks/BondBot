@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test";
 import type { Routine } from "@rakazo/contracts";
-import { captureScreenshot, completeOnboarding, rpc, signup } from "../helpers/helpers";
+import {
+  captureScreenshot,
+  completeOnboarding,
+  openIntegrations,
+  rpc,
+  signup,
+} from "../helpers/helpers";
 
 test("a bot template previews what it adds, then creates a bot with a paused routine", async ({
   page,
@@ -9,7 +15,7 @@ test("a bot template previews what it adds, then creates a bot with a paused rou
   await signup(page, `templates-${Date.now()}@rakazo.test`, "password12", "Template Test");
   await completeOnboarding(page);
 
-  await page.getByRole("button", { name: "Connect apps", exact: true }).click();
+  await openIntegrations(page);
   await page
     .getByRole("dialog", { name: "Integrations", exact: true })
     .getByTestId("open-bot-templates")

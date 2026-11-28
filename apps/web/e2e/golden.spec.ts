@@ -8,7 +8,9 @@ import {
   chooseOption,
   completeOnboarding,
   openBotPanel,
+  openComputerFullScreen,
   openEmailSignIn,
+  openIntegrations,
   realSandboxTimeout,
   rpc,
   signup,
@@ -84,10 +86,7 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   expect(mainBox).not.toBeNull();
   expect(panelBox).not.toBeNull();
   expect((mainBox?.x ?? 0) + (mainBox?.width ?? 0)).toBeLessThanOrEqual(panelBox?.x ?? 0);
-  await sidePanel.getByTestId("computer-preview").hover();
-  const openComputer = sidePanel.getByTestId("computer-preview-open");
-  await expect(openComputer).toBeVisible({ timeout: 30_000 });
-  await openComputer.click();
+  await openComputerFullScreen(sidePanel);
   await page
     .getByTestId("computer-chrome")
     .getByRole("button", { name: "Take control", exact: true })
@@ -128,7 +127,7 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
     await catalogGate;
     await route.continue();
   });
-  await page.getByRole("button", { name: "Connect apps", exact: true }).click();
+  await openIntegrations(page);
   const catalogSpinner = page.getByRole("status", { name: "Loading integrations…" });
   const featured = page.getByTestId("featured-connectors");
   try {
@@ -203,7 +202,7 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await captureScreenshot(page, testInfo, "11a3-plugin-tools");
 
   await page.getByRole("button", { name: "Close integrations" }).click();
-  await page.getByRole("button", { name: "Connect apps", exact: true }).click();
+  await openIntegrations(page);
   await expect(page.getByPlaceholder("Search apps")).toBeVisible();
   const gmailTileAgain = page.getByTestId("connection-tile-gmail");
   await expect(gmailTileAgain.getByRole("button", { name: "Added", exact: true })).toBeVisible();

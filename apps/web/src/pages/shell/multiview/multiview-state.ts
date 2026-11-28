@@ -3,9 +3,12 @@ import { readStoredString, writeStoredString } from "../../../lib/preferences/st
 
 export type MultiviewCount = 2 | 3 | 4;
 export type MultiviewThreeLayout = "columns" | "featured";
+/** Large screens with a chat drawer under each, or chat columns with a small screen each. */
+export type MultiviewLayout = "screens" | "chats";
 
 export type MultiviewSpaceConfig = {
   tileBotIds: string[];
+  layout: MultiviewLayout;
   threeLayout: MultiviewThreeLayout;
   /** Per-bot mini-chat height in px; 0 means collapsed. Missing entries use the default height. */
   chatHeights: Record<string, number>;
@@ -16,7 +19,8 @@ export const MULTIVIEW_MAX_TILES = 4;
 export const MULTIVIEW_MOBILE_PAGE_SIZE = 2;
 export const MULTIVIEW_DEFAULT_CHAT_HEIGHT = 176;
 export const MULTIVIEW_MIN_CHAT_HEIGHT = 96;
-export const MULTIVIEW_MAX_CHAT_HEIGHT = 360;
+/** Only a bound on stored values: the tile itself keeps room for the screen. */
+export const MULTIVIEW_MAX_CHAT_HEIGHT = 1200;
 
 export function multiviewStorageKey(spaceId: string): string {
   return `bondbot.multiview:${spaceId}`;
@@ -25,6 +29,7 @@ export function multiviewStorageKey(spaceId: string): string {
 export function readMultiviewConfig(spaceId: string): MultiviewSpaceConfig {
   const empty: MultiviewSpaceConfig = {
     tileBotIds: [],
+    layout: "screens",
     threeLayout: "columns",
     chatHeights: {},
   };
@@ -39,6 +44,7 @@ export function readMultiviewConfig(spaceId: string): MultiviewSpaceConfig {
       : [];
     const threeLayout: MultiviewThreeLayout =
       record.threeLayout === "featured" ? "featured" : "columns";
+    const layout: MultiviewLayout = record.layout === "chats" ? "chats" : "screens";
     const chatHeights: Record<string, number> = {};
     if (record.chatHeights && typeof record.chatHeights === "object") {
       for (const [id, value] of Object.entries(record.chatHeights)) {
@@ -47,7 +53,7 @@ export function readMultiviewConfig(spaceId: string): MultiviewSpaceConfig {
         }
       }
     }
-    return { tileBotIds, threeLayout, chatHeights };
+    return { tileBotIds, layout, threeLayout, chatHeights };
   } catch {
     return empty;
   }
@@ -164,4 +170,19 @@ export function visibleMobileTileIds(tileIds: readonly string[], page: number): 
   const safePage = page > 0 && tileIds.length > MULTIVIEW_MOBILE_PAGE_SIZE ? 1 : 0;
   const start = safePage * MULTIVIEW_MOBILE_PAGE_SIZE;
   return tileIds.slice(start, start + MULTIVIEW_MOBILE_PAGE_SIZE);
+}
+
+/** A wheel step in pixels, whatever unit the browser reports it in. */
+export function wheelPixels(event: { deltaY: number; deltaMode: number }): number {
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 240 : 1;
+  return event.deltaY * unit;
+}
+
+/**
+ * The chat height after growing it by `delta`. `height` is what the drawer measures now, and a
+ * collapsed drawer (0) only reopens by growing.
+ */
+export function resizedChatHeight(height: number, delta: number): number {
+  if (height === 0 && delta <= 0) return 0;
+  return clampMultiviewChatHeight(height + delta);
 }

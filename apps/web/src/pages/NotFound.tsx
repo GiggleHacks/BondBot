@@ -22,7 +22,7 @@ export function NotFoundPage() {
         </div>
         <Link
           to="/"
-          className="app-no-drag rounded-full bg-accent px-[30px] py-[13px] text-heading3 text-foreground transition hover:scale-[1.04]"
+          className="app-no-drag rounded-full bg-accent px-[30px] py-[13px] text-heading3 text-foreground transition-colors hover:bg-foreground/10"
         >
           <Trans>Go home</Trans>
         </Link>

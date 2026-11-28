@@ -247,7 +247,7 @@ export function ImageLightbox({
                 size="icon-lg"
                 aria-label={t`Previous image`}
                 onClick={() => step(-1)}
-                className="absolute left-1 top-1/2 -translate-y-1/2 sm:-left-6"
+                className="absolute left-1 top-1/2 -translate-y-1/2 sm:-left-6 active:not-aria-[haspopup]:-translate-y-1/2"
               >
                 <ChevronLeft strokeWidth={1.8} />
               </Button>
@@ -256,7 +256,7 @@ export function ImageLightbox({
                 size="icon-lg"
                 aria-label={t`Next image`}
                 onClick={() => step(1)}
-                className="absolute right-1 top-1/2 -translate-y-1/2 sm:-right-6"
+                className="absolute right-1 top-1/2 -translate-y-1/2 sm:-right-6 active:not-aria-[haspopup]:-translate-y-1/2"
               >
                 <ChevronRight strokeWidth={1.8} />
               </Button>

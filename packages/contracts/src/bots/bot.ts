@@ -58,6 +58,8 @@ export const BotSchema = z.object({
   threadStatus: z.string().optional(),
   runErrorId: Id.nullable().default(null),
   computerMode: ComputerModeSchema,
+  /** Its computer is switched off until woken. Absent where that is not known. */
+  computerAsleep: z.boolean().optional(),
   updatedAt: z.string(),
   createdAt: z.string(),
   voiceId: z.string().nullable(),

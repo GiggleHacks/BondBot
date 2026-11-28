@@ -3,16 +3,18 @@ import type { Bot, Group, ThreadSnapshot } from "@rakazo/contracts";
 import { MEETING_CALENDAR_RETURN_PARAM } from "@rakazo/contracts";
 import { BotAvatar, Button, GroupAvatar } from "@rakazo/ui-web";
 import { Gift, LayoutGrid, Menu, Monitor, Phone, Video } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useBilling } from "../../../components/billing/SubscriptionGate";
 import { useBondbotUpdate } from "../../../components/bondbot-update/BondbotUpdateProvider";
 import { ConnectionBars } from "../../../components/ConnectionBars";
+import { AsleepMoon } from "../../../components/computers/AsleepMoon";
 import { IconTooltip } from "../../../components/IconTooltip";
 import { ModelBrandIcon, modelBrandKey } from "../../../components/ModelBrandIcon";
 import { ModelSwitcher } from "../../../components/ModelSwitcher";
 import { InviteDialog } from "../../../components/spaces/InviteDialog";
 import { WindowChrome } from "../../../components/WindowChrome";
+import { ASLEEP_AVATAR_CLASS, ASLEEP_LABEL, isBotAsleep } from "../../../lib/computers/bot-asleep";
 import { desktopBridge, windowChromeKind } from "../../../lib/platform/desktop";
 import { ComputerVpnFlagChip, ComputerVpnPopover } from "../computer-vpn-control";
 import type { ComputerVpnController } from "../use-computer-vpn";
@@ -71,6 +73,14 @@ export function ChatHeader({
   const bondbotUpdateDot = Boolean(useBondbotUpdate()?.showNotificationDot);
   const [inviteOpen, setInviteOpen] = useState(false);
   const macChrome = windowChromeKind(desktopBridge()) === "darwin";
+  const asleepId = useId();
+  const asleep =
+    !inGroup &&
+    Boolean(active) &&
+    isBotAsleep(
+      active!,
+      activeSnapshot?.computer?.botId === active!.id ? activeSnapshot.computer.state : undefined,
+    );
   return (
     <div
       data-testid="chat-header"
@@ -139,12 +149,18 @@ export function ChatHeader({
             </Button>
           )
         ) : null}
+        {asleep ? (
+          <span id={asleepId} aria-hidden="true" className="sr-only">
+            {ASLEEP_LABEL}
+          </span>
+        ) : null}
         {/* With no bot or group the chip has nothing to open, so it is left out. */}
         {inGroup || active ? (
           <Button
             variant="floating"
             data-testid="bot-settings-trigger"
             aria-expanded={panelOpen}
+            aria-describedby={asleep ? asleepId : undefined}
             onClick={onTogglePanel}
             className="app-no-drag h-auto min-w-0 gap-2 py-1 ps-1 pe-3.5"
           >
@@ -160,6 +176,7 @@ export function ChatHeader({
                 identity={active.id}
                 size={26}
                 status={active.status}
+                className={asleep ? ASLEEP_AVATAR_CLASS : undefined}
               />
             ) : null}
             <span className="min-w-0">
@@ -169,6 +186,7 @@ export function ChatHeader({
                   : active?.name}
               </span>
             </span>
+            {asleep ? <AsleepMoon /> : null}
           </Button>
         ) : null}
       </div>

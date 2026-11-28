@@ -1,4 +1,4 @@
-import type { ComputerSize } from "@rakazo/contracts";
+import type { ComputerSize, ComputerStats } from "@rakazo/contracts";
 import type { ConnectedCalendarProvider } from "./personal-calendar.js";
 import type {
   AdapterContext,
@@ -177,6 +177,11 @@ export interface SandboxProvider {
    * disk kept, so it resumes as it was without anything running now.
    */
   isStopped?(computer: ComputerRef, context: AdapterContext): Promise<boolean>;
+  /**
+   * Read-only usage of a running computer. It never starts or resumes anything, and never marks
+   * the computer unhealthy; null where there is nothing to report.
+   */
+  stats?(computer: ComputerRef, context: AdapterContext): Promise<ComputerStats | null>;
   /** True only when this computer currently mounts the server's home directory. */
   hasMountedHome?(computer: ComputerRef, context: AdapterContext): Promise<boolean>;
   /** Perform idempotent provider setup after the lifecycle has captured the reference. */

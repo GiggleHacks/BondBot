@@ -7,7 +7,6 @@ import type {
   McpSourcePreset,
 } from "@rakazo/contracts";
 import { MCP_OAUTH_CLIENT_REQUIRED, mcpServerConnection } from "@rakazo/contracts";
-import type { connectedAppMarks } from "@rakazo/core";
 import {
   addedMcpEndpoints,
   CONNECTION_CATALOG_PAGE_SIZE,
@@ -65,19 +64,20 @@ type OverlayView = "browse" | "manage" | "github" | "source" | "browseMcp" | "do
 const CHIP_COUNT = 6;
 
 export function PluginsOverlay({
-  onConnectedAppsChange,
   onClose,
   onOpenMcp,
   onOpenTemplates,
   onOpenMessaging,
   activeBotId,
+  embedded = false,
 }: {
-  onConnectedAppsChange?: (apps: ReturnType<typeof connectedAppMarks>) => void;
   onClose: () => void;
   onOpenMcp?: () => void;
   onOpenTemplates?: () => void;
   onOpenMessaging?: () => void;
   activeBotId?: string;
+  /** Renders inside Settings, which supplies the dialog, its title and its close button. */
+  embedded?: boolean;
 }) {
   const { t } = useLingui();
   const [confirmingSource, setConfirmingSource] = useState<string | null>(null);
@@ -106,7 +106,6 @@ export function PluginsOverlay({
     activeBotId,
     detailKey,
     closeDetail,
-    onConnectedAppsChange,
   });
   const {
     mcpServers,
@@ -404,6 +403,264 @@ export function PluginsOverlay({
     setView(sourceBack);
   }
 
+  const headerActions =
+    browsing || view === "manage" ? (
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+        {browsing && appCount > 0 ? (
+          <Button
+            variant="ghost"
+            size="lg"
+            className="-my-1 gap-2.5 px-2.5 text-body text-muted-foreground"
+            onClick={() => setView("manage")}
+          >
+            <span aria-hidden className="flex -space-x-1.5">
+              {connectedMarks.map((mark) => (
+                <span key={mark.key} className="rounded-[9px] ring-2 ring-card">
+                  {mark.logo ? (
+                    <img
+                      src={mark.logo}
+                      alt=""
+                      className="h-6 w-6 rounded-lg bg-favicon-plate object-contain p-0.5"
+                    />
+                  ) : (
+                    <span className="grid h-6 w-6 place-items-center rounded-lg border border-border/60 bg-favicon-plate text-caption font-semibold text-foreground">
+                      {Array.from(mark.name)[0]?.toUpperCase()}
+                    </span>
+                  )}
+                </span>
+              ))}
+            </span>
+            <Plural value={connectedCount} one="# connected" other="# connected" />
+            <ChevronRight />
+          </Button>
+        ) : null}
+        {browsing && onOpenTemplates ? (
+          <Button
+            variant="ghost"
+            size="lg"
+            className="-my-1 gap-2 px-2.5 text-body text-muted-foreground"
+            data-testid="open-bot-templates"
+            onClick={onOpenTemplates}
+          >
+            <LayoutTemplate />
+            <Trans>Templates</Trans>
+          </Button>
+        ) : null}
+        <AddMenu
+          presets={sourcePresets}
+          onGithub={() => openAddView("github")}
+          onSource={beginSource}
+          onBrowseMcp={() => openAddView("browseMcp")}
+          onDomainSearch={catalogFeedEnabled ? () => openAddView("domain") : undefined}
+          onOpenMcp={onOpenMcp}
+        />
+      </div>
+    ) : null;
+
+  const content = (
+    <>
+      {browsing ? (
+        <div className="space-y-4 px-8 pt-4">
+          <Input
+            disabled={loading}
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setVisibleCount(CONNECTION_CATALOG_PAGE_SIZE);
+            }}
+            aria-label={t`Search apps`}
+            placeholder={t`Search apps`}
+            size="xl"
+          />
+          {categories.length >= 2 || category ? (
+            <div className="flex flex-wrap gap-2" data-testid="integration-categories">
+              {[null, ...categories.slice(0, CHIP_COUNT)].map((name) => (
+                <Button
+                  key={name ?? "all"}
+                  type="button"
+                  variant={category === name ? "default" : "secondary"}
+                  aria-pressed={category === name}
+                  className="rounded-full px-3.5 text-body-sm"
+                  onClick={() => {
+                    setCategory(name);
+                    setPluginCount(PLUGIN_PAGE_SIZE);
+                  }}
+                >
+                  {name ? categoryLabel(name) : <Trans>All</Trans>}
+                </Button>
+              ))}
+              {categories.length > CHIP_COUNT ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant={
+                          category && !categories.slice(0, CHIP_COUNT).includes(category)
+                            ? "default"
+                            : "secondary"
+                        }
+                        className="rounded-full px-3.5 text-body-sm"
+                      />
+                    }
+                  >
+                    {category && !categories.slice(0, CHIP_COUNT).includes(category) ? (
+                      categoryLabel(category)
+                    ) : (
+                      <Trans>More</Trans>
+                    )}
+                    <ChevronDown />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-auto">
+                    {categories.slice(CHIP_COUNT).map((name) => (
+                      <DropdownMenuItem
+                        key={name}
+                        onClick={() => {
+                          setCategory(name);
+                          setPluginCount(PLUGIN_PAGE_SIZE);
+                        }}
+                      >
+                        {categoryLabel(name)}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {loading ? (
+        <div className="grid flex-1 place-items-center" aria-busy="true">
+          <Spinner className="size-5 text-muted-foreground" aria-label={t`Loading integrations…`} />
+        </div>
+      ) : null}
+
+      <div
+        id="integration-list"
+        hidden={loading}
+        className="rk-scroll flex-1 overflow-y-auto px-8 py-6"
+      >
+        {catalogError || loadError ? (
+          <div className="mb-4 flex items-center gap-3">
+            <p className="text-body text-destructive">{catalogError ?? loadError}</p>
+            {!catalogLoaded || (loadError && !catalogError) ? (
+              <Button variant="outline" size="sm" onClick={() => void integrations.refetch()}>
+                <Trans>Retry</Trans>
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {plugin ? (
+          <PluginDetail
+            key={plugin.installId ?? plugin.installedSource}
+            selection={plugin}
+            installs={pluginInstalls}
+            servers={mcpServers}
+            assigned={assigned}
+            activeBotId={activeBotId}
+            managed={managedLink(plugin)}
+            onBack={() => setPlugin(null)}
+            onChanged={refresh}
+          />
+        ) : detailItem ? (
+          <ConnectorDetail
+            key={catalogItemKey(detailItem)}
+            item={detailItem}
+            organizationName={organizationName}
+            state={state}
+            onBack={closeDetail}
+            onOpenChatApp={onOpenMessaging}
+          />
+        ) : view === "manage" ? (
+          <ManageView
+            state={state}
+            tileContext={tileContext}
+            connectedItems={connectedItems}
+            connectorInstalls={connectorInstalls}
+            standaloneServers={standaloneServers}
+            appCount={appCount}
+            sourceError={sourceError ?? oauthError}
+            confirmingSource={confirmingSource}
+            onRemoveSource={(install) => void removeSource(install)}
+            onOpenMcp={onOpenMcp}
+            installedSelection={installedSelection}
+            pluginServers={pluginServers}
+            onOpenPlugin={openPlugin}
+            onBack={() => setView("browse")}
+          />
+        ) : view === "github" ? (
+          <GithubImport
+            value={gitSource}
+            onChange={setGitSource}
+            onBack={() => setView("browse")}
+            onPreview={openPlugin}
+          />
+        ) : view === "source" ? (
+          <SourceFormView
+            form={sourceForm}
+            installing={pending === "install-source"}
+            sourceError={sourceError}
+            onBack={leaveSource}
+            onSubmit={() => void installSource()}
+          />
+        ) : view === "domain" ? (
+          <DomainSearch
+            state={domainSearch}
+            onBack={() => setView("browse")}
+            onPick={beginCatalogSurface}
+          />
+        ) : view === "browseMcp" ? (
+          <div className="space-y-6">
+            <ViewTitle title={<Trans>Browse MCP servers</Trans>} onBack={() => setView("browse")} />
+            <IntegrationSetup
+              botId={activeBotId}
+              onDone={() => {
+                setView("manage");
+                void refresh().catch((err: unknown) =>
+                  setCatalogError(errorText(err, t`Could not load integrations`)),
+                );
+              }}
+            />
+          </div>
+        ) : (
+          <PluginBrowse
+            browse={browse}
+            state={state}
+            tileContext={tileContext}
+            onOpenPlugin={openPlugin}
+            publicTerm={publicTerm}
+            onSearchPublic={setPublicTerm}
+            onOpenPreset={(preset) => beginSource("mcp", preset)}
+            onOpenMcp={(server) => {
+              if (addedMcpEndpoints(sources, mcpServers).has(server.source)) {
+                openAddView("manage");
+                return;
+              }
+              beginSource("mcp");
+              sourceForm.startFromCatalog("mcp", server.name, server.source, server.auth);
+            }}
+          />
+        )}
+      </div>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div data-testid="integrations-settings" className="flex min-h-0 flex-1 flex-col">
+        {headerActions ? (
+          <div className="flex flex-wrap items-center justify-end gap-2 px-8 pt-5">
+            {headerActions}
+          </div>
+        ) : null}
+        {content}
+      </div>
+    );
+  }
+
   return (
     <Dialog
       open
@@ -428,58 +685,7 @@ export function PluginsOverlay({
           >
             <X />
           </DialogClose>
-          {browsing || view === "manage" ? (
-            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-              {browsing && appCount > 0 ? (
-                <Button
-                  variant="ghost"
-                  size="lg"
-                  className="-my-1 gap-2.5 px-2.5 text-body text-muted-foreground"
-                  onClick={() => setView("manage")}
-                >
-                  <span aria-hidden className="flex -space-x-1.5">
-                    {connectedMarks.map((mark) => (
-                      <span key={mark.key} className="rounded-[9px] ring-2 ring-card">
-                        {mark.logo ? (
-                          <img
-                            src={mark.logo}
-                            alt=""
-                            className="h-6 w-6 rounded-lg bg-favicon-plate object-contain p-0.5"
-                          />
-                        ) : (
-                          <span className="grid h-6 w-6 place-items-center rounded-lg border border-border/60 bg-favicon-plate text-caption font-semibold text-foreground">
-                            {Array.from(mark.name)[0]?.toUpperCase()}
-                          </span>
-                        )}
-                      </span>
-                    ))}
-                  </span>
-                  <Plural value={connectedCount} one="# connected" other="# connected" />
-                  <ChevronRight />
-                </Button>
-              ) : null}
-              {browsing && onOpenTemplates ? (
-                <Button
-                  variant="ghost"
-                  size="lg"
-                  className="-my-1 gap-2 px-2.5 text-body text-muted-foreground"
-                  data-testid="open-bot-templates"
-                  onClick={onOpenTemplates}
-                >
-                  <LayoutTemplate />
-                  <Trans>Templates</Trans>
-                </Button>
-              ) : null}
-              <AddMenu
-                presets={sourcePresets}
-                onGithub={() => openAddView("github")}
-                onSource={beginSource}
-                onBrowseMcp={() => openAddView("browseMcp")}
-                onDomainSearch={catalogFeedEnabled ? () => openAddView("domain") : undefined}
-                onOpenMcp={onOpenMcp}
-              />
-            </div>
-          ) : null}
+          {headerActions}
           <DialogClose
             render={
               <Button
@@ -494,198 +700,7 @@ export function PluginsOverlay({
           </DialogClose>
         </DialogHeader>
 
-        {browsing ? (
-          <div className="space-y-4 px-8 pt-4">
-            <Input
-              disabled={loading}
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setVisibleCount(CONNECTION_CATALOG_PAGE_SIZE);
-              }}
-              aria-label={t`Search apps`}
-              placeholder={t`Search apps`}
-              size="xl"
-            />
-            {categories.length >= 2 || category ? (
-              <div className="flex flex-wrap gap-2" data-testid="integration-categories">
-                {[null, ...categories.slice(0, CHIP_COUNT)].map((name) => (
-                  <Button
-                    key={name ?? "all"}
-                    type="button"
-                    variant={category === name ? "default" : "secondary"}
-                    aria-pressed={category === name}
-                    className="rounded-full px-3.5 text-body-sm"
-                    onClick={() => {
-                      setCategory(name);
-                      setPluginCount(PLUGIN_PAGE_SIZE);
-                    }}
-                  >
-                    {name ? categoryLabel(name) : <Trans>All</Trans>}
-                  </Button>
-                ))}
-                {categories.length > CHIP_COUNT ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant={
-                            category && !categories.slice(0, CHIP_COUNT).includes(category)
-                              ? "default"
-                              : "secondary"
-                          }
-                          className="rounded-full px-3.5 text-body-sm"
-                        />
-                      }
-                    >
-                      {category && !categories.slice(0, CHIP_COUNT).includes(category) ? (
-                        categoryLabel(category)
-                      ) : (
-                        <Trans>More</Trans>
-                      )}
-                      <ChevronDown />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-auto">
-                      {categories.slice(CHIP_COUNT).map((name) => (
-                        <DropdownMenuItem
-                          key={name}
-                          onClick={() => {
-                            setCategory(name);
-                            setPluginCount(PLUGIN_PAGE_SIZE);
-                          }}
-                        >
-                          {categoryLabel(name)}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {loading ? (
-          <div className="grid flex-1 place-items-center" aria-busy="true">
-            <Spinner
-              className="size-5 text-muted-foreground"
-              aria-label={t`Loading integrations…`}
-            />
-          </div>
-        ) : null}
-
-        <div
-          id="integration-list"
-          hidden={loading}
-          className="rk-scroll flex-1 overflow-y-auto px-8 py-6"
-        >
-          {catalogError || loadError ? (
-            <div className="mb-4 flex items-center gap-3">
-              <p className="text-body text-destructive">{catalogError ?? loadError}</p>
-              {!catalogLoaded || (loadError && !catalogError) ? (
-                <Button variant="outline" size="sm" onClick={() => void integrations.refetch()}>
-                  <Trans>Retry</Trans>
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-
-          {plugin ? (
-            <PluginDetail
-              key={plugin.installId ?? plugin.installedSource}
-              selection={plugin}
-              installs={pluginInstalls}
-              servers={mcpServers}
-              assigned={assigned}
-              activeBotId={activeBotId}
-              managed={managedLink(plugin)}
-              onBack={() => setPlugin(null)}
-              onChanged={refresh}
-            />
-          ) : detailItem ? (
-            <ConnectorDetail
-              key={catalogItemKey(detailItem)}
-              item={detailItem}
-              organizationName={organizationName}
-              state={state}
-              onBack={closeDetail}
-              onOpenChatApp={onOpenMessaging}
-            />
-          ) : view === "manage" ? (
-            <ManageView
-              state={state}
-              tileContext={tileContext}
-              connectedItems={connectedItems}
-              connectorInstalls={connectorInstalls}
-              standaloneServers={standaloneServers}
-              appCount={appCount}
-              sourceError={sourceError ?? oauthError}
-              confirmingSource={confirmingSource}
-              onRemoveSource={(install) => void removeSource(install)}
-              onOpenMcp={onOpenMcp}
-              installedSelection={installedSelection}
-              pluginServers={pluginServers}
-              onOpenPlugin={openPlugin}
-              onBack={() => setView("browse")}
-            />
-          ) : view === "github" ? (
-            <GithubImport
-              value={gitSource}
-              onChange={setGitSource}
-              onBack={() => setView("browse")}
-              onPreview={openPlugin}
-            />
-          ) : view === "source" ? (
-            <SourceFormView
-              form={sourceForm}
-              installing={pending === "install-source"}
-              sourceError={sourceError}
-              onBack={leaveSource}
-              onSubmit={() => void installSource()}
-            />
-          ) : view === "domain" ? (
-            <DomainSearch
-              state={domainSearch}
-              onBack={() => setView("browse")}
-              onPick={beginCatalogSurface}
-            />
-          ) : view === "browseMcp" ? (
-            <div className="space-y-6">
-              <ViewTitle
-                title={<Trans>Browse MCP servers</Trans>}
-                onBack={() => setView("browse")}
-              />
-              <IntegrationSetup
-                botId={activeBotId}
-                onDone={() => {
-                  setView("manage");
-                  void refresh().catch((err: unknown) =>
-                    setCatalogError(errorText(err, t`Could not load integrations`)),
-                  );
-                }}
-              />
-            </div>
-          ) : (
-            <PluginBrowse
-              browse={browse}
-              state={state}
-              tileContext={tileContext}
-              onOpenPlugin={openPlugin}
-              publicTerm={publicTerm}
-              onSearchPublic={setPublicTerm}
-              onOpenPreset={(preset) => beginSource("mcp", preset)}
-              onOpenMcp={(server) => {
-                if (addedMcpEndpoints(sources, mcpServers).has(server.source)) {
-                  openAddView("manage");
-                  return;
-                }
-                beginSource("mcp");
-                sourceForm.startFromCatalog("mcp", server.name, server.source, server.auth);
-              }}
-            />
-          )}
-        </div>
+        {content}
       </DialogContent>
     </Dialog>
   );

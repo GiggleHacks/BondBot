@@ -203,6 +203,10 @@ export class HostAwareSandbox implements SandboxProvider {
     return provider.isRunning?.(computer, context) ?? false;
   }
 
+  async stats(computer: ComputerRef, context: AdapterContext) {
+    return this.route(computer).stats?.(computer, context) ?? null;
+  }
+
   async isStopped(computer: ComputerRef, context: AdapterContext): Promise<boolean> {
     return this.route(computer).isStopped?.(computer, context) ?? false;
   }

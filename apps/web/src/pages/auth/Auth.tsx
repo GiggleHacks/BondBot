@@ -743,26 +743,25 @@ export function AuthFrame({
     >
       <CodeBackdrop />
       <RobotBackdrop slotRef={robotSlot} />
-      <div className="app-drag relative flex items-center gap-2 px-5 py-[18px]">
+      <div className="app-drag relative flex items-center gap-2 px-5 py-2">
         <WindowChrome />
       </div>
-      <div className="relative flex flex-1 flex-col items-center px-6 pb-12">
+      <div className="relative flex flex-1 flex-col items-center px-6 pb-6">
         {/* The robot's head is drawn into this space by the backdrop. */}
-        <div ref={robotSlot} className="h-[clamp(200px,40vh,440px)] w-full shrink-0" />
-        <div className="bb-wordmark mt-2 mb-6">
-          <QuakeText text="BOND BOT" zoom={4} className="sm:hidden" />
-          <QuakeText text="BOND BOT" zoom={5} className="hidden sm:flex" />
+        <div ref={robotSlot} className="h-[clamp(100px,19vh,220px)] w-full shrink-0" />
+        <div className="bb-wordmark mt-1 mb-4">
+          <QuakeText text="BOND BOT" zoom={3} />
         </div>
         <form
           onSubmit={onSubmit}
-          className={`bb-auth-card flex w-full flex-col rounded-3xl border border-border bg-background/75 px-8 pt-8 pb-9 shadow-2xl backdrop-blur-md ${
-            surface ? "max-w-[520px]" : "max-w-[460px]"
+          className={`bb-auth-card flex w-full flex-col rounded-3xl border border-border bg-background/75 px-8 pt-6 pb-7 shadow-2xl backdrop-blur-md sm:px-10 ${
+            surface ? "max-w-[620px]" : "max-w-[560px]"
           }`}
         >
           {leading ? <div className="mb-4 self-start">{leading}</div> : null}
           <h1
             aria-live="polite"
-            className="mb-6 text-balance text-center text-display font-medium tracking-tight"
+            className="mb-4 text-balance text-center text-heading1 font-medium tracking-tight"
           >
             {title}
           </h1>
@@ -770,7 +769,7 @@ export function AuthFrame({
         </form>
       </div>
       {server ? (
-        <div className="relative flex justify-center pb-6">
+        <div className="relative flex justify-center pb-2">
           <Button type="button" variant="text" size="sm" onClick={() => void server.change()}>
             <Trans>Change server</Trans>
           </Button>

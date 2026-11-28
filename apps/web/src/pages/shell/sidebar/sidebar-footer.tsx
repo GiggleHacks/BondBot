@@ -1,13 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { NavLink } from "@rakazo/contracts";
-import {
-  AppMarkStack,
-  Button,
-  buttonVariants,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@rakazo/ui-web";
+import { Button, buttonVariants, Popover, PopoverContent, PopoverTrigger } from "@rakazo/ui-web";
 import {
   BookOpen,
   Building2,
@@ -19,7 +12,6 @@ import {
   Link2,
   LogOut,
   MonitorDown,
-  Plug,
   Plus,
   ScrollText,
   Settings,
@@ -27,7 +19,7 @@ import {
   UserPlus,
   UserRound,
 } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useSidebarUpdate } from "../../../components/DesktopUpdates";
 import { IconTooltip } from "../../../components/IconTooltip";
 import { desktopBridge } from "../../../lib/platform/desktop";
@@ -38,11 +30,9 @@ type Props = {
   name: string;
   initials: string | null;
   image?: string | null;
-  logos?: Array<{ name: string; logo?: string | null }>;
   email?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onIntegrations: () => void;
   onSkills: () => void;
   onBoard?: () => void;
   links?: NavLink[];
@@ -63,21 +53,14 @@ type Props = {
   onCreateOrganization?: () => void;
 };
 
-// Marks are 24px wide, overlap by 2px, and need 2px for the outer ring.
-export function sidebarMarkCount(availableWidth: number) {
-  return Math.max(0, Math.min(3, Math.floor((availableWidth - 26) / 22) + 1));
-}
-
 export function SidebarFooter({
   mini = false,
   name,
   initials,
   image,
-  logos = [],
   email,
   open,
   onOpenChange,
-  onIntegrations,
   onSkills,
   onBoard,
   links = [],
@@ -99,29 +82,6 @@ export function SidebarFooter({
   const { t } = useLingui();
   const update = useSidebarUpdate();
   const [failedImage, setFailedImage] = useState<string | null>(null);
-  const pillRef = useRef<HTMLButtonElement>(null);
-  const labelRef = useRef<HTMLSpanElement>(null);
-  const [markCount, setMarkCount] = useState(3);
-  useLayoutEffect(() => {
-    const pill = pillRef.current;
-    const label = labelRef.current;
-    if (!pill || !label || typeof ResizeObserver === "undefined") return;
-    const measure = () => {
-      const style = getComputedStyle(pill);
-      const available =
-        pill.clientWidth -
-        Number.parseFloat(style.paddingLeft) -
-        Number.parseFloat(style.paddingRight) -
-        label.scrollWidth -
-        Number.parseFloat(style.columnGap);
-      setMarkCount(sidebarMarkCount(available));
-    };
-    const observer = new ResizeObserver(measure);
-    observer.observe(pill);
-    observer.observe(label);
-    measure();
-    return () => observer.disconnect();
-  }, [mini]);
   return (
     <div
       data-testid="sidebar-footer"
@@ -182,17 +142,6 @@ export function SidebarFooter({
               onSwitch={onSwitchOrganization}
               onCreate={onCreateOrganization}
             />
-            {mini ? (
-              <Button
-                variant="ghost"
-                size="lg"
-                className="w-full justify-start gap-2.5 font-normal"
-                onClick={onIntegrations}
-              >
-                <Plug className="text-muted-foreground" strokeWidth={1.75} />
-                <Trans>Connect apps</Trans>
-              </Button>
-            ) : null}
             {usage ? (
               <Button
                 variant="ghost"
@@ -321,32 +270,11 @@ export function SidebarFooter({
           </PopoverContent>
         ) : null}
       </Popover>
-      {!mini ? (
-        <Button
-          variant="secondary"
-          ref={pillRef}
-          onClick={onIntegrations}
-          size="lg"
-          className="min-w-0 flex-1 justify-between"
-        >
-          <span ref={labelRef} className="flex min-w-0 items-center gap-2">
-            <Plug className="text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
-            <span className="truncate">
-              <Trans>Connect apps</Trans>
-            </span>
-          </span>
-          <AppMarkStack
-            marks={logos.slice(0, markCount)}
-            // The secondary button's surface, at rest and on hover.
-            ringClassName="ring-secondary group-hover/button:ring-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)]"
-          />
-        </Button>
-      ) : null}
       {update.available ? (
         <IconTooltip label={t`Install update`}>
           <Button
             size="icon-lg"
-            className="rounded-full"
+            className={mini ? "rounded-full" : "ms-auto rounded-full"}
             aria-label={t`Install update`}
             disabled={update.busy}
             onClick={update.install}

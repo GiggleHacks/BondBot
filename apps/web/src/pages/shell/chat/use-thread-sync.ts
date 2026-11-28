@@ -44,6 +44,7 @@ import {
   prependThreadMessagePage,
   reduceComputerStatus,
 } from "../../../lib/query/thread-events";
+import { chatSounds } from "../../../lib/sounds/chat-sounds";
 import { useEventListener } from "../../../lib/use-event-listener";
 import type { ComputerState } from "../computers/use-computer";
 import type { useBrowserNotifications } from "../use-browser-notifications";
@@ -435,6 +436,7 @@ export function useThreadSync({
       applyEvent: (event) =>
         applyThreadEvent(event, commitSnapshot, commitComputer, snapshotRef, computerRef),
       onEvent: (event, initial) => {
+        chatSounds.threadEvent(event, meId);
         const currentBot = botsRef.current.find((bot) => bot.id === active.id);
         notifyBrowserForEvent(
           event,
@@ -537,6 +539,7 @@ export function useThreadSync({
           computerRef,
         ),
       onEvent: (event, initial) => {
+        chatSounds.threadEvent(event, meId);
         const eventBot = botsRef.current.find((bot) => bot.id === event.botId);
         notifyBrowserForEvent(
           event,

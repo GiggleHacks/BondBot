@@ -10,6 +10,7 @@ import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RpcClient } from "../../lib/query/rpc";
+import { chatSounds } from "../../lib/sounds/chat-sounds";
 import { useBrowserNotifications } from "./use-browser-notifications";
 
 type Frame = { type: "alert" | "roster" | "heartbeat"; alert?: ChatAlert };
@@ -178,22 +179,25 @@ describe("useBrowserNotifications chat alerts", () => {
     expect(FakeNotification.shown[0]?.options.silent).toBe(true);
   });
 
-  it("plays only desktop attention alerts after the preference changes", async () => {
-    vi.stubGlobal("rakazoDesktop", {});
+  it("plays the app's own sound for attention alerts once sounds are turned on", async () => {
+    const play = vi.spyOn(chatSounds, "play").mockImplementation(() => undefined);
     await open({ botId: "bot-a" });
     await open({ botId: "bot-a", notificationSounds: true });
     await send({ kind: "completion" });
     await send({ kind: "takeover" });
-    expect(FakeNotification.shown.map(({ options }) => options.silent)).toEqual([true, false]);
+    expect(FakeNotification.shown.map(({ options }) => options.silent)).toEqual([true, true]);
+    expect(play.mock.calls).toEqual([["attention", "thread-b"]]);
     expect(streams).toHaveLength(1);
   });
 
-  it("lets the server alert sound for a backgrounded desktop's open chat", async () => {
+  it("still alerts a backgrounded desktop's open chat when sounds are on", async () => {
+    const play = vi.spyOn(chatSounds, "play").mockImplementation(() => undefined);
     vi.stubGlobal("rakazoDesktop", {});
     visible = false;
     await open({ botId: "bot-b", notificationSounds: true });
     await send({ kind: "failure" });
-    expect(FakeNotification.shown[0]?.options).toMatchObject({ silent: false, tag: "thread-b" });
+    expect(FakeNotification.shown[0]?.options).toMatchObject({ silent: true, tag: "thread-b" });
+    expect(play).toHaveBeenCalledWith("error", "thread-b");
   });
 
   it("alerts for every kind in another chat while the app is focused", async () => {

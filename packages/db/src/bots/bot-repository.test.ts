@@ -551,8 +551,38 @@ describe("createRepos.listSpaceBotsForSpaces", () => {
     expect(query.where).toEqual(expect.objectContaining({ spaceId: { in: ["ws-2"] } }));
     expect(query.select).not.toHaveProperty("description");
     expect(query.select).not.toHaveProperty("instructions");
-    expect(query.select).not.toHaveProperty("computer");
+    expect(query.select.computer).toEqual({
+      select: { state: true, kind: true, maintenanceId: true },
+    });
   });
+
+  it.each([
+    ["suspended", "remote", null, true],
+    ["stopped", "remote", null, true],
+    ["running", "remote", null, false],
+    ["stopped", "own-machine", null, false],
+    ["stopped", "remote", "update-1", false],
+  ])(
+    "marks a %s %s computer (maintenance %s) asleep: %s",
+    async (state, kind, maintenanceId, asleep) => {
+      const findMany = vi.fn(async () => [
+        {
+          id: "bot-2",
+          updatedAt: new Date(),
+          thread: { id: "thread-2", reads: [], runs: [] },
+          runs: [],
+          computer: { state, kind, maintenanceId },
+        },
+      ]);
+      const repos = createRepos(
+        { bot: { findMany }, $queryRaw: vi.fn().mockResolvedValue([]) } as unknown as PrismaClient,
+        { computerCanSleep: (candidate) => candidate === "remote" },
+      );
+
+      const [bot] = await repos.listSpaceBotsForSpaces(["ws-2"], "user-1");
+      expect(bot?.computerAsleep).toBe(asleep);
+    },
+  );
 });
 
 describe("createRepos.reorderBots", () => {

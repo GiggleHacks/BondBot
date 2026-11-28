@@ -29,5 +29,5 @@ test("chat details opens without animating its width when reduced motion is requ
   await openBotPanel(page);
   await expect(panel).toHaveCSS("width", "352px");
   await expect(panel).toHaveCSS("transition-property", "width");
-  await expect(panel).toHaveCSS("transition-duration", "0.15s");
+  await expect(panel).toHaveCSS("transition-duration", "0.2s");
 });

@@ -7,7 +7,6 @@ import type {
   SpaceMemoryConfig,
 } from "@rakazo/contracts";
 import { parseLabs } from "@rakazo/contracts";
-import type { connectedAppMarks } from "@rakazo/core";
 import { writeSaved } from "@rakazo/core/query";
 import type { RefObject } from "react";
 import { lazyOverlay } from "../../components/ErrorBoundary";
@@ -50,7 +49,6 @@ export function AppOverlays({
   activeBotId,
   stdioEnabled,
   messagingEnabled,
-  onConnectedAppsChange,
   onOpenBot,
 }: {
   overlay: ShellOverlay;
@@ -59,7 +57,6 @@ export function AppOverlays({
   stdioEnabled: boolean;
   /** Messaging settings can be opened; a link there is shown only then. */
   messagingEnabled: boolean;
-  onConnectedAppsChange: (apps: ReturnType<typeof connectedAppMarks>) => void;
   onOpenBot: (bot: Bot) => void;
 }) {
   const openTemplates = () => setOverlay({ kind: "templates" });
@@ -67,7 +64,6 @@ export function AppOverlays({
     <>
       {overlay?.kind === "integrations" ? (
         <PluginsOverlay
-          onConnectedAppsChange={onConnectedAppsChange}
           activeBotId={activeBotId}
           onClose={() => setOverlay(null)}
           onOpenMcp={() => setOverlay({ kind: "mcp" })}
@@ -191,6 +187,9 @@ export function SettingsOverlays({
           email={user?.email}
           section={overlay.section}
           onSectionChange={(section) => setOverlay({ ...overlay, section })}
+          activeBotId={active?.id}
+          onOpenMcp={() => setOverlay({ kind: "mcp" })}
+          onOpenTemplates={() => setOverlay({ kind: "templates" })}
           billingEnabled={bootstrapMe?.billingEnabled === true}
           sandboxProvider={bootstrapMe?.sandboxProvider}
           computerSettingsEnabled={bootstrapMe?.computerSettingsEnabled === true}

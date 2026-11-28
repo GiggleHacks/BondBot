@@ -36,6 +36,15 @@ export const COMPUTER_RUNNING_ERROR = "COMPUTER_RUNNING";
 export const ComputerHomeVersionSchema = z.object({ id: Id, savedAt: IsoDate });
 export type ComputerHomeVersion = z.infer<typeof ComputerHomeVersionSchema>;
 
+/** A running computer's current use of its own allowance. */
+export const ComputerStatsSchema = z.object({
+  memoryBytes: z.number().nonnegative(),
+  memoryLimitBytes: z.number().positive(),
+  /** Share of the processors it may use, so a busy computer reads 100. */
+  cpuPercent: z.number().nonnegative(),
+});
+export type ComputerStats = z.infer<typeof ComputerStatsSchema>;
+
 export const ComputerStatusSchema = z.object({
   botId: Id,
   mode: ComputerModeSchema,

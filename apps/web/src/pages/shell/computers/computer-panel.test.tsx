@@ -56,6 +56,7 @@ async function render(
   onOpen = vi.fn(),
   disk?: { cleaningUpDisk?: boolean; onCleanUpDisk: () => void; onDismissDiskWarning: () => void },
   embeddedScreenUrl: string | null = null,
+  onWake = vi.fn(),
 ) {
   await act(async () => {
     root.render(
@@ -72,6 +73,7 @@ async function render(
         showComputerRecoveryHint={false}
         onRecovered={() => undefined}
         onRecoveryDismissed={() => undefined}
+        onWake={onWake}
         onOpen={onOpen}
         {...disk}
       />,
@@ -98,17 +100,21 @@ afterEach(async () => {
 it.each([null, computer("stopped"), computer("suspended")])(
   "shows an idle computer asleep until its Wake button is pressed",
   async (status) => {
-    const onOpen = await render(status);
+    const onWake = vi.fn();
+    const onOpen = await render(status, vi.fn(), undefined, null, onWake);
     expect(container.querySelector("iframe")).toBeNull();
     expect(container.querySelector('[data-state="idle"]')?.textContent).toContain("Asleep");
+    expect(container.querySelector('[data-testid="computer-preview-open"]')).toBeNull();
     await act(async () =>
-      container.querySelector<HTMLButtonElement>('[data-testid="computer-preview-open"]')?.click(),
+      container.querySelector<HTMLButtonElement>('[data-testid="computer-preview-wake"]')?.click(),
     );
-    expect(onOpen).toHaveBeenCalledOnce();
+    // Waking keeps the panel where it is; only the full-screen button opens the window.
+    expect(onWake).toHaveBeenCalledOnce();
+    expect(onOpen).not.toHaveBeenCalled();
   },
 );
 
-it("shows a running computer's live screen with an Open button", async () => {
+it("shows a running computer's live screen with a full-screen button", async () => {
   const onOpen = await render(
     computer("running"),
     vi.fn(),
@@ -207,6 +213,7 @@ it("never shows another bot's computer status or screen iframe across a bot swit
         showComputerRecoveryHint={false}
         onRecovered={() => undefined}
         onRecoveryDismissed={() => undefined}
+        onWake={() => undefined}
         onOpen={vi.fn()}
       />,
     );

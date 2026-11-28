@@ -380,9 +380,7 @@ test("a connected memory provider edits with its saved settings", async ({ page 
   await expect(save).toBeDisabled();
 });
 
-test("desktop notification sound starts off and saves the account choice", async ({
-  page,
-}, testInfo) => {
+test("sounds start off and save the account choice", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     Object.defineProperty(window, "rakazoDesktop", { value: { platform: "darwin" } });
   });
@@ -394,7 +392,7 @@ test("desktop notification sound starts off and saves the account choice", async
   );
   await completeOnboarding(page);
   const settings = await openUserSettings(page);
-  const sound = settings.getByRole("switch", { name: "Sound for alerts that need attention" });
+  const sound = settings.getByRole("switch", { name: "Play sounds while bots work" });
   await expect(sound).toBeEnabled();
   await expect(sound).not.toBeChecked();
   await sound.scrollIntoViewIfNeeded();
@@ -403,4 +401,17 @@ test("desktop notification sound starts off and saves the account choice", async
   await expect(sound).toBeChecked();
   await page.reload();
   await expect(sound).toBeChecked();
+});
+
+test("connected apps live in Settings, not beside the account button", async ({
+  page,
+}, testInfo) => {
+  await signup(page, `settings-apps-${Date.now()}@rakazo.test`, "password12", "Settings");
+  await completeOnboarding(page);
+  await expect(page.getByTestId("sidebar-footer").getByText("Connect apps")).toHaveCount(0);
+
+  const settings = await openUserSettings(page, "integrations");
+  const apps = settings.getByTestId("integrations-settings");
+  await expect(apps.getByRole("textbox", { name: "Search apps" })).toBeVisible();
+  await captureScreenshot(page, testInfo, "settings-integrations");
 });

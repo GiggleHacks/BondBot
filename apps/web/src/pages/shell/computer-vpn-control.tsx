@@ -1,11 +1,8 @@
 import { useLingui } from "@lingui/react/macro";
-import type {
-  BotVpnStatus,
-  ComputerVpnOverview,
-  VpnProfileInfo,
-} from "@rakazo/contracts";
+import type { BotVpnStatus, ComputerVpnOverview, VpnProfileInfo } from "@rakazo/contracts";
 import {
   Button,
+  cn,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -16,7 +13,6 @@ import {
   PopoverContent,
   PopoverTrigger,
   Switch,
-  cn,
 } from "@rakazo/ui-web";
 import {
   AlertTriangle,
@@ -221,9 +217,16 @@ export function ComputerVpnFlagChip({
     >
       <span
         aria-hidden="true"
-        className={cn(compact ? "size-1" : "size-1.5", "inline-block shrink-0 rounded-full", ledClass)}
+        className={cn(
+          compact ? "size-1" : "size-1.5",
+          "inline-block shrink-0 rounded-full",
+          ledClass,
+        )}
       />
-      <NetworkIcon className={cn(compact ? "size-2.5" : "size-3", "shrink-0", iconTone)} aria-hidden="true" />
+      <NetworkIcon
+        className={cn(compact ? "size-2.5" : "size-3", "shrink-0", iconTone)}
+        aria-hidden="true"
+      />
       <CountryFlag
         code={display.countryCode}
         className={cn(
@@ -256,13 +259,16 @@ export function ComputerVpnFlagChip({
 /** Bare monitor icon indicating a bot has its own dedicated computer (lit when running, muted when asleep). */
 export function DedicatedComputerBadge({
   botVpn,
+  asleep,
   className,
 }: {
   botVpn: BotVpnStatus | undefined;
+  /** The roster's own sleep state, so the badge never disagrees with the dimmed avatar. */
+  asleep?: boolean;
   className?: string;
 }) {
   if (botVpn?.computerMode !== "dedicated") return null;
-  const running = botVpn.state !== "stopped";
+  const running = asleep === undefined ? botVpn.state !== "stopped" : !asleep;
   const label = running ? "Dedicated computer · Running" : "Dedicated computer · Asleep";
   return (
     <span
@@ -445,12 +451,7 @@ export function ComputerVpnPopover({
             >
               Apply to whole Team Computer
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => setTeamConfirm(null)}
-            >
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setTeamConfirm(null)}>
               {t`Cancel`}
             </Button>
           </div>
@@ -525,7 +526,11 @@ export function ComputerVpnPopover({
             <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-2.5">
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-body-sm font-medium text-foreground">
-                  {locked ? <Lock className="size-3.5 text-emerald-400" /> : <Unlock className="size-3.5 text-muted-foreground" />}
+                  {locked ? (
+                    <Lock className="size-3.5 text-emerald-400" />
+                  ) : (
+                    <Unlock className="size-3.5 text-muted-foreground" />
+                  )}
                   <span>Lock to VPN (Kill Switch)</span>
                 </div>
                 <p className="text-label text-muted-foreground">

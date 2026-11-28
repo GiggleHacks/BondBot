@@ -11,6 +11,7 @@ import {
   ComputerReleaseReasonSchema,
   ComputerScreenSchema,
   ComputerSizeSchema,
+  ComputerStatsSchema,
   ComputerStatusSchema,
   ComputerUpdateSchema,
   ComputerVpnOverviewSchema,
@@ -43,6 +44,8 @@ export const computersRpc = {
     setVpn: oc.input(SetComputerVpnInputSchema).output(BotVpnStatusSchema),
     boot: oc.input(botId).output(ComputerStatusSchema),
     stop: oc.input(botId).output(ComputerStatusSchema),
+    /** Null where the computer is off or its provider reports no usage. */
+    stats: oc.input(botId).output(ComputerStatsSchema.nullable()),
     recover: oc.input(botId).output(ComputerUpdateSchema),
     reset: oc.input(botId).output(ComputerStatusSchema),
     update: oc.input(botId).output(ComputerUpdateSchema),

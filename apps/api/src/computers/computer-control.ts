@@ -322,7 +322,12 @@ export async function computerScreenContext(
  */
 export async function clearGoneSandbox(
   deps: RouterDeps,
-  computer: { id: string; providerRef: string | null; runningSince?: Date | null },
+  computer: {
+    id: string;
+    providerRef: string | null;
+    runningSince?: Date | null;
+    spaceId?: string;
+  },
   error: unknown,
 ): Promise<null> {
   if (!isSandboxGoneError(error)) throw error;
@@ -331,7 +336,10 @@ export async function clearGoneSandbox(
     where: { id: computer.id, providerRef: computer.providerRef },
     data: { state: "stopped", providerRef: null },
   });
-  if (cleared.count === 1) await recordComputerRunEnd(deps.prisma, computer, "gone");
+  if (cleared.count === 1) {
+    await recordComputerRunEnd(deps.prisma, computer, "gone");
+    if (computer.spaceId) void deps.events?.publishRosterChange?.({ spaceIds: [computer.spaceId] });
+  }
   return null;
 }
 

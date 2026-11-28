@@ -270,6 +270,7 @@ export function useComputerControls({
   }
 
   useEffect(() => {
+    wakeRequest.current = null;
     setComputerOpen(false);
     setComputerError(null);
     setComputerErrorFromScreen(false);
@@ -294,15 +295,26 @@ export function useComputerControls({
     }
   }, [computer?.busyBotName]);
 
-  // Opening the computer while its bot was running was refused as busy; boot it once the run
-  // ends, or the open window is left on a stopped computer with nothing to press.
+  // The bot whose computer was asked to wake in place and has not started yet.
+  const wakeRequest = useRef<string | null>(null);
+  const previousPanel = useRef(panel);
+  useEffect(() => {
+    // Closing the bot panel drops its pending wake.
+    if (previousPanel.current === "settings" && panel !== "settings") wakeRequest.current = null;
+    previousPanel.current = panel;
+  }, [panel]);
+
+  // Opening or waking the computer while its bot was running was refused as busy; boot it once
+  // the run ends, or the screen is left on a stopped computer the user already asked to start.
   const computerBlockedByRun = computerBusyWithRun(computer, runStatus);
   useEffect(() => {
     if (computerBlockedByRun) return;
     const botId = computer?.botId;
-    if (!botId || !computerOpenRef.current || computerBotIdRef.current !== botId) return;
-    if (activeBotId.current !== botId) return;
+    const woken = wakeRequest.current === botId;
+    if (!botId || (!computerOpenRef.current && !woken)) return;
+    if (computerBotIdRef.current !== botId || activeBotId.current !== botId) return;
     if (computer.state !== "stopped" && computer.state !== "suspended") return;
+    wakeRequest.current = null;
     void bootComputer({
       botId,
       takeControl: false,
@@ -415,12 +427,15 @@ export function useComputerControls({
       return true;
     }
     const needsTakeover = takeControl && !userHoldsComputerControl(targetComputer, id);
+    // A wake refused while the bot runs is retried when the run ends, as for the open window.
+    if (inPlace && !takeControl) wakeRequest.current = id;
     try {
       await bootComputer({
         botId: id,
         takeControl: needsTakeover,
         force: targetComputer?.state !== "running",
       });
+      if (wakeRequest.current === id) wakeRequest.current = null;
       return true;
     } catch {
       // computerError already set in bootComputer
@@ -702,6 +717,7 @@ export function useComputerControls({
       showingRecoveryHint,
       showComputerRecoveryHint,
       onRecoveryDismissed: releaseComputerRecovery,
+      onWake: () => void refreshDockedComputer(),
       onOpen: () => void openComputer(),
       cleaningUpDisk,
       onCleanUpDisk: () => cleanUpDisk(bot.id),

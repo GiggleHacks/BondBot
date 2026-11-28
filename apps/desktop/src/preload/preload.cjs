@@ -14,7 +14,7 @@ function subscribe(channel) {
 
 contextBridge.exposeInMainWorld("rakazoDesktop", {
   platform: process.platform,
-  nativeWindowFrame: process.platform === "win32",
+  nativeWindowFrame: process.platform !== "darwin",
   clipboard: {
     writeText: (text) => ipcRenderer.invoke("desktop.clipboard.write", text),
   },

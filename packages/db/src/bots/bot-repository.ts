@@ -166,10 +166,27 @@ function botHistory(bot: { instructionHistory?: unknown }) {
   };
 }
 
+type SleepableComputer = { state: string; kind: string; maintenanceId: string | null };
+
 export function createRepos(
   prisma: PrismaClient,
-  capabilities: { phoneCallsEnabled?: boolean; phoneCallRingSeconds?: number } = {},
+  capabilities: {
+    phoneCallsEnabled?: boolean;
+    phoneCallRingSeconds?: number;
+    /** Whether a computer of this kind switches off when idle; without it none reads as asleep. */
+    computerCanSleep?: (kind: string) => boolean;
+  } = {},
 ) {
+  function asleepField(computer: SleepableComputer | null | undefined) {
+    if (!capabilities.computerCanSleep || !computer) return {};
+    return {
+      computerAsleep:
+        (computer.state === "stopped" || computer.state === "suspended") &&
+        !computer.maintenanceId &&
+        capabilities.computerCanSleep(computer.kind),
+    };
+  }
+
   async function listBotSectionsForSpaces(
     spaceIds: string[],
   ): Promise<Array<BotSection & { spaceId: string }>> {
@@ -210,6 +227,7 @@ export function createRepos(
         modelId: true,
         thread: { select: { id: true, reads: readStateFor(userId) } },
         runs: activeRunSelection,
+        computer: { select: { state: true, kind: true, maintenanceId: true } },
       },
       orderBy: [{ pinned: "desc" }, { position: "asc" }, { createdAt: "asc" }],
     });
@@ -237,6 +255,7 @@ export function createRepos(
         // The model it is running right now; the bot's own setting while idle.
         modelProvider: activeRun?.modelProvider ?? bot.modelProvider ?? null,
         modelId: activeRun?.modelId ?? bot.modelId ?? null,
+        ...asleepField(bot.computer),
         updatedAt: rosterUpdatedAt(bot.thread.messages[0], bot.updatedAt).toISOString(),
       };
     });
@@ -258,7 +277,7 @@ export function createRepos(
         include: {
           thread: { include: { reads: readStateFor(actor.userId) } },
           runs: activeRunSelection,
-          computer: { select: { scope: true } },
+          computer: { select: { scope: true, state: true, kind: true, maintenanceId: true } },
         },
         orderBy: [{ pinned: "desc" }, { position: "asc" }, { createdAt: "asc" }],
       }),
@@ -301,6 +320,7 @@ export function createRepos(
       return {
         ...mapped,
         threadStatus: threadRunStatus(bot.runs, mapped.threadId),
+        ...asleepField(bot.computer),
         ...(options.botId !== undefined && botHistory(bot)),
       };
     });
@@ -671,7 +691,7 @@ export function createRepos(
           }
         }
       }
-      return { ...mapBot(bot), ...botHistory(bot) };
+      return { ...mapBot(bot), ...asleepField(bot.computer), ...botHistory(bot) };
     },
 
     async reorderBots(actor: Actor, botIds: string[]): Promise<void> {
@@ -724,7 +744,7 @@ export function createRepos(
           });
         }),
       );
-      return { ...mapBot(updated), ...botHistory(updated) };
+      return { ...mapBot(updated), ...asleepField(updated.computer), ...botHistory(updated) };
     },
   };
 }

@@ -36,17 +36,43 @@ async function reportNearLimits(container: Docker.Container): Promise<void> {
       "pids.current": pids.current,
       "pids.limit": pids.limit,
     });
-  // The kernel frees idle file cache before it kills a process for memory, so it is not counted.
-  // Docker names it total_inactive_file on cgroup v1 and inactive_file on cgroup v2.
   const memory = stats.memory_stats;
-  const idleFileCache = memory.stats?.total_inactive_file ?? memory.stats?.inactive_file ?? 0;
-  const resident = nearLimit((memory.usage ?? 0) - idleFileCache, memory.limit);
+  const resident = nearLimit(residentMemory(memory), memory.limit);
   if (resident)
     log.warn("computer.memory_near_limit", {
       "container.id": container.id,
       "memory.current": resident.current,
       "memory.limit": resident.limit,
     });
+}
+
+/**
+ * The kernel frees idle file cache before it kills a process for memory, so it is not counted.
+ * Docker names it total_inactive_file on cgroup v1 and inactive_file on cgroup v2.
+ */
+function residentMemory(memory: Docker.ContainerStats["memory_stats"]): number {
+  const idleFileCache = memory.stats?.total_inactive_file ?? memory.stats?.inactive_file ?? 0;
+  return Math.max(0, (memory.usage ?? 0) - idleFileCache);
+}
+
+/**
+ * A computer's memory and processor use, or null when Docker reports no memory figures. The
+ * processor share is of `nanoCpus`, its allowance, or of the whole host when it has none.
+ */
+export function computerUsage(stats: Docker.ContainerStats, nanoCpus?: number) {
+  const memory = stats.memory_stats;
+  if (!memory?.limit) return null;
+  const { cpu_stats: cpu, precpu_stats: before } = stats;
+  const used = (cpu?.cpu_usage?.total_usage ?? 0) - (before?.cpu_usage?.total_usage ?? 0);
+  const elapsed = (cpu?.system_cpu_usage ?? 0) - (before?.system_cpu_usage ?? 0);
+  const hostCpus = cpu?.online_cpus || 1;
+  const allowance = nanoCpus ? Math.min(nanoCpus / 1e9, hostCpus) : hostCpus;
+  const cores = used > 0 && elapsed > 0 ? (used / elapsed) * hostCpus : 0;
+  return {
+    memoryBytes: residentMemory(memory),
+    memoryLimitBytes: memory.limit,
+    cpuPercent: Math.round((cores / allowance) * 100),
+  };
 }
 
 function nearLimit(current = 0, limit = 0): { current: number; limit: number } | undefined {

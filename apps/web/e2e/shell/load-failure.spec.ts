@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { captureScreenshot, completeOnboarding, signup } from "../helpers/helpers";
+import {
+  captureScreenshot,
+  completeOnboarding,
+  openIntegrations,
+  signup,
+} from "../helpers/helpers";
 
 test("a failed integrations load offers Retry instead of an empty catalog", async ({
   page,
@@ -29,7 +34,7 @@ test("a failed integrations load offers Retry instead of an empty catalog", asyn
       },
     });
   });
-  await page.getByRole("button", { name: "Connect apps", exact: true }).click();
+  await openIntegrations(page);
 
   const retry = page.getByRole("button", { name: "Retry", exact: true });
   await expect(retry).toBeVisible();
@@ -101,7 +106,7 @@ for (const result of ["empty", "plugin", "unavailable"] as const) {
         },
       });
     });
-    await page.getByRole("button", { name: "Connect apps", exact: true }).click();
+    await openIntegrations(page);
     const loading = page.getByLabel("Loading plugins…", { exact: true });
     const configure = page.getByText("Managed apps haven’t been enabled on this server.", {
       exact: true,

@@ -31,9 +31,13 @@ import { lazyComponent } from "../../../lib/platform/preload-recovery";
 import { useSpaceQueries } from "../../../lib/query/query";
 import { errorText } from "../../../lib/query/user-error";
 import { ROUTINE_PREVIEW_COUNT, RoutineList } from "../../routines/RoutineList";
-import { AvatarStudioPopover } from "./avatar-studio-popover";
-import { ComputerVpnFlagChip, ComputerVpnPopover, resolveBotVpnDisplay } from "../computer-vpn-control";
+import {
+  ComputerVpnFlagChip,
+  ComputerVpnPopover,
+  resolveBotVpnDisplay,
+} from "../computer-vpn-control";
 import type { ComputerVpnController } from "../use-computer-vpn";
+import { AvatarStudioPopover } from "./avatar-studio-popover";
 import {
   DescriptionGroup,
   ModelRow,
@@ -76,6 +80,7 @@ export function BotSettings({
   onViewChange,
   onClose,
   computer,
+  usage,
   vpn,
   routines,
   onSave,
@@ -88,6 +93,8 @@ export function BotSettings({
   onViewChange?: (view: BotPanelView) => void;
   onClose?: () => void;
   computer?: ReactNode;
+  /** The computer's resource reading, shown faintly under the name. */
+  usage?: ReactNode;
   vpn?: ComputerVpnController;
   routines?: Omit<ComponentProps<typeof RoutineList>, "preview">;
   focusModel?: number;
@@ -586,6 +593,7 @@ export function BotSettings({
               void enqueueSave({ name: value });
             }}
           />
+          {usage}
           {email && (email.address || claimingEmail) ? (
             <div data-testid="bot-email" className="mt-2 w-full max-w-sm text-left">
               <BotEmailAddressField
@@ -694,9 +702,7 @@ export function BotSettings({
               {settingsOpen ? <ComputerHomeVersions botId={bot.id} /> : null}
               {vpn?.overview?.supported && vpn.overview.bots[bot.id] ? (
                 <div className="flex items-center justify-between gap-3 py-1">
-                  <span className="text-body-sm text-foreground">
-                    Computer VPN
-                  </span>
+                  <span className="text-body-sm text-foreground">Computer VPN</span>
                   <ComputerVpnPopover
                     botId={bot.id}
                     botName={bot.name}
@@ -710,7 +716,10 @@ export function BotSettings({
                           overview={vpn.overview}
                         />
                         <span className="text-label">
-                          {resolveBotVpnDisplay(vpn.overview.bots[bot.id], vpn.overview)?.countryName}
+                          {
+                            resolveBotVpnDisplay(vpn.overview.bots[bot.id], vpn.overview)
+                              ?.countryName
+                          }
                         </span>
                       </Button>
                     }

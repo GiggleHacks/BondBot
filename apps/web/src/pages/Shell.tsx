@@ -32,6 +32,7 @@ import { createSpaceRpc, selectedSpaceId } from "../lib/query/rpc";
 import { SpaceRpcProvider } from "../lib/query/space-rpc";
 import { InboundOriginProvider } from "../lib/routines/inbound-url";
 import { screenDockPreference } from "../lib/screen-dock";
+import { BotUsageLine } from "./shell/bots/bot-usage-line";
 import type { CreateBotDialogInput } from "./shell/bots/create-bot-dialog";
 import { useTeaching } from "./shell/bots/use-teaching";
 import { ChatColumn } from "./shell/chat/chat-column";
@@ -446,14 +447,16 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
     meId: userId,
   });
   const { activeSnapshot, transcript, composerRunning } = view;
-  const { composerMentionTargets, footerLogos, setFooterLogos } = useComposerMentions({
+  const { composerMentionTargets } = useComposerMentions({
     rpc,
     queries,
     bots,
     groups,
     inGroup,
     groupId,
-    integrationsOpen: overlay?.kind === "integrations",
+    integrationsOpen:
+      overlay?.kind === "integrations" ||
+      (overlay?.kind === "settings" && overlay.section === "integrations"),
     initialBotsLoaded,
   });
   // Not while the shell is leaving: a roster with nothing anywhere is on its way to onboarding,
@@ -768,12 +771,10 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
             />
           </>
         }
-        footerLogos={footerLogos}
         user={session.data?.user}
         boardEnabled={hasLab(bootstrapMe?.labs, "board")}
         navLinks={desktopBridge() ? [] : (bootstrapMe?.navLinks ?? [])}
         openSettings={openSettings}
-        openIntegrations={() => setOverlay({ kind: "integrations" })}
         openSkills={() => setOverlay({ kind: "skills" })}
         openAgentImport={() => setOverlay({ kind: "import" })}
         openSpaceChat={(targetSpaceId, path) => {
@@ -1014,6 +1015,11 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
         onOverlays={setPanelOverlays}
         computerOpen={computerOpen}
         vpn={vpn}
+        computerUsage={
+          active ? (
+            <BotUsageLine key={active.id} botId={active.id} computer={computerState.computer} />
+          ) : null
+        }
         computerPanel={
           active ? (
             <ComputerPanel
@@ -1064,7 +1070,6 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
           activeBotId={activeBotId.current}
           stdioEnabled={bootstrapMe?.mcpStdioEnabled === true}
           messagingEnabled={messagingSurfaceEnabled}
-          onConnectedAppsChange={setFooterLogos}
           onOpenBot={(bot) => {
             openCreatedBot(bot);
             void bestEffort("refresh bots after opening one", refreshBots());
