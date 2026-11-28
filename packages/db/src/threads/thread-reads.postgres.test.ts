@@ -12,6 +12,7 @@ import {
   markThreadUnreadFromFor,
   setThreadSnoozeFor,
   setThreadUnreadFor,
+  unreadCountsFor,
 } from "./thread-reads.js";
 import { countUnreadInboxChats } from "./unread-inbox-chats.js";
 
@@ -282,5 +283,38 @@ describePostgres("each member's own read state (PostgreSQL)", () => {
 
     await post(ada, { role: "bot", text: "And the recipe." });
     await expect(asSystem(prisma).threadRead.count({ where: { userId: bea } })).resolves.toBe(0);
+  });
+
+  it("counts what waits for a member, starting over once the chat is read", async () => {
+    await as(ada, () => prisma.$transaction((tx) => clearThreadReads(tx, threadId)));
+    const say = (role: "bot" | "user", authorUserId?: string) =>
+      as(ada, () =>
+        createThreadMessage(prisma, {
+          threadId,
+          role,
+          authorUserId,
+          blocks: [{ kind: "text", text: "hello" }],
+        }),
+      );
+    const waiting = (userId: string) =>
+      as(userId, async () => {
+        const thread = await prisma.thread.findFirstOrThrow({
+          where: { id: threadId },
+          select: { id: true, reads: { where: { userId } } },
+        });
+        return (await unreadCountsFor(prisma, userId, [thread])).get(threadId) ?? 0;
+      });
+
+    // Their own message is not news; another person's and each bot reply are.
+    await say("user", ada);
+    expect(await waiting(ada)).toBe(0);
+    await say("bot");
+    await say("user", bea);
+    expect(await waiting(ada)).toBe(2);
+
+    // Marked read from the list, which leaves the read position behind.
+    await as(ada, () => setThreadUnreadFor(prisma, reader(ada), false));
+    await say("bot");
+    expect(await waiting(ada)).toBe(1);
   });
 });

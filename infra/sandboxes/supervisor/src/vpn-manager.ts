@@ -180,6 +180,7 @@ export interface HostVpnTestResult {
   result: "connected" | "no_handshake" | "no_internet" | "not_private";
   exitIp: string | null;
   exitCountry: string | null;
+  latencyMs?: number | null;
 }
 
 /** A refusal from the VPN manager, with the status it answered (400 bad file, 409 in use). */

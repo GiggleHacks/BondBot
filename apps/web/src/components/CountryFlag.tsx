@@ -1,5 +1,5 @@
 import { Globe } from "lucide-react";
-import { useId } from "react";
+import { useEffect, useId, useState } from "react";
 
 /**
  * Crisp inline SVG country flags so Windows/Linux browsers render real colorful flags
@@ -77,7 +77,15 @@ export function CountryFlag({
           <clipPath id={clipId}>
             <circle cx="12" cy="9" r="3.9" />
           </clipPath>
-          <circle cx="7" cy="15" r="7.8" fill="none" stroke="#FFFFFF" strokeWidth="1" clipPath={`url(#${clipId})`} />
+          <circle
+            cx="7"
+            cy="15"
+            r="7.8"
+            fill="none"
+            stroke="#FFFFFF"
+            strokeWidth="1"
+            clipPath={`url(#${clipId})`}
+          />
         </svg>
       );
     case "US":
@@ -156,7 +164,10 @@ export function CountryFlag({
         <svg viewBox="0 0 24 18" className={className} aria-hidden="true">
           <rect width="24" height="18" fill="#FF0000" />
           <rect x="6" width="12" height="18" fill="#FFFFFF" />
-          <path d="M12 4L13.2 7.5H15L13.5 9.3L14.2 12L12 10.5L9.8 12L10.5 9.3L9 7.5H10.8Z" fill="#FF0000" />
+          <path
+            d="M12 4L13.2 7.5H15L13.5 9.3L14.2 12L12 10.5L9.8 12L10.5 9.3L9 7.5H10.8Z"
+            fill="#FF0000"
+          />
         </svg>
       );
     case "AU":
@@ -172,6 +183,27 @@ export function CountryFlag({
         </svg>
       );
     default:
-      return <Globe className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />;
+      return <FlagFile code={cc} className={className} />;
   }
+}
+
+/** The other countries' flags; a globe while loading and for a country we cannot tell. */
+function FlagFile({ code, className }: { code: string; className: string }) {
+  const [loaded, setLoaded] = useState<{ code: string; url: string | undefined }>();
+  useEffect(() => {
+    if (!/^[A-Z]{2}$/.test(code)) return;
+    let current = true;
+    void import("./flag-urls").then(({ flagUrl }) => {
+      if (current) setLoaded({ code, url: flagUrl(code) });
+    });
+    return () => {
+      current = false;
+    };
+  }, [code]);
+  const url = loaded?.code === code ? loaded.url : undefined;
+  return url ? (
+    <img src={url} alt="" className={`${className} object-cover`} />
+  ) : (
+    <Globe className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+  );
 }

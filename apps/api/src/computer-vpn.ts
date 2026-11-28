@@ -418,11 +418,13 @@ export async function testVpnProfile(
     result: VpnTestOutcome;
     exitIp: string | null;
     exitCountry: string | null;
+    latencyMs?: number | null;
   }>(env, "POST", `/vpn/profiles/${encodeURIComponent(id)}/test`, {});
   return {
     profile: toProfileInfo(tested.profile),
     outcome: tested.result,
     exitIp: tested.exitIp,
     exitCountry: tested.exitCountry,
+    latencyMs: tested.latencyMs ?? null,
   };
 }

@@ -1,8 +1,9 @@
 import type { AddVpnProfilesResult } from "@rakazo/contracts";
-import { Checkbox, cn, Disclosure, Field, FieldLabel, OptionSelect } from "@rakazo/ui-web";
+import { Checkbox, Disclosure, Field, FieldLabel, OptionSelect } from "@rakazo/ui-web";
 import { useId, useMemo, useState } from "react";
 import type { ComputerVpnController } from "../../pages/shell/use-computer-vpn";
 import { useVpnTest } from "./use-vpn-test";
+import { VpnTestReadout } from "./VpnTestReadout";
 import { vpnProfileLabel } from "./vpn-labels";
 import { sortVpnProfiles } from "./vpn-upload";
 import { VpnFileHelp, VpnUploadButton, VpnUploadSummary } from "./vpn-upload-controls";
@@ -124,17 +125,6 @@ function SelectedVpnStatus({
   testNow: boolean;
   onTested: () => void;
 }) {
-  const test = useVpnTest(profileId, onTested, testNow);
-  if (!test.message) return null;
-  return (
-    <p
-      role="status"
-      className={cn(
-        "text-body-sm",
-        test.ok ? "text-success" : test.failed ? "text-destructive" : "text-muted-foreground",
-      )}
-    >
-      {test.message}
-    </p>
-  );
+  const test = useVpnTest(profileId, onTested, { testNow });
+  return <VpnTestReadout test={test} />;
 }

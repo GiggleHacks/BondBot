@@ -14,11 +14,46 @@ type Reader = { threadId: string; spaceId: string; userId: string };
 
 /** Selects one person's read state on a thread, for `unreadFor` and `snoozedUntilFor`. */
 export function readStateFor(userId: string) {
-  return { where: { userId }, select: { unread: true, snoozedUntil: true } } as const;
+  return {
+    where: { userId },
+    select: { unread: true, lastReadSeq: true, snoozedUntil: true },
+  } as const;
 }
 
 export function unreadFor(thread: { reads: Array<{ unread: boolean }> }): boolean {
   return thread.reads[0]?.unread ?? false;
+}
+
+type CountableThread = {
+  id: string;
+  reads: Array<{ unread: boolean; lastReadSeq: number }>;
+};
+
+/**
+ * How many messages wait in each of these chats for one person: bot replies and other people's
+ * messages past what they have read. Only unread chats are counted, in one query.
+ */
+export async function unreadCountsFor(
+  prisma: PrismaClient,
+  userId: string,
+  threads: ReadonlyArray<CountableThread | null | undefined>,
+): Promise<Map<string, number>> {
+  const waiting = threads.flatMap((thread) => {
+    const read = thread?.reads[0];
+    return thread && read?.unread ? [{ threadId: thread.id, seq: { gt: read.lastReadSeq } }] : [];
+  });
+  if (waiting.length === 0) return new Map();
+  const counts = await prisma.message.groupBy({
+    by: ["threadId"],
+    where: {
+      AND: [
+        { OR: waiting },
+        { OR: [{ role: "bot" }, { role: "user", authorUserId: { not: userId } }] },
+      ],
+    },
+    _count: { _all: true },
+  });
+  return new Map(counts.map((row) => [row.threadId, row._count._all]));
 }
 
 export function snoozedUntilFor(thread: {
@@ -44,7 +79,11 @@ export async function markThreadUnreadForMembers(
       SELECT ${input.threadId}, m."userId", m."spaceId", true, ${input.seq - 1}::int
       FROM space_members m
       WHERE m."spaceId" = ${input.spaceId} AND m."userId" <> ${input.exceptUserId ?? ""}
-      ON CONFLICT ("threadId", "userId") DO UPDATE SET unread = true`,
+      ON CONFLICT ("threadId", "userId") DO UPDATE SET
+        unread = true,
+        -- A chat that was read starts waiting from this message, however it was marked read.
+        "lastReadSeq" = CASE WHEN thread_reads.unread THEN thread_reads."lastReadSeq"
+          ELSE GREATEST(thread_reads."lastReadSeq", EXCLUDED."lastReadSeq") END`,
   );
 }
 

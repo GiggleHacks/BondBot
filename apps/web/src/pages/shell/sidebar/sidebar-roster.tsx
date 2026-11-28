@@ -48,6 +48,7 @@ import {
 import type { ComputerVpnController } from "../use-computer-vpn";
 import type { RosterDropAction, RosterDropTarget } from "./roster-drop";
 import type { sidebarGroupsForSpaces } from "./space-sidebar";
+import { UnreadBadge } from "./unread-badge";
 
 export function SidebarRoster({
   sidebarGroups,
@@ -457,10 +458,9 @@ export function SidebarRoster({
                         ) : null}
                         {item.chat.unread ? (
                           <>
-                            <span
-                              aria-hidden="true"
-                              data-roster-unread-dot
-                              className="absolute -end-0.5 top-0 size-2 rounded-full bg-unread ring-2 ring-sidebar"
+                            <UnreadBadge
+                              count={item.chat.unreadCount}
+                              className="absolute -end-1 -top-0.5 ring-2 ring-sidebar"
                             />
                             <span
                               id={`roster-unread-${item.kind}-${item.chat.id}`}
@@ -530,12 +530,8 @@ export function SidebarRoster({
                                 {formatRosterTime(item.chat.updatedAt)}
                               </span>
                             ) : null}
-                            {item.chat.unread ? (
-                              <span
-                                aria-hidden="true"
-                                data-roster-unread-dot
-                                className="inline-block h-2 w-2 rounded-full bg-unread"
-                              />
+                            {item.chat.unread && compact ? (
+                              <UnreadBadge count={item.chat.unreadCount} />
                             ) : null}
                           </div>
                         </div>
@@ -563,18 +559,23 @@ export function SidebarRoster({
                             </div>
                           ) : null
                         ) : (
-                          <div
-                            dir="auto"
-                            data-roster-preview={!workStatusLabel ? "true" : undefined}
-                            className={`mt-1 truncate text-label ${
-                              workStatusLabel
-                                ? "font-semibold text-status-working"
-                                : item.chat.unread
-                                  ? "font-medium text-foreground/75"
-                                  : "text-muted-foreground"
-                            }`}
-                          >
-                            {rosterLine}
+                          <div className="mt-1 flex items-center gap-2">
+                            <div
+                              dir="auto"
+                              data-roster-preview={!workStatusLabel ? "true" : undefined}
+                              className={`min-w-0 flex-1 truncate text-label ${
+                                workStatusLabel
+                                  ? "font-semibold text-status-working"
+                                  : item.chat.unread
+                                    ? "font-medium text-foreground/75"
+                                    : "text-muted-foreground"
+                              }`}
+                            >
+                              {rosterLine}
+                            </div>
+                            {item.chat.unread ? (
+                              <UnreadBadge count={item.chat.unreadCount} />
+                            ) : null}
                           </div>
                         )}
                       </div>

@@ -83,6 +83,19 @@ COUNTRY_NAMES = {
     "US": "United States",
 }
 
+# Two-letter country codes, so "wg" in a file name is not read as a country.
+ISO_COUNTRIES = frozenset("""
+AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ
+BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM
+DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS
+GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN
+KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ
+MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM
+PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV
+SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI
+VN VU WF WS XK YE YT ZA ZM ZW
+""".split())
+
 # \Z, not $: "$" would also accept a trailing newline.
 BRIDGE_RE = re.compile(r"^rakazo-c[a-f0-9]{7}\Z")
 BOT_CONTAINER_RE = re.compile(r"^rakazo-bot-([a-z0-9-]+)$")
@@ -160,24 +173,35 @@ def write_private(path: str, text: str) -> None:
         raise
 
 
-def label_from_text(stem: str, raw: str) -> tuple[str | None, str]:
-    """Country code and server label from a file name like wg-JP-412 or a "# JP#412" comment."""
-    country_code = None
-    server_label = stem
-    m_file = re.search(r"(?:^|[-_])([A-Za-z]{2})(?:[-_](\d+))?(?:$|[-_])", stem)
-    if m_file:
-        country_code = m_file.group(1).upper()
-        if m_file.group(2):
-            server_label = f"{country_code}#{m_file.group(2)}"
+def iso_country(code: str) -> str | None:
+    cc = code.upper()
+    cc = "GB" if cc == "UK" else cc  # some providers name British servers UK
+    return cc if cc in ISO_COUNTRIES else None
 
+
+def label_from_text(stem: str, raw: str) -> tuple[str | None, str]:
+    """Country code and server label from a "# US-CA#759" comment or a name like wg-JP-412."""
     for line in raw.splitlines():
-        s = line.strip()
-        m_srv = re.match(r"^#\s*([A-Za-z]{2}#\d+)\b", s)
+        m_srv = re.match(r"^#\s*([A-Za-z]{2}(?:-[A-Za-z]{2})?#\d+)\b", line.strip())
         if m_srv:
-            server_label = m_srv.group(1).upper()
-            country_code = server_label[:2]
-            break
-    return country_code, server_label
+            label = m_srv.group(1).upper()
+            if iso_country(label[:2]):
+                return iso_country(label[:2]), label
+
+    tokens = re.split(r"[-_ .#()]+", stem)
+    for i, token in enumerate(tokens):
+        if not re.fullmatch(r"[A-Za-z]{2}", token) or not iso_country(token):
+            continue
+        rest = tokens[i + 1 : i + 3]
+        state = rest[0] if rest and re.fullmatch(r"[A-Za-z]{2}", rest[0]) else None
+        after = rest[1:] if state else rest[:1]
+        number = after[0] if after and after[0].isdigit() else None
+        # A lowercase pair is an ordinary word ("my-laptop") unless a server number follows.
+        if not token.isupper() and not number:
+            continue
+        server = token.upper() + (f"-{state.upper()}" if state else "")
+        return iso_country(token), f"{server}#{number}" if number else stem
+    return None, stem
 
 
 def parse_profile_file(path: str, used_tables: set[int], used_marks: set[int]) -> dict:
@@ -575,6 +599,21 @@ def parse_trace(out: str) -> tuple[str | None, str | None]:
     return ip, valid_country(info.get("loc"))
 
 
+def trace_through(iface: str, max_time: int) -> tuple[str | None, str | None, int | None]:
+    """One request out of the tunnel: where it came out, and the TCP round trip in ms."""
+    rc, out, _ = sh(
+        ["curl", "-4", "-s", "--max-time", str(max_time), "--interface", iface,
+         "-w", "\ntime_connect=%{time_connect}\n", TRACE_URL],
+        timeout=max_time + 4,
+    )
+    if rc != 0 or not out:
+        return None, None, None
+    exit_ip, exit_country = parse_trace(out)
+    m = re.search(r"^time_connect=([0-9]+(?:\.[0-9]+)?)$", out, re.MULTILINE)
+    seconds = float(m.group(1)) if m else 0.0
+    return exit_ip, exit_country, max(1, round(seconds * 1000)) if seconds > 0 else None
+
+
 def test_profile(pid: str) -> dict:
     """Send one request through the tunnel and say whether it came out somewhere else.
 
@@ -591,11 +630,11 @@ def test_profile(pid: str) -> dict:
         with LOCK:
             ensure_tunnel_up(prof)
     host_ip, _ = refresh_host_ip()
-    rc, out, _ = sh(
-        ["curl", "-4", "-s", "--max-time", "8", "--interface", prof["iface"], TRACE_URL],
-        timeout=12,
-    )
-    exit_ip, exit_country = parse_trace(out) if rc == 0 and out else (None, None)
+    exit_ip, exit_country, latency = trace_through(prof["iface"], 8)
+    if exit_ip:
+        # The first request may have waited for the tunnel's handshake: keep the quicker one.
+        again = trace_through(prof["iface"], 4)[2]
+        latency = min((ms for ms in (latency, again) if ms is not None), default=None)
     status = collect_tunnel_statuses([prof])[0]
     if exit_ip and host_ip and exit_ip == host_ip:
         result = "not_private"
@@ -625,6 +664,7 @@ def test_profile(pid: str) -> dict:
         "result": result,
         "exitIp": exit_ip if result == "connected" else None,
         "exitCountry": exit_country if result == "connected" else None,
+        "latencyMs": latency if result == "connected" else None,
     }
 
 

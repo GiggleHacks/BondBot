@@ -95,9 +95,7 @@ export function VpnUploadSummary({ result }: { result: AddVpnProfilesResult }) {
     <div className="space-y-2">
       {result.added.length ? (
         <Notice tone="success">
-          {result.added.length === 1
-            ? "Added 1 VPN file. Testing it now."
-            : `Added ${result.added.length} VPN files. Testing them now.`}
+          {result.added.length === 1 ? "Added 1 file" : `Added ${result.added.length} files`}
         </Notice>
       ) : null}
       {result.failed.length ? (

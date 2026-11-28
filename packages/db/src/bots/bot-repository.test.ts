@@ -489,7 +489,9 @@ describe("createRepos.listSpaceBotsForSpaces", () => {
         parentBotId: null,
         thread: {
           id: "thread-2",
-          reads: [{ unread: true, snoozedUntil: new Date("2026-08-21T09:00:00.000Z") }],
+          reads: [
+            { unread: true, lastReadSeq: 2, snoozedUntil: new Date("2026-08-21T09:00:00.000Z") },
+          ],
           runs: [{ id: "run-failed", status: "failed" }],
         },
         runs: [{ status: "running", threadId: "group-thread" }],
@@ -497,6 +499,7 @@ describe("createRepos.listSpaceBotsForSpaces", () => {
     ]);
     const repos = createRepos({
       bot: { findMany },
+      message: { groupBy: vi.fn(async () => [{ threadId: "thread-2", _count: { _all: 2 } }]) },
       $queryRaw: vi
         .fn()
         .mockResolvedValueOnce([{ id: "run-failed", threadId: "thread-2", status: "failed" }])
@@ -529,6 +532,7 @@ describe("createRepos.listSpaceBotsForSpaces", () => {
         pinned: true,
         sectionId: null,
         unread: true,
+        unreadCount: 2,
         snoozedUntil: "2026-08-21T09:00:00.000Z",
         parentBotId: null,
         modelProvider: null,

@@ -38,7 +38,12 @@ import {
   threadRunStatus,
   withLatestBotRuns,
 } from "../threads/thread-listing.js";
-import { readStateFor, snoozedUntilFor, unreadFor } from "../threads/thread-reads.js";
+import {
+  readStateFor,
+  snoozedUntilFor,
+  unreadCountsFor,
+  unreadFor,
+} from "../threads/thread-reads.js";
 import { chooseBotAvatar } from "./bot-avatar-choice.js";
 import { botThreadPreviews } from "./bot-previews.js";
 
@@ -232,6 +237,11 @@ export function createRepos(
       orderBy: [{ pinned: "desc" }, { position: "asc" }, { createdAt: "asc" }],
     });
     const bots = await withNewestThreadMessages(prisma, await withLatestBotRuns(prisma, rows), 1);
+    const unreadCounts = await unreadCountsFor(
+      prisma,
+      userId,
+      bots.map((bot) => bot.thread),
+    );
     return bots.map((bot) => {
       if (!bot.thread) throw new IsolationError("Bot is missing its thread");
       const activeRun = primaryActiveRun(bot.runs);
@@ -246,6 +256,7 @@ export function createRepos(
         pinned: bot.pinned,
         sectionId: bot.sectionId,
         unread: unreadFor(bot.thread),
+        unreadCount: unreadCounts.get(bot.thread.id) ?? 0,
         snoozedUntil: snoozedUntilFor(bot.thread),
         parentBotId: bot.parentBotId,
         preview: previewFromBlocks(bot.thread.messages[0]?.blocks),
@@ -306,6 +317,11 @@ export function createRepos(
         : [];
     const callsByThread = new Map(callMessages.map((message) => [message.threadId, message]));
     const { previews, newestAt } = await botThreadPreviews(prisma, threadIds);
+    const unreadCounts = await unreadCountsFor(
+      prisma,
+      actor.userId,
+      bots.map((bot) => bot.thread),
+    );
     return bots.map((bot) => {
       const threadId = bot.thread?.id;
       const activeRun = primaryActiveRun(bot.runs);
@@ -319,6 +335,7 @@ export function createRepos(
       );
       return {
         ...mapped,
+        unreadCount: unreadCounts.get(mapped.threadId) ?? 0,
         threadStatus: threadRunStatus(bot.runs, mapped.threadId),
         ...asleepField(bot.computer),
         ...(options.botId !== undefined && botHistory(bot)),

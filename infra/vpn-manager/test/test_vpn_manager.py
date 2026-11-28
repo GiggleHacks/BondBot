@@ -804,6 +804,17 @@ class UploadValidationTests(unittest.TestCase):
         self.assertEqual(mgr.clean_name(None), "VPN")
         self.assertEqual(len(mgr.clean_name("x" * 500)), 80)
 
+    def test_country_and_server_from_names_and_comments(self):
+        for stem, raw, expected in (
+            ("wg-US-CA-1076", "", ("US", "US-CA#1076")),
+            ("bondbot2-US-CA-759", "# US-CA#759\n", ("US", "US-CA#759")),
+            ("wg-sg-155", "", ("SG", "SG#155")),
+            ("office", "# UK#12\n", ("GB", "UK#12")),
+            ("wg-MX", "", ("MX", "wg-MX")),
+            ("my-laptop", "", (None, "my-laptop")),
+        ):
+            self.assertEqual(mgr.label_from_text(stem, raw), expected, stem)
+
     def test_keepalive_added_only_where_missing(self):
         out = mgr.with_keepalive("[Interface]\nPrivateKey = k\n[Peer]\nPublicKey = p\n[Peer]\nPublicKey = q\nPersistentKeepalive = 5")
         self.assertEqual(out.count("PersistentKeepalive"), 2)
@@ -905,6 +916,18 @@ class ConnectionTestTests(Base):
         self.assertEqual((r["result"], r["exitIp"], r["exitCountry"]), ("connected", "203.0.113.50", "JP"))
         self.assertEqual(mgr.PROFILES[self.pid]["countryCode"], "JP")
         self.assertEqual(mgr.load_profiles()[self.pid]["countryCode"], "JP")
+
+    def test_latency_is_the_quicker_connect_time(self):
+        times = iter(["0.250", "0.0421"])
+        real = self.host
+
+        def fake(args, timeout=12, input_text=None):
+            if args[0] == "curl":
+                return 0, f"ip=203.0.113.50\nloc=JP\n\ntime_connect={next(times)}", ""
+            return real(args, timeout, input_text)
+
+        with mock.patch.object(mgr, "sh", fake):
+            self.assertEqual(mgr.test_profile(self.pid)["latencyMs"], 42)
 
     def test_failure_kinds(self):
         self.assertEqual(self.run_test((28, "", "timeout"))["result"], "no_handshake")

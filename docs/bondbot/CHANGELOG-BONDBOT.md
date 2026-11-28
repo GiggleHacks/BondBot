@@ -257,3 +257,11 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Verified live: services healthy, API reports 1.11.0, no error lines, the supervisor reports the VPN manager with Kill Switch available. A real tunnel tested "connected" (JP). A dummy file went through upload, test ("server did not answer"), a refused removal by another owner, and removal, both against the VPN manager and through the supervisor; nothing was left behind. The new screens were checked in a browser with sample data.
 - Not checked: the screens against live data while signed in, and a real file uploaded through the app.
 - Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v060-20261128/rollback.sh (0.5.1 app image, compose file and VPN manager; the database stays).
+
+## v0.7.0 / 1.12.0 (2026-11-28)
+- Chat list: unread chats show a Telegram-style count bubble (bot replies and other people's messages since you last read it, up to 999+), also on avatars when the sidebar is collapsed. A chat only marked unread keeps a plain dot. The native mobile app is unchanged.
+- The server now sends that count with the chat list. Marking a chat read from the list no longer leaves old messages to be counted again, and its "New" divider now starts at the first message after that.
+- Settings > VPN: a test shows just the ping and IP address, or "No response", "No internet", "Not going through VPN". New "Test all" button. The long result sentences are gone.
+- The VPN manager reports the ping, so the host copy (/boot/config/rakazo-vpn-manager.py) has to be updated by hand. An older manager still works and shows "Working" without a ping.
+- VPN flags: a file named like wg-US-CA-1076 is now read as United States (it was read as country "WG" and had no flag), and every country has a flag (flag-icons package), not just 15.
+- No database change.

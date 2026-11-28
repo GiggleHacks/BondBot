@@ -1,11 +1,16 @@
 import type { VpnTestResult } from "@rakazo/contracts";
 import { useEffect, useState } from "react";
 import { useSave } from "../../lib/query/query";
-import { errorText } from "../../lib/query/user-error";
-import { vpnTestMessage } from "./vpn-labels";
 
-/** Tests one VPN, at once when `testNow` is set (a file just uploaded), and says how it went. */
-export function useVpnTest(profileId: string, onTested: () => void, testNow = false) {
+/**
+ * Tests one VPN: at once when `testNow` is set (a file just uploaded), and again each time
+ * `round` goes up (Test all).
+ */
+export function useVpnTest(
+  profileId: string,
+  onTested: () => void,
+  { testNow = false, round = 0 }: { testNow?: boolean; round?: number } = {},
+) {
   const [result, setResult] = useState<VpnTestResult | null>(null);
   const test = useSave({
     save: (id: string, rpc) => rpc.computer.testVpnProfile({ id }),
@@ -17,19 +22,13 @@ export function useVpnTest(profileId: string, onTested: () => void, testNow = fa
   useEffect(() => {
     if (testNow) test.run(profileId);
   }, [testNow, profileId]);
-  const message = test.pending
-    ? "Testing the connection…"
-    : test.error
-      ? errorText(test.error, "Could not test this VPN. Try again.")
-      : result
-        ? vpnTestMessage(result)
-        : null;
+  useEffect(() => {
+    if (round > 0) test.run(profileId);
+  }, [round, profileId]);
   return {
     run: () => test.run(profileId),
     pending: test.pending,
-    message,
-    ok: !test.pending && !test.error && result?.outcome === "connected",
-    failed:
-      !test.pending && (Boolean(test.error) || (result !== null && result.outcome !== "connected")),
+    errored: Boolean(test.error),
+    result,
   };
 }

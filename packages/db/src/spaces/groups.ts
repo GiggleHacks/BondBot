@@ -19,7 +19,12 @@ import {
   previewFromBlocks,
   primaryActiveRun,
 } from "../threads/thread-listing.js";
-import { readStateFor, snoozedUntilFor, unreadFor } from "../threads/thread-reads.js";
+import {
+  readStateFor,
+  snoozedUntilFor,
+  unreadCountsFor,
+  unreadFor,
+} from "../threads/thread-reads.js";
 import { lockSpaceForContentCreation } from "./spaces.js";
 
 type GroupRecord = {
@@ -321,9 +326,17 @@ export function createGroupRepos(prisma: PrismaClient) {
       }),
       1,
     );
+    const unreadCounts = await unreadCountsFor(
+      prisma,
+      userId,
+      groups.map((group) => group.thread),
+    );
     return groups
       .filter((group) => hasMinimumActiveMembers(group.members))
-      .map((group) => mapSpaceGroup(group));
+      .map((group) => ({
+        ...mapSpaceGroup(group),
+        unreadCount: unreadCounts.get(group.thread?.id ?? "") ?? 0,
+      }));
   }
 
   /**
@@ -370,9 +383,17 @@ export function createGroupRepos(prisma: PrismaClient) {
         }),
         1,
       );
+      const unreadCounts = await unreadCountsFor(
+        prisma,
+        actor.userId,
+        groups.map((group) => group.thread),
+      );
       return groups
         .filter((group) => hasMinimumActiveMembers(group.members))
-        .map((group) => mapGroup(group as GroupRecord));
+        .map((group) => ({
+          ...mapGroup(group as GroupRecord),
+          unreadCount: unreadCounts.get(group.thread?.id ?? "") ?? 0,
+        }));
     },
 
     listSpaceGroupsForSpaces,

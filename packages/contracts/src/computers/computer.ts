@@ -271,5 +271,7 @@ export const VpnTestResultSchema = z.object({
   outcome: VpnTestOutcomeSchema,
   exitIp: z.string().nullable(),
   exitCountry: z.string().nullable(),
+  /** Round trip through the VPN; null when it failed or the server's VPN manager is older. */
+  latencyMs: z.number().int().nonnegative().nullable(),
 });
 export type VpnTestResult = z.infer<typeof VpnTestResultSchema>;

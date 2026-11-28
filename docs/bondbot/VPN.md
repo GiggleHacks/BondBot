@@ -71,8 +71,8 @@ router setup. Pick a file that sends **all** traffic through the VPN.
 
 - **Upload:** Settings › VPN › **Upload files**. Pick one or many `.conf` files at once. Each file
   is checked, connected and tested right away.
-- **Test:** press **Test** on any file. You see where bots on it appear to be (country and IP)
-  or what went wrong.
+- **Test:** press **Test** on a file, or **Test all** to check every file at once. A working one
+  shows its ping and the IP address bots appear from; a broken one says what failed.
 - **New bot:** in **New bot**, choose a VPN under the name (or press **Connect through a VPN**
   to upload one). The bot gets its own computer behind that VPN, with the Kill Switch on.
 - **Existing bot:** click the bot's VPN chip (the small flag by its name) and pick a country.
@@ -88,9 +88,10 @@ operator places straight in the VPN manager's folder are shared with every Space
 
 | Message | What to do |
 | --- | --- |
-| The VPN server did not answer | The file is old, was deleted in your VPN account, or the plan's connection limit is reached. Make a new file and upload it. |
-| The VPN server answered, but nothing got through it | The server is busy or blocking you. Try later or use another server. |
-| Traffic did not go through the VPN | The file does not send all traffic through the VPN. Download it again with all traffic included. |
+| No response | The file is old, was deleted in your VPN account, or the plan's connection limit is reached. Make a new file and upload it. |
+| No internet | The server is busy or blocking you. Try later or use another server. |
+| Not going through VPN | The file does not send all traffic through the VPN. Download it again with all traffic included. |
+| Test failed | The test could not be run. Check that the VPN manager is running, then try again. |
 
 ## Security notes
 

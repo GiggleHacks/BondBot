@@ -1,4 +1,4 @@
-import type { VpnProfileInfo, VpnTestResult } from "@rakazo/contracts";
+import type { VpnProfileInfo } from "@rakazo/contracts";
 
 /** "UN" until a test learns where an uploaded file comes out. */
 export const UNKNOWN_COUNTRY = "UN";
@@ -30,18 +30,4 @@ export function vpnProfileLabel(profile: VpnProfileInfo): string {
   return profile.serverLabel && profile.serverLabel !== profile.name
     ? `${country} (${profile.serverLabel})`
     : country;
-}
-
-/** One sentence on a connection test, saying what to do when it failed. */
-export function vpnTestMessage(result: VpnTestResult): string {
-  switch (result.outcome) {
-    case "connected":
-      return `Working. Bots on it appear to be in ${countryNameFor(result.exitCountry ?? result.profile.countryCode)}${result.exitIp ? ` (${result.exitIp})` : ""}.`;
-    case "no_handshake":
-      return "The VPN server did not answer. This file may be old or deleted. Make a new one and upload it.";
-    case "no_internet":
-      return "The VPN server answered, but nothing got through it. Try again later or use another server.";
-    case "not_private":
-      return "Traffic did not go through the VPN, so it is not hiding anything. Try another file.";
-  }
 }

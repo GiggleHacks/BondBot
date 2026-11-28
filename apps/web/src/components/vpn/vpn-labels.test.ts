@@ -1,6 +1,6 @@
 import type { VpnProfileInfo } from "@rakazo/contracts";
 import { describe, expect, it } from "vitest";
-import { vpnProfileLabel, vpnTestMessage } from "./vpn-labels";
+import { vpnProfileLabel } from "./vpn-labels";
 
 const profile: VpnProfileInfo = {
   id: "vpn-0123456789ab",
@@ -20,11 +20,5 @@ describe("vpn labels", () => {
       "Japan (JP#412)",
     );
     expect(vpnProfileLabel({ ...profile, countryCode: "DE" })).toBe("Germany");
-  });
-
-  it("says where a working VPN comes out", () => {
-    expect(
-      vpnTestMessage({ profile, outcome: "connected", exitIp: "203.0.113.5", exitCountry: "NL" }),
-    ).toBe("Working. Bots on it appear to be in Netherlands (203.0.113.5).");
   });
 });

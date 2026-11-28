@@ -1,5 +1,5 @@
 import type { AddVpnProfilesResult, VpnProfileInfo } from "@rakazo/contracts";
-import { Button, cn, Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@rakazo/ui-web";
+import { Button, Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@rakazo/ui-web";
 import { Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSave } from "../../lib/query/query";
@@ -10,11 +10,12 @@ import { CountryFlag } from "../CountryFlag";
 import { Notice } from "../Notice";
 import { SettingsGroup } from "../settings/SettingsRows";
 import { useVpnTest } from "./use-vpn-test";
+import { VpnTestReadout } from "./VpnTestReadout";
 import { vpnProfileLabel } from "./vpn-labels";
 import { botsByVpnProfile, sortVpnProfiles } from "./vpn-upload";
 import { VpnFileHelp, VpnUploadButton, VpnUploadSummary } from "./vpn-upload-controls";
 
-/** Settings › VPN: the Space's WireGuard files, uploaded in bulk and tested one by one. */
+/** Settings › VPN: the Space's WireGuard files, uploaded in bulk and tested singly or all at once. */
 export function VpnSettingsPanel({
   vpn,
   botNames,
@@ -23,6 +24,8 @@ export function VpnSettingsPanel({
   botNames: ReadonlyMap<string, string>;
 }) {
   const [lastUpload, setLastUpload] = useState<AddVpnProfilesResult | null>(null);
+  // Each press of Test all; every row tests itself when it goes up.
+  const [testRound, setTestRound] = useState(0);
   const overview = vpn.overview;
   const profiles = useMemo(() => sortVpnProfiles(overview?.profiles ?? []), [overview?.profiles]);
   const users = useMemo(
@@ -44,19 +47,26 @@ export function VpnSettingsPanel({
     );
   }
 
-  const upload = (
-    <VpnUploadButton
-      label="Upload files"
-      onUploaded={(result) => {
-        setLastUpload(result);
-        void vpn.refreshVpn();
-      }}
-    />
+  const actions = (
+    <div className="flex flex-wrap justify-end gap-2">
+      {profiles.length > 1 ? (
+        <Button variant="secondary" size="sm" onClick={() => setTestRound((round) => round + 1)}>
+          Test all
+        </Button>
+      ) : null}
+      <VpnUploadButton
+        label="Upload files"
+        onUploaded={(result) => {
+          setLastUpload(result);
+          void vpn.refreshVpn();
+        }}
+      />
+    </div>
   );
 
   return (
     <div className="space-y-4" data-testid="vpn-settings">
-      <SettingsGroup title="WireGuard files" action={upload}>
+      <SettingsGroup title="WireGuard files" action={actions}>
         {profiles.length === 0 ? (
           <Empty className="py-8">
             <EmptyHeader>
@@ -74,6 +84,7 @@ export function VpnSettingsPanel({
               profile={profile}
               usedBy={users.get(profile.id) ?? []}
               testNow={justAdded.has(profile.id)}
+              testRound={testRound}
               onChanged={() => void vpn.refreshVpn()}
             />
           ))
@@ -91,14 +102,16 @@ function VpnProfileRow({
   profile,
   usedBy,
   testNow,
+  testRound,
   onChanged,
 }: {
   profile: VpnProfileInfo;
   usedBy: string[];
   testNow: boolean;
+  testRound: number;
   onChanged: () => void;
 }) {
-  const test = useVpnTest(profile.id, onChanged, testNow);
+  const test = useVpnTest(profile.id, onChanged, { testNow, round: testRound });
   const [confirming, setConfirming] = useState(false);
   const remove = useSave({
     save: (id: string, rpc) => rpc.computer.removeVpnProfile({ id }),
@@ -108,8 +121,6 @@ function VpnProfileRow({
     },
   });
   const label = vpnProfileLabel(profile);
-  const status =
-    test.message ?? (profile.up ? "Connected" : "Not tested yet. Press Test to check it.");
 
   return (
     <div className="px-4 py-3" data-testid="vpn-profile-row">
@@ -127,7 +138,8 @@ function VpnProfileRow({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="ms-auto flex flex-wrap items-center justify-end gap-2">
+          <VpnTestReadout test={test} className="justify-end" />
           <Button variant="secondary" size="sm" disabled={test.pending} onClick={test.run}>
             Test
           </Button>
@@ -145,15 +157,6 @@ function VpnProfileRow({
           )}
         </div>
       </div>
-      <p
-        role="status"
-        className={cn(
-          "mt-1 text-body-sm",
-          test.ok ? "text-success" : test.failed ? "text-destructive" : "text-muted-foreground",
-        )}
-      >
-        {status}
-      </p>
       {confirming ? (
         <ConfirmDialog
           onCancel={() => {
