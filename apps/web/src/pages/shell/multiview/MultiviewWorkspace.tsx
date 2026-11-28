@@ -148,9 +148,10 @@ export function MultiviewWorkspace({
   }
 
   const chats = config.layout !== "screens";
+  // A container query, not a viewport breakpoint: crossing one restyles the whole app mid-resize.
   const desktopGridClass = chats
     ? visibleBots.length >= 4
-      ? "md:grid-cols-2 md:grid-rows-2 xl:grid-cols-4 xl:grid-rows-1"
+      ? "md:grid-cols-2 md:grid-rows-2 @min-[60rem]/multiview:grid-cols-4 @min-[60rem]/multiview:grid-rows-1"
       : visibleBots.length === 3
         ? "md:grid-cols-3"
         : visibleBots.length === 2
@@ -173,7 +174,7 @@ export function MultiviewWorkspace({
       inert={drawerOpen || covered}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
-      className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+      className="@container/multiview relative flex min-h-0 min-w-0 flex-1 flex-col bg-background"
     >
       <header className="app-drag flex shrink-0 items-center justify-between gap-2 border-b border-border/70 px-3 py-2 md:px-4">
         <div className="flex min-w-0 items-center gap-2">
