@@ -66,9 +66,11 @@ import {
   mutedChatSoundsPreference,
   setChatSoundMuted,
 } from "../../lib/preferences/chat-sound-mutes-pref";
+import type { AppFont } from "../../lib/preferences/chat-style-prefs";
 import {
+  APP_FONTS,
+  appFontPreference,
   chatColorsPreference,
-  terminalFontPreference,
 } from "../../lib/preferences/chat-style-prefs";
 import { remoteImagesPreference } from "../../lib/preferences/remote-images-preference";
 import type { AppearancePreference } from "../../lib/preferences/ui-appearance";
@@ -154,7 +156,7 @@ export function GeneralSettingsPanels({
   );
   const sidebarDensity = botsSidebarDensityPreference.use();
   const chatColors = chatColorsPreference.use();
-  const terminalFont = terminalFontPreference.use();
+  const appFont = appFontPreference.use();
   const sidebarDensityLabelId = useId();
   const botStyleLabelId = useId();
   const [botStyleError, setBotStyleError] = useState<string | null>(null);
@@ -348,29 +350,27 @@ export function GeneralSettingsPanels({
             />
           }
         />
-        {(
-          [
-            ["colorful-chat", "Colorful chat", chatColors, chatColorsPreference],
-            ["terminal-font", "Terminal font", terminalFont, terminalFontPreference],
-          ] as const
-        ).map(([id, label, checked, preference]) => (
-          <SettingsRow
-            key={id}
-            label={
-              <Label htmlFor={id} className="text-body font-normal text-foreground">
-                {label}
-              </Label>
-            }
-            control={
-              <Switch
-                id={id}
-                data-testid={`${id}-toggle`}
-                checked={checked}
-                onCheckedChange={(next) => preference.set(next)}
-              />
-            }
-          />
-        ))}
+        <SettingsRow
+          label={<Trans>Font</Trans>}
+          control={
+            <AppFontPicker value={appFont} onChange={(next) => appFontPreference.set(next)} />
+          }
+        />
+        <SettingsRow
+          label={
+            <Label htmlFor="colorful-chat" className="text-body font-normal text-foreground">
+              <Trans>Colorful chat</Trans>
+            </Label>
+          }
+          control={
+            <Switch
+              id="colorful-chat"
+              data-testid="colorful-chat-toggle"
+              checked={chatColors}
+              onCheckedChange={(next) => chatColorsPreference.set(next)}
+            />
+          }
+        />
         {onBotAvatarSetChange ? (
           <SettingsRow
             label={
@@ -897,6 +897,28 @@ function AppearancePicker({
       data-testid="ui-appearance-select"
       aria-label={t`Appearance`}
       options={options}
+      value={value}
+      onValueChange={onChange}
+    />
+  );
+}
+
+function AppFontPicker({ value, onChange }: { value: AppFont; onChange: (font: AppFont) => void }) {
+  const { t } = useLingui();
+  const labels: Record<AppFont, string> = {
+    system: t`System`,
+    inter: "Inter",
+    geist: "Geist",
+    serif: t`Serif`,
+    rounded: t`Rounded`,
+    mono: t`Mono`,
+  };
+  return (
+    <OptionSelect
+      className="w-56 max-w-full"
+      data-testid="app-font-select"
+      aria-label={t`Font`}
+      options={APP_FONTS.map((font) => ({ value: font, label: labels[font] }))}
       value={value}
       onValueChange={onChange}
     />

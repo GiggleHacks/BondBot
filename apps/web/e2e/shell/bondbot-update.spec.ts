@@ -111,17 +111,19 @@ test("an update is offered above the footer and shows each step as it happens", 
   await captureScreenshot(page, testInfo, "settings-sounds");
 });
 
-test("colour and the terminal font are off until chosen, and survive a reload", async ({
+test("colour and the chosen font are off until chosen, and survive a reload", async ({
   page,
 }, testInfo) => {
   await signup(page, `chat-style-${Date.now()}@rakazo.test`, "password12", "Style");
   await completeOnboarding(page);
   const html = page.locator("html");
   await expect(html).not.toHaveAttribute("data-chat-colors", "on");
+  await expect(html).not.toHaveAttribute("data-font");
 
   const settings = await openUserSettings(page);
   await settings.getByTestId("colorful-chat-toggle").click();
-  await settings.getByTestId("terminal-font-toggle").click();
+  await settings.getByTestId("app-font-select").click();
+  await page.getByRole("option", { name: "Mono", exact: true }).click();
   await page.evaluate(() => {
     localStorage.setItem("rakazo.uiAppearance", "dark-blue");
     // Tool steps are listed only with this on.
@@ -129,7 +131,7 @@ test("colour and the terminal font are off until chosen, and survive a reload", 
   });
   await page.reload();
   await expect(html).toHaveAttribute("data-chat-colors", "on");
-  await expect(html).toHaveAttribute("data-terminal-font", "on");
+  await expect(html).toHaveAttribute("data-font", "mono");
   const reopened = page.getByTestId("user-settings");
   await reopened.getByRole("button", { name: /close/i }).click();
   await expect(reopened).toHaveCount(0);
@@ -176,6 +178,6 @@ test("colour and the terminal font are off until chosen, and survive a reload", 
   await page.getByTestId("tool-activity").last().locator("button").first().click();
   await expect(page.locator('[data-tool-kind="shell"]')).toBeVisible();
   await expect(page.locator("[data-tool-failed]")).toBeVisible();
-  await expect(page.locator("body")).toHaveCSS("font-family", /Cascadia Mono/);
-  await captureScreenshot(page, testInfo, "chat-colours-terminal-font");
+  await expect(page.locator("body")).toHaveCSS("font-family", /JetBrains Mono/);
+  await captureScreenshot(page, testInfo, "chat-colours-mono-font");
 });

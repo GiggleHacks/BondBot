@@ -26,10 +26,16 @@
   const tinted = { blue: "#0b1220", purple: "#16141c" }[palette];
   const plain = theme === "light" ? "#ffffff" : "#0a0a0a";
   if (meta) meta.setAttribute("content", tinted || plain);
-  // Optional chat colours and terminal font, chosen in Settings on this device.
+  // Optional chat colours and typeface, chosen in Settings on this device.
   try {
     if (localStorage.getItem("bondbot.chatColors") === "on") root.dataset.chatColors = "on";
-    if (localStorage.getItem("bondbot.terminalFont") === "on") root.dataset.terminalFont = "on";
+    // The earlier terminal font switch became the mono choice.
+    if (localStorage.getItem("bondbot.terminalFont") === "on") {
+      if (!localStorage.getItem("bondbot.font")) localStorage.setItem("bondbot.font", "mono");
+      localStorage.removeItem("bondbot.terminalFont");
+    }
+    const font = localStorage.getItem("bondbot.font");
+    if (font) root.dataset.font = font;
   } catch {}
   // macOS draws regular text at 420 (see --font-weight-normal); iPads report a Mac platform too.
   const nav = typeof navigator === "object" ? navigator : undefined;

@@ -1,29 +1,29 @@
-/* Optional looks, off unless chosen in Settings > General: colour in the chat, and a terminal
-   typeface across the app. */
+/* Optional looks, chosen in Settings > General: quiet colour in the chat, and the app's typeface.
+   The colours stay muted and close to the text so they hint at a part's kind without shouting. */
 html[data-chat-colors="on"] {
-  --cc-think: oklch(0.52 0.2 295);
-  --cc-shell: oklch(0.55 0.13 70);
-  --cc-web: oklch(0.52 0.16 250);
-  --cc-computer: oklch(0.55 0.2 350);
-  --cc-files: oklch(0.52 0.13 160);
-  --cc-memory: oklch(0.55 0.18 25);
-  --cc-other: oklch(0.52 0.1 210);
-  --cc-heading: oklch(0.5 0.17 250);
-  --cc-strong: oklch(0.52 0.17 45);
-  --cc-code: oklch(0.5 0.14 160);
+  --cc-think: oklch(0.5 0.06 295);
+  --cc-shell: oklch(0.5 0.05 75);
+  --cc-web: oklch(0.5 0.06 250);
+  --cc-computer: oklch(0.5 0.06 350);
+  --cc-files: oklch(0.5 0.05 165);
+  --cc-memory: oklch(0.5 0.06 30);
+  --cc-other: oklch(0.5 0.04 220);
+  --cc-heading: oklch(0.42 0.05 250);
+  --cc-strong: oklch(0.42 0.05 60);
+  --cc-code: oklch(0.46 0.05 165);
 }
 
 html[data-theme="dark"][data-chat-colors="on"] {
-  --cc-think: oklch(0.78 0.13 300);
-  --cc-shell: oklch(0.83 0.14 85);
-  --cc-web: oklch(0.78 0.12 235);
-  --cc-computer: oklch(0.77 0.15 350);
-  --cc-files: oklch(0.82 0.14 160);
-  --cc-memory: oklch(0.76 0.14 30);
-  --cc-other: oklch(0.82 0.1 205);
-  --cc-heading: oklch(0.82 0.12 225);
-  --cc-strong: oklch(0.85 0.13 75);
-  --cc-code: oklch(0.85 0.14 155);
+  --cc-think: oklch(0.72 0.05 300);
+  --cc-shell: oklch(0.74 0.045 80);
+  --cc-web: oklch(0.72 0.05 240);
+  --cc-computer: oklch(0.72 0.05 350);
+  --cc-files: oklch(0.74 0.045 165);
+  --cc-memory: oklch(0.72 0.05 35);
+  --cc-other: oklch(0.72 0.035 215);
+  --cc-heading: oklch(0.86 0.035 235);
+  --cc-strong: oklch(0.88 0.035 75);
+  --cc-code: oklch(0.8 0.045 160);
 }
 
 html[data-chat-colors="on"] {
@@ -34,8 +34,8 @@ html[data-chat-colors="on"] {
   }
 
   [data-chat-part="reasoning"] > div {
-    border-color: var(--cc-think);
-    background: color-mix(in oklab, var(--cc-think) 7%, transparent);
+    border-color: color-mix(in oklab, var(--cc-think) 50%, transparent);
+    background: color-mix(in oklab, var(--cc-think) 5%, transparent);
   }
 
   /* Actions, by what they touch */
@@ -94,8 +94,8 @@ html[data-chat-colors="on"] {
     }
 
     blockquote {
-      border-color: var(--warning);
-      background: color-mix(in oklab, var(--warning) 9%, transparent);
+      border-color: var(--cc-strong);
+      background: color-mix(in oklab, var(--cc-strong) 5%, transparent);
     }
   }
 
@@ -103,18 +103,34 @@ html[data-chat-colors="on"] {
   [data-testid="transcript"] [role="alert"] {
     border-inline-start: 3px solid var(--destructive);
     border-radius: 6px;
-    background: color-mix(in oklab, var(--destructive) 10%, transparent);
+    background: color-mix(in oklab, var(--destructive) 6%, transparent);
     padding: 6px 10px;
   }
 }
 
-/* Cascadia Mono where installed, and the device's own monospace elsewhere. */
-html[data-terminal-font="on"] {
-  --font-sans:
-    "Cascadia Mono", "Cascadia Code", "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular,
-    Menlo, Consolas, "DejaVu Sans Mono", monospace;
+/* The typeface picked in Settings. Its font files load only once chosen (chat-style-prefs.ts). */
+html[data-font="inter"] {
+  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-html[data-terminal-font="on"] body {
+html[data-font="geist"] {
+  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+html[data-font="serif"] {
+  --font-sans: "Source Serif 4 Variable", ui-serif, Georgia, "Times New Roman", serif;
+}
+
+html[data-font="rounded"] {
+  --font-sans: "Nunito Variable", ui-rounded, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+html[data-font="mono"] {
+  --font-sans:
+    "JetBrains Mono Variable", "Cascadia Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    "DejaVu Sans Mono", monospace;
+}
+
+html[data-font] body {
   font-family: var(--font-sans);
 }

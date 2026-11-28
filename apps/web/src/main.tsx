@@ -17,6 +17,7 @@ import { clientUpdates } from "./lib/platform/client-update";
 import { reportCaughtReactError } from "./lib/platform/monitoring";
 import { markAfterPaint, markOnce } from "./lib/platform/performance";
 import { installPreloadRecovery } from "./lib/platform/preload-recovery";
+import { applyAppFont } from "./lib/preferences/chat-style-prefs";
 import { applyUiAppearance, watchSystemAppearance } from "./lib/preferences/ui-appearance";
 import { queryClient } from "./lib/query/query";
 import { registerServiceWorker } from "./pwa/register";
@@ -30,6 +31,7 @@ registerServiceWorker();
 lockStandaloneZoom();
 applyUiDirection(resolveUiLocale());
 applyUiAppearance();
+applyAppFont();
 captureReferral(window.location.search);
 
 function PerformanceProbe() {

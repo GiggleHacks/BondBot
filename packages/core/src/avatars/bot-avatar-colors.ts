@@ -48,14 +48,15 @@ export function resolvePersonaColorDef(
   return BOT_COLOR_LIST[index % BOT_COLOR_LIST.length] ?? BOT_COLOR_LIST[0]!;
 }
 
-/** Enough for white text while keeping the bubble close to the avatar's color. */
-const BUBBLE_TEXT_CONTRAST = 3;
+/** Deep and muted: the bot's hue is a hint on a dark bubble, never a bright block. */
+const BUBBLE_LIGHTNESS = 0.33;
+const BUBBLE_MAX_CHROMA = 0.045;
 const LIGHT_TEXT = "#FFFFFF";
 
 /**
- * Your messages in a bot's chat wear that bot's color under white text, deepened only as far as
- * 3:1 contrast so the bubble still matches the avatar. The color darkens in OKLCH so it keeps its
- * hue and saturation instead of turning muddy. Photo and white avatars keep the neutral bubble.
+ * Your messages in a bot's chat sit on a dark bubble tinted with that bot's hue under white
+ * text. Lightness and saturation are fixed, so every bot's bubble is equally quiet and readable.
+ * Photo and white avatars keep the neutral bubble.
  */
 export function chatUserBubbleColors(
   avatarValue: string,
@@ -65,13 +66,11 @@ export function chatUserBubbleColors(
   if (parsed.kind === "image") return undefined;
   const def = resolvePersonaColorDef(identity, parsed.kind === "other" ? undefined : parsed.color);
   if (def.id === "white") return undefined;
-  let background = `#${expandHex(def.hex)}`.toUpperCase();
-  const [lightness, chroma, hue] = hexToOklch(background);
-  for (let l = lightness; contrastRatio(background, LIGHT_TEXT) < BUBBLE_TEXT_CONTRAST; ) {
-    l -= 0.01;
-    background = oklchToHex(l, chroma, hue);
-  }
-  return { background, foreground: LIGHT_TEXT };
+  const [, chroma, hue] = hexToOklch(`#${expandHex(def.hex)}`);
+  return {
+    background: oklchToHex(BUBBLE_LIGHTNESS, Math.min(chroma, BUBBLE_MAX_CHROMA), hue),
+    foreground: LIGHT_TEXT,
+  };
 }
 
 function hexToOklch(hex: string): [number, number, number] {
