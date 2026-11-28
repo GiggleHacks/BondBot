@@ -150,7 +150,7 @@ async function benchmark() {
       port: apiPort,
     });
     await waitForUrl(`${apiOrigin}/health`);
-    preview = startPreview(env, webPort);
+    preview = await startPreview(env, webPort);
     await waitForUrl(webOrigin);
 
     browser = await chromium.launch({ channel: "chromium", headless: true });
