@@ -324,3 +324,12 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 
 - Quieter chat colours: your messages in a bot's chat sit on a dark bubble faintly tinted with the bot's colour instead of the full bright colour (web and mobile). Colorful chat uses muted tints.
 - Settings > General: the Terminal font switch is replaced by a Font picker (System, Inter, Geist, Serif, Rounded, Mono). Fonts ship with the app and load only once chosen. Anyone who had Terminal font on gets Mono.
+
+## Deployed to cccbox: 0.10.0 (2026-11-28 about 22:00 ICT, by hand)
+
+- Image rakazo-voice:v0100-20261128 built from c158b7c57 (0.10.0 on top of 1e247132c). It does not include the fix/main-ci merge (f23646e6d) that reached main during the deploy: that work, including its VPN manager and compose changes, is not on cccbox yet. No schema change, no migrations pending.
+- Database dumped to /mnt/user/appdata/rakazo/backup-pre-v0100-20261128/ first (with .env and the compose files).
+- Checked before deploying in a local copy of the app: the Font picker, the muted bubbles and Colorful chat.
+- Verified live: services healthy, API reports 1.15.0, no API, worker or web error lines, web serves 0.10.0 with the Font picker, font files served as font/woff2 and allowed by the content security policy.
+- Not checked while signed in: the new look on live data.
+- Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v0100-20261128/rollback.sh (0.9.0 app image and compose file; the database stays).
