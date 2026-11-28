@@ -3,8 +3,8 @@ import { readStoredString, writeStoredString } from "../../../lib/preferences/st
 
 export type MultiviewCount = 2 | 3 | 4;
 export type MultiviewThreeLayout = "columns" | "featured";
-/** Large screens with a chat drawer under each, or chat columns with a small screen each. */
-export type MultiviewLayout = "screens" | "chats";
+/** Large screens over chat drawers, chat columns with a small screen each, or chat columns alone. */
+export type MultiviewLayout = "screens" | "chats" | "text";
 
 export type MultiviewSpaceConfig = {
   tileBotIds: string[];
@@ -12,6 +12,8 @@ export type MultiviewSpaceConfig = {
   threeLayout: MultiviewThreeLayout;
   /** Per-bot mini-chat height in px; 0 means collapsed. Missing entries use the default height. */
   chatHeights: Record<string, number>;
+  /** Bots whose screen was closed, leaving their tile to the chat. */
+  closedScreens: string[];
 };
 
 export const MULTIVIEW_MIN_TILES = 2;
@@ -32,6 +34,7 @@ export function readMultiviewConfig(spaceId: string): MultiviewSpaceConfig {
     layout: "screens",
     threeLayout: "columns",
     chatHeights: {},
+    closedScreens: [],
   };
   const raw = readStoredString(multiviewStorageKey(spaceId));
   if (!raw) return empty;
@@ -39,12 +42,11 @@ export function readMultiviewConfig(spaceId: string): MultiviewSpaceConfig {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return empty;
     const record = parsed as Record<string, unknown>;
-    const tileBotIds = Array.isArray(record.tileBotIds)
-      ? record.tileBotIds.filter((id): id is string => typeof id === "string" && id.length > 0)
-      : [];
+    const tileBotIds = storedIds(record.tileBotIds);
     const threeLayout: MultiviewThreeLayout =
       record.threeLayout === "featured" ? "featured" : "columns";
-    const layout: MultiviewLayout = record.layout === "chats" ? "chats" : "screens";
+    const layout: MultiviewLayout =
+      record.layout === "chats" || record.layout === "text" ? record.layout : "screens";
     const chatHeights: Record<string, number> = {};
     if (record.chatHeights && typeof record.chatHeights === "object") {
       for (const [id, value] of Object.entries(record.chatHeights)) {
@@ -53,10 +55,17 @@ export function readMultiviewConfig(spaceId: string): MultiviewSpaceConfig {
         }
       }
     }
-    return { tileBotIds, layout, threeLayout, chatHeights };
+    const closedScreens = storedIds(record.closedScreens);
+    return { tileBotIds, layout, threeLayout, chatHeights, closedScreens };
   } catch {
     return empty;
   }
+}
+
+function storedIds(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((id): id is string => typeof id === "string" && id.length > 0)
+    : [];
 }
 
 export function writeMultiviewConfig(spaceId: string, config: MultiviewSpaceConfig): void {

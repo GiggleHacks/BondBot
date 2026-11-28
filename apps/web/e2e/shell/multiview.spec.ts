@@ -71,4 +71,25 @@ test("Multiview resizes its chats and offers chat columns without reloading scre
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(screen).toBeVisible();
   await captureScreenshot(page, testInfo, "multiview-chats-phone");
+
+  // Text only closes every screen and leaves the chats.
+  await workspace.getByRole("button", { name: "Text only" }).click();
+  await expect(workspace.locator("iframe")).toHaveCount(0);
+  await expect(workspace.getByRole("textbox", { name: "Message Chief" })).toBeInViewport();
+  await captureScreenshot(page, testInfo, "multiview-text-phone");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await captureScreenshot(page, testInfo, "multiview-text");
+
+  // One screen can also be closed on its own, and stays closed.
+  await workspace.getByRole("button", { name: "Large screens" }).click();
+  await expect(frame).toBeVisible({ timeout: 30_000 });
+  await workspace.getByRole("button", { name: "Close screen of Chief" }).click();
+  await expect(screen).toHaveCount(0);
+  await expect(workspace.getByTestId(`multiview-divider-${chiefId}`)).toHaveCount(0);
+  await captureScreenshot(page, testInfo, "multiview-one-screen-closed");
+  await page.reload();
+  await expect(workspace.getByRole("textbox", { name: "Message Chief" })).toBeVisible();
+  await expect(screen).toHaveCount(0);
+  await workspace.getByRole("button", { name: "Show screen of Chief" }).click();
+  await expect(frame).toBeVisible({ timeout: 30_000 });
 });

@@ -91,4 +91,11 @@ describe("multiview-state", () => {
     expect(readMultiviewConfig("s1").layout).toBe("chats");
     vi.unstubAllGlobals();
   });
+
+  it("remembers the text-only view and which screens were closed", () => {
+    const saved = JSON.stringify({ layout: "text", closedScreens: ["b1", 7] });
+    vi.stubGlobal("localStorage", { getItem: () => saved });
+    expect(readMultiviewConfig("s1")).toMatchObject({ layout: "text", closedScreens: ["b1"] });
+    vi.unstubAllGlobals();
+  });
 });
