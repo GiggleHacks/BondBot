@@ -80,7 +80,12 @@ interface Harness {
   resolveSave: (result: DesktopSetupResult) => void;
 }
 
-function mount(saved: DesktopSetup | null, locale = ENGLISH, platform = "linux"): Harness {
+function mount(
+  saved: DesktopSetup | null,
+  locale = ENGLISH,
+  platform = "linux",
+  error?: string,
+): Harness {
   document.body.innerHTML = setupBody ?? "";
   const checkCalls: Array<Deferred<DesktopReachability>> = [];
   const startResult = deferred<DesktopLocalStackState>();
@@ -136,7 +141,7 @@ function mount(saved: DesktopSetup | null, locale = ENGLISH, platform = "linux")
   new Function(setupScript)();
 
   const initState = stateCalls.shift();
-  initState?.resolve({ defaultLocalUrl: DEFAULT_LOCAL_URL, cloudUrl: CLOUD_URL, saved });
+  initState?.resolve({ defaultLocalUrl: DEFAULT_LOCAL_URL, cloudUrl: CLOUD_URL, saved, error });
   return {
     nextCheck: () => {
       const call = checkCalls.shift();
@@ -166,8 +171,9 @@ async function boot(
   saved: DesktopSetup | null,
   locale = ENGLISH,
   platform = "linux",
+  error?: string,
 ): Promise<Harness> {
-  const ui = mount(saved, locale, platform);
+  const ui = mount(saved, locale, platform, error);
   await flush(); // init reaches its stack.state call only after its state await resumes
   ui.resolveStackState(stackState("idle"));
   await flush();
@@ -330,6 +336,37 @@ describe("setup", () => {
 
     expect(element("stack").hidden).toBe(false);
     expect(element("stack-phase").textContent).toBe("Downloading BondBot…");
+  });
+
+  it.each([
+    ["the saved server", { mode: "existing", serverUrl: "https://one.example" } as const],
+    ["the default server", null],
+  ])("keeps retrying %s that could not be reached, then opens it", async (_name, saved) => {
+    vi.useFakeTimers();
+    const url = saved?.serverUrl ?? CLOUD_URL;
+    const ui = await boot(saved, ENGLISH, "linux", "Could not reach that address.");
+
+    vi.advanceTimersByTime(5000);
+    ui.resolveCheck({ ok: false, error: "Could not reach that address." });
+    await flush();
+    expect(ui.saves).toEqual([]);
+
+    vi.advanceTimersByTime(5000);
+    ui.resolveCheck({ ok: true, url });
+    await flush();
+    expect(ui.saves).toEqual([{ mode: "existing", serverUrl: url }]);
+
+    selectMode("existing");
+    expect(element<HTMLInputElement>("server-url").value).toBe(url);
+  });
+
+  it("stops retrying once the address is edited", async () => {
+    vi.useFakeTimers();
+    const saved = { mode: "existing", serverUrl: "https://one.example" } as const;
+    const ui = await boot(saved, ENGLISH, "linux", "Could not reach that address.");
+    element<HTMLInputElement>("server-url").dispatchEvent(new Event("input", { bubbles: true }));
+    vi.advanceTimersByTime(5000);
+    expect(() => ui.nextCheck()).toThrow("no connection check is pending");
   });
 
   it("locks the address while it is being saved and unlocks it when the save fails", async () => {

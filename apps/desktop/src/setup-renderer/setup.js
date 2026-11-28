@@ -56,6 +56,7 @@
   const quitButton = document.getElementById("quit");
 
   const STACK_POLL_MS = 1000;
+  const RECONNECT_MS = 5000;
   /** How often setup looks for Docker again while it waits for the person to install or open it. */
   const DOCKER_RECHECK_MS = 3000;
   // Linux has Docker Engine and no single installer; macOS and Windows get Docker Desktop.
@@ -105,6 +106,7 @@
   let dockerRecheckTimer = null;
   /** True from a background look for Docker until it reports something other than its own check. */
   let dockerRechecking = false;
+  let reconnecting = false;
 
   function selectedMode() {
     const checked = form.querySelector('input[name="mode"]:checked');
@@ -472,8 +474,32 @@
   serverHeaders.addEventListener("input", retireCheck);
 
   checkButton.addEventListener("click", () => {
+    reconnecting = false;
     void check();
   });
+
+  // Anything the person does with the form takes over from the automatic retry.
+  for (const type of ["input", "change", "submit"]) {
+    form.addEventListener(type, () => {
+      reconnecting = false;
+    });
+  }
+
+  /** Local addition (BondBot): keeps trying the server that could not be reached, then opens it. */
+  function reconnect(server) {
+    setTimeout(async () => {
+      if (!reconnecting) return;
+      let reachable = false;
+      try {
+        reachable = (await bridge.test(server.serverUrl, server.headers)).ok;
+      } catch {
+        // The next try asks again.
+      }
+      if (!reconnecting) return;
+      if (reachable) await save("existing", server.serverUrl, server.headers);
+      if (reconnecting) reconnect(server);
+    }, RECONNECT_MS);
+  }
 
   stackDetails.addEventListener("click", () => {
     detailsOpen = !detailsOpen;
@@ -539,7 +565,8 @@
         const mode = savedCloud ? "cloud" : state.saved.mode;
         const modeInput = document.querySelector(`input[name="mode"][value="${mode}"]`);
         if (modeInput !== null) modeInput.checked = true;
-        if (mode === "existing") serverUrl.value = state.saved.serverUrl;
+        // Kept for the saved default too, so choosing Existing instance never shows an empty field.
+        if (state.saved.mode === "existing") serverUrl.value = state.saved.serverUrl;
         if (mode === "existing" && state.saved.headers) {
           serverHeaders.value = Object.entries(state.saved.headers)
             .map(([name, value]) => `${name}: ${value}`)
@@ -547,6 +574,9 @@
           serverHeadersSection.open = true;
         }
       }
+      // An error here means a server did not open: the saved one, or the default if none was saved.
+      const lost = state.error ? (state.saved ?? { mode: "existing", serverUrl: cloudUrl }) : null;
+      if (lost !== null && state.saved === null) serverUrl.value = lost.serverUrl;
       // A relaunch with the stack down starts it before this window opens; show that
       // attempt instead of the saved mode, and follow it while it is still running.
       const stack = await bridge.stack.state();
@@ -555,6 +585,10 @@
       syncPanels();
       setBusy(false);
       if (state.error) setStatus(state.error, "error");
+      if (!attached && lost?.mode === "existing") {
+        reconnecting = true;
+        reconnect(lost);
+      }
       if (attached) {
         renderStack(stack);
         if (!TERMINAL_PHASES.has(stack.phase)) void followStack();
