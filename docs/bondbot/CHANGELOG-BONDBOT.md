@@ -225,7 +225,7 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Seen: the update screen stayed at "Reconnecting 94%" although the server had finished (fixed in 0.5.1).
 - Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v050-20261128/rollback.sh
 
-## v0.5.1 / 1.10.1 (2026-11-28, not deployed)
+## v0.5.1 / 1.10.1 (2026-11-28)
 - Updates: the red dot is gone. An "Update to vX" button with Skip sits above the CPU and RAM meter. While updating it shows a checklist (download, build, database, restart), a moving bar, size and speed while downloading, time left (from the last update's length), the current build step, and that refreshing is safe.
 - Fixed: the page stayed at 94% for ever after a successful update, because it waited on /health, which the web server does not answer with JSON. It now follows the update's own record and reloads when that says finished. A page loaded during an update picks it up.
 - The updater sidecar reports live progress. It does not update itself: rebuild and replace its image once (rakazo-updater) for speed, time left and build steps.
@@ -234,3 +234,11 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Settings > General has two optional looks, both off by default and kept per device. "Colorful chat" colours thinking, tool steps by what they touch (red when one failed), headings, emphasised words, code, links, quotes and errors. "Terminal font" uses Cascadia Mono where installed and the device's monospace elsewhere. The Dark blue theme goes well with it.
 - The bot panel's reading is now "RAM 1.2 GB  CPU 8%", green, amber or red by how full it is.
 - Linux (and Windows) desktop with the system window frame: the logo is at the far left again; the room for macOS window buttons is no longer reserved.
+
+## Deployed to cccbox: 0.5.1 (2026-11-28 08:42 ICT, by hand)
+- Image built from 3f9b839115 (app) and efbc7ad5f2 (updater, replaced for the first time since 0.4.0).
+- Rehearsed against a throwaway copy of the database: the one migration applied, the API started, PIN sign-up and sign-in worked, new accounts start with sounds on.
+- Database dumped to /mnt/user/appdata/rakazo/backup-pre-v051-20261128/ just before. The updater's time estimate was seeded with the 0.5.0 update's length.
+- Verified live: all services healthy, API reports 1.10.1, no error lines, the three compose files and the sudo computer override are in use, speech server reachable, the send sound file is served.
+- Not checked: the update screen with live speed and time left (it shows at the next update), and the sounds by ear.
+- Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v051-20261128/rollback.sh (0.5.0 app and updater; the database stays).
