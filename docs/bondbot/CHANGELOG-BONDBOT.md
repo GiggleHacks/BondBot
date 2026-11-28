@@ -250,3 +250,10 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Each Space only sees the files it uploaded, plus files an operator put in the VPN manager's folder (shown as "Added on the server", which the app cannot delete). A bot can only be given a VPN its Space can see. A VPN still used by a bot cannot be removed.
 - VPN manager (infra/vpn-manager/, moved from infra/compose/): new upload, remove and test calls; uploaded files are checked (refused if they run commands or do not send all traffic) and saved root-only beside a small note naming their Space; tunnels keep a 25 s keepalive so "connected" stays true on idle tunnels; stale routing rules for a mark or table are cleared before a tunnel is set up. It can now also run as an optional Compose service (`--profile vpn`). Setup guide: docs/bondbot/VPN.md.
 - No database change. Existing hand-placed files keep working as shared files.
+
+## Deployed to cccbox: 0.6.0 (2026-11-28 10:20 ICT, updater started over ssh)
+- Host VPN manager replaced first (/boot/config/rakazo-vpn-manager.py, old copy in backup-pre-v060-20261128/ and .bak-20261128). After the restart the same bots were on the same VPNs and Kill Switches, all five tunnels up with keepalive, no duplicate routing rules.
+- App built on cccbox by the updater from b2dd0c0319. Database dumped to /mnt/user/appdata/rakazo/backup-pre-v060-20261128/ first; no schema change.
+- Verified live: services healthy, API reports 1.11.0, no error lines, the supervisor reports the VPN manager with Kill Switch available. A real tunnel tested "connected" (JP). A dummy file went through upload, test ("server did not answer"), a refused removal by another owner, and removal, both against the VPN manager and through the supervisor; nothing was left behind. The new screens were checked in a browser with sample data.
+- Not checked: the screens against live data while signed in, and a real file uploaded through the app.
+- Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v060-20261128/rollback.sh (0.5.1 app image, compose file and VPN manager; the database stays).
