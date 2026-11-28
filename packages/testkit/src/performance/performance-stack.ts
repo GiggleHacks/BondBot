@@ -3,7 +3,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import type { CDPSession } from "@playwright/test";
-import { abortableDelay } from "@rakazo/core";
+import { abortableDelay, deadlineSignal, withAbort } from "@rakazo/core";
 import { createPool } from "@rakazo/db";
 import { disposableDatabaseEnv, startPostgres } from "../cli/postgres.js";
 
@@ -104,24 +104,47 @@ export function output(command: string, args: string[]) {
   return execFileSync(command, args, { cwd: repositoryRoot, encoding: "utf8" }).trim();
 }
 
-/** The production web build served by `vite preview`, proxying the API like a deployment. */
-export function startPreview(env: NodeJS.ProcessEnv, port: number) {
-  return spawn(
-    "pnpm",
-    [
-      "--filter",
-      "@rakazo/web",
-      "exec",
-      "vite",
-      "preview",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      String(port),
-      "--strictPort",
-    ],
-    { cwd: repositoryRoot, env, stdio: "inherit" },
+// Run with `--eval` from the web app, so `vite` resolves there. The preview is this one process,
+// with no package manager wrapper to outlive it, and it reports ready only once it holds the port.
+const PREVIEW_SCRIPT = `
+import { preview } from "vite";
+const port = Number(process.argv[1]);
+const server = await preview({ preview: { host: "127.0.0.1", port, strictPort: true } });
+process.on("disconnect", () => process.exit());
+server.printUrls();
+process.send("listening");
+`;
+
+/**
+ * The production web build served by `vite preview`, proxying the API like a deployment. Resolves
+ * once this preview is listening, so a server left on the port is never measured in its place.
+ */
+export async function startPreview(env: NodeJS.ProcessEnv, port: number) {
+  const child = spawn(
+    process.execPath,
+    ["--input-type=module", "--eval", PREVIEW_SCRIPT, String(port)],
+    {
+      cwd: path.join(repositoryRoot, "apps/web"),
+      env,
+      stdio: ["inherit", "inherit", "inherit", "ipc"],
+    },
   );
+  const listening = new Promise<void>((resolve, reject) => {
+    child.once("message", () => resolve());
+    child.once("error", reject);
+    child.once("exit", (code, signal) =>
+      reject(
+        new Error(`Web preview could not start on port ${port} (${signal ?? `exit code ${code}`})`),
+      ),
+    );
+  });
+  try {
+    await withAbort(listening, deadlineSignal(30_000));
+  } catch (error) {
+    await stopProcess(child);
+    throw error;
+  }
+  return child;
 }
 
 export async function waitForUrl(url: string) {

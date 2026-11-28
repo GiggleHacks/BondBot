@@ -83,7 +83,7 @@ try {
   });
   await waitForUrl(`${apiOrigin}/health`);
 
-  preview = startPreview(benchmarkEnv, webPort);
+  preview = await startPreview(benchmarkEnv, webPort);
   await waitForUrl(webOrigin);
 
   const executablePath = await packagedExecutable();

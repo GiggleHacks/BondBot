@@ -1,10 +1,18 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import type { AddressInfo } from "node:net";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { benchmarkEnvironment, safeName, stopProcess, waitForUrl } from "./performance-stack.js";
+import {
+  benchmarkEnvironment,
+  safeName,
+  startPreview,
+  stopProcess,
+  waitForUrl,
+} from "./performance-stack.js";
 
 describe("benchmarkEnvironment", () => {
   afterEach(() => vi.unstubAllEnvs());
@@ -101,6 +109,39 @@ describe("stopProcess", () => {
     },
     10_000,
   );
+});
+
+describe("startPreview", () => {
+  const env = { ...process.env, NODE_ENV: "production" };
+
+  async function listen(port: number) {
+    const server = createServer().listen(port, "127.0.0.1");
+    await once(server, "listening");
+    return server;
+  }
+
+  async function close(server: ReturnType<typeof createServer>) {
+    server.close();
+    await once(server, "close");
+  }
+
+  it("fails when another server holds the port", async () => {
+    const holder = await listen(0);
+    const { port } = holder.address() as AddressInfo;
+    try {
+      await expect(startPreview(env, port)).rejects.toThrow(`on port ${port}`);
+    } finally {
+      await close(holder);
+    }
+  }, 40_000);
+
+  it("leaves its port free once stopped", async () => {
+    const reservation = await listen(0);
+    const { port } = reservation.address() as AddressInfo;
+    await close(reservation);
+    await stopProcess(await startPreview(env, port));
+    await close(await listen(port));
+  }, 40_000);
 });
 
 describe("safeName", () => {
