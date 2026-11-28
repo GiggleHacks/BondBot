@@ -42,6 +42,9 @@ export default defineConfig(({ command, mode }) => {
   return {
     build: {
       sourcemap: true,
+      // Sounds are fetched, and the page's content security policy refuses to fetch a data: URL,
+      // so a small one must stay a file.
+      assetsInlineLimit: (file: string) => (file.endsWith(".m4a") ? false : undefined),
       rolldownOptions: {
         output: {
           codeSplitting: {
