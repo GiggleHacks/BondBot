@@ -51,3 +51,7 @@ MODEL SWITCH (2026-11-21): patch19.mjs in ui-modelswitch-20261121/ touches contr
 - Migration applied by copying the migration folder into rakazo-migrate-1 and `docker start -a rakazo-migrate-1`.
 - Deploy used: api dist + changed src into rakazo-api-1, web dist into rakazo-web-1 and rakazo-api-1, routes.ts into rakazo-supervisor-1, restart each, then `docker commit rakazo-api-1 rakazo-voice:local` (tag brand-0.1.20-20261123). Rollback image: rakazo-voice:pre-audit-20261123; VPN manager backup /boot/config/rakazo-vpn-manager.py.bak-20261123 (and /mnt/user/appdata/rakazo/rakazo-vpn-manager.py.deployed-20261123).
 - Known pre-existing test failures (24, identical on the baseline): ArtifactFileCard, SettingsOverlay, SpaceSettingOverrides, bot-panel, bot-settings, chat-header, message-hover-actions, type-scale; api voice.test.ts (ElevenLabs transcribe). Pre-existing type errors: ModelSwitcher.tsx:55, lib/voice-note.ts:21.
+
+## Desktop downloads
+The server offers `BondBot.exe` and `BondBot.dmg` from `<data dir>/downloads`. The macOS download
+appears in the app only when `BondBot.dmg` is there.

@@ -23,6 +23,7 @@ import { useState } from "react";
 import { useSidebarUpdate } from "../../../components/DesktopUpdates";
 import { IconTooltip } from "../../../components/IconTooltip";
 import { desktopBridge } from "../../../lib/platform/desktop";
+import { useDesktopBuilds } from "../../../lib/platform/desktop-download";
 import type { Organization } from "../../../lib/spaces/organizations";
 
 type Props = {
@@ -52,6 +53,21 @@ type Props = {
   onSwitchOrganization?: (organization: Organization) => void;
   onCreateOrganization?: () => void;
 };
+
+function DesktopDownloadLinks() {
+  return useDesktopBuilds().map(({ platform, href, fileName }) => (
+    <a
+      key={platform}
+      className={`${buttonVariants({ variant: "ghost", size: "lg" })} w-full justify-start gap-2.5 font-normal`}
+      href={href}
+      download={fileName}
+      data-testid={`download-${platform}-app-link`}
+    >
+      <MonitorDown className="text-muted-foreground" strokeWidth={1.75} />
+      <span>{platform === "mac" ? "Download macOS app" : "Download Windows app"}</span>
+    </a>
+  ));
+}
 
 export function SidebarFooter({
   mini = false,
@@ -220,17 +236,7 @@ export function SidebarFooter({
               </Button>
             ))}
             <div className="my-1 border-t border-border" />
-            {!desktopBridge() ? (
-              <a
-                className={`${buttonVariants({ variant: "ghost", size: "lg" })} w-full justify-start gap-2.5 font-normal`}
-                href="/api/desktop/windows"
-                download="BondBot.exe"
-                data-testid="download-windows-app-link"
-              >
-                <MonitorDown className="text-muted-foreground" strokeWidth={1.75} />
-                <span>Download Windows app</span>
-              </a>
-            ) : null}
+            {!desktopBridge() ? <DesktopDownloadLinks /> : null}
             {onInvite ? (
               <Button
                 variant="ghost"

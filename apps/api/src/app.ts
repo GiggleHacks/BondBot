@@ -1,8 +1,4 @@
 import { createHmac } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
-import path from "node:path";
-import { Readable } from "node:stream";
 import type {
   AgentContextStrategy,
   AgentRuntime,
@@ -147,6 +143,7 @@ import {
   requestClientIp,
   withClientIp,
 } from "./http/client-ip.js";
+import { mountDesktopDownloadRoutes } from "./http/desktop-downloads.js";
 import { databaseProbe, healthRoutes } from "./http/health.js";
 import { startHourlySweep } from "./http/hourly-sweep.js";
 import { trackInFlightRequests } from "./http/in-flight-requests.js";
@@ -899,25 +896,7 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
   const voiceNotes = createVoiceNotes(voiceNoteDeps);
   mountVoiceNoteRoutes(app, voiceNoteDeps, voiceNotes, (c) => sessionActor(c.req.raw));
   voiceNotes.start();
-  app.get("/api/desktop/windows", async (c) => {
-    const actor = await sessionActor(c.req.raw);
-    if (!actor) return c.json({ error: "Unauthorized" }, 401);
-    const exePath = path.join(env.dataDir, "downloads", "BondBot.exe");
-    const info = await stat(exePath).catch(() => null);
-    if (!info?.isFile()) {
-      return c.json({ error: "Windows desktop build is not available yet." }, 404);
-    }
-    const stream = Readable.toWeb(createReadStream(exePath)) as ReadableStream;
-    return new Response(stream, {
-      status: 200,
-      headers: {
-        "content-type": "application/vnd.microsoft.portable-executable",
-        "content-disposition": 'attachment; filename="BondBot.exe"',
-        "content-length": String(info.size),
-        "cache-control": "no-store",
-      },
-    });
-  });
+  mountDesktopDownloadRoutes(app, env.dataDir, sessionActor);
   mountAccountImportRoute(
     app,
     { ...spaceDeletionDeps, maxArtifactBytes: env.maxUploadSizeBytes },

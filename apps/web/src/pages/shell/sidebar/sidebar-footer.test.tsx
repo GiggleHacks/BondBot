@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type { DesktopUpdateState } from "@rakazo/contracts";
 import { Toaster } from "@rakazo/ui-web";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -18,6 +19,7 @@ vi.mock("@lingui/react/macro", () => ({
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
+  vi.stubGlobal("fetch", async () => new Response(null, { status: 404 }));
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -27,34 +29,37 @@ afterEach(async () => {
   host.remove();
   delete window.rakazoDesktop;
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 async function render(name = "Demo User", image?: string, onBoard?: () => void) {
   const email = "account@rakazo.test";
   await act(async () =>
     root.render(
-      <DesktopUpdatesProvider>
-        <SidebarFooter
-          name={name}
-          initials={name
-            .split(" ")
-            .map((part) => part[0])
-            .join("")
-            .slice(0, 2)
-            .toUpperCase()}
-          image={image}
-          email={email}
-          open
-          onOpenChange={() => {}}
-          onSkills={vi.fn()}
-          onBoard={onBoard}
-          onArtifacts={() => {}}
-          onSettings={() => {}}
-          onLogOut={() => {}}
-          signingOut={false}
-          logOutError={null}
-        />
-        <Toaster />
-      </DesktopUpdatesProvider>,
+      <QueryClientProvider client={new QueryClient()}>
+        <DesktopUpdatesProvider>
+          <SidebarFooter
+            name={name}
+            initials={name
+              .split(" ")
+              .map((part) => part[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase()}
+            image={image}
+            email={email}
+            open
+            onOpenChange={() => {}}
+            onSkills={vi.fn()}
+            onBoard={onBoard}
+            onArtifacts={() => {}}
+            onSettings={() => {}}
+            onLogOut={() => {}}
+            signingOut={false}
+            logOutError={null}
+          />
+          <Toaster />
+        </DesktopUpdatesProvider>
+      </QueryClientProvider>,
     ),
   );
 }
@@ -217,23 +222,25 @@ async function renderOrganizations(
   await act(async () =>
     root.render(
       <DesktopUpdatesProvider>
-        <SidebarFooter
-          name="Demo User"
-          initials="DU"
-          email="account@rakazo.test"
-          open
-          onOpenChange={() => {}}
-          onSkills={() => {}}
-          onArtifacts={() => {}}
-          onSettings={() => {}}
-          onLogOut={() => {}}
-          signingOut={false}
-          logOutError={null}
-          organizations={organizations}
-          activeOrganizationId="org-personal"
-          onSwitchOrganization={onSwitchOrganization}
-          onCreateOrganization={onCreateOrganization}
-        />
+        <QueryClientProvider client={new QueryClient()}>
+          <SidebarFooter
+            name="Demo User"
+            initials="DU"
+            email="account@rakazo.test"
+            open
+            onOpenChange={() => {}}
+            onSkills={() => {}}
+            onArtifacts={() => {}}
+            onSettings={() => {}}
+            onLogOut={() => {}}
+            signingOut={false}
+            logOutError={null}
+            organizations={organizations}
+            activeOrganizationId="org-personal"
+            onSwitchOrganization={onSwitchOrganization}
+            onCreateOrganization={onCreateOrganization}
+          />
+        </QueryClientProvider>
       </DesktopUpdatesProvider>,
     ),
   );
