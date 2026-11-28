@@ -461,6 +461,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - appdata:/data
+      # The optional VPN manager's socket; empty unless it runs.
+      - /var/run/rakazo-vpn:/var/run/rakazo-vpn
     networks:
       - app
     depends_on:
@@ -481,6 +483,23 @@ services:
   # Applies migrations as the database owner, creates the runtime login, and exits. Only this
   # container gets the owner login: the API and worker connect as rakazo_app, which row-level
   # security binds, so code running in either cannot find a login that bypasses it.
+  # Optional: per-bot VPNs from WireGuard files uploaded in Settings (docs/bondbot/VPN.md).
+  # Start it with `--profile vpn`. It edits the host's routing and firewall, hence host network
+  # and privileged; the supervisor reaches it through the socket in /var/run/rakazo-vpn.
+  vpn:
+    profiles: [vpn]
+    build:
+      context: ../..
+      dockerfile: infra/vpn-manager/Dockerfile
+    image: ${RAKAZO_VPN_IMAGE:-rakazo-vpn}:${RAKAZO_VPN_IMAGE_TAG:-local}
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/rakazo-vpn:/var/run/rakazo-vpn
+      - vpn-data:/data
+
   migrate:
     image: ${RAKAZO_IMAGE:-ghcr.io/elie222/rakazo/app}:${RAKAZO_IMAGE_TAG:-latest}
     working_dir: /app/apps/api
@@ -770,6 +789,7 @@ volumes:
   pgdata:
   appdata:
   webassets:
+  vpn-data:
 
 networks:
   control:

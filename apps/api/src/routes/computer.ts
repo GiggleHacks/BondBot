@@ -49,10 +49,14 @@ import {
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import {
+  addVpnProfiles,
   assembleVpnOverview,
+  assertVpnProfileVisible,
   buildBotVpnStatus,
   fetchSupervisorVpnStatus,
+  removeVpnProfile,
   setSupervisorHomeVpn,
+  testVpnProfile,
 } from "../computer-vpn.js";
 import {
   acquireBootLease,
@@ -151,8 +155,18 @@ export function computerRoutes(ctx: RouterContext) {
           }),
           fetchSupervisorVpnStatus(deps.env),
         ]);
-        return assembleVpnOverview(bots, supervisorStatus);
+        return assembleVpnOverview(bots, supervisorStatus, context.actor.spaceId);
       }),
+      addVpnProfiles: authed.computer.addVpnProfiles.handler(({ context, input }) =>
+        addVpnProfiles(deps.env, context.actor.spaceId, input),
+      ),
+      removeVpnProfile: authed.computer.removeVpnProfile.handler(async ({ context, input }) => {
+        await removeVpnProfile(deps.prisma, deps.env, context.actor.spaceId, input.id);
+        return { ok: true as const };
+      }),
+      testVpnProfile: authed.computer.testVpnProfile.handler(({ context, input }) =>
+        testVpnProfile(deps.env, context.actor.spaceId, input.id),
+      ),
       setVpn: authed.computer.setVpn.handler(async ({ context, input }) => {
         let bot = await repos.getBot(context.actor, input.botId);
         if (!bot.computer) throw new IsolationError();
@@ -177,6 +191,10 @@ export function computerRoutes(ctx: RouterContext) {
             });
           bot = await repos.getBot(context.actor, input.botId);
           if (!bot.computer) throw new IsolationError();
+        }
+
+        if (input.profile !== null && input.profile !== bot.computer.vpnProfile) {
+          await assertVpnProfileVisible(deps.env, context.actor.spaceId, input.profile);
         }
 
         if (bot.computer.vpnLocked && input.profile === null) {

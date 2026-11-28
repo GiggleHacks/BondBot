@@ -43,7 +43,7 @@ MODEL SWITCH (2026-11-21): patch19.mjs in ui-modelswitch-20261121/ touches contr
 - Known, not changed: apply_iptables_policies() flushes then re-adds the KS/MANGLE chains every loop (non-atomic), a millisecond-scale gap. Could be made atomic with iptables-restore.
 
 ## 2026-11-23 audit fixes (v0.1.20 / 1.6.1)  see docs/bondbot/CHANGELOG-BONDBOT.md
-- Host VPN manager is now infra/compose/rakazo-vpn-manager.py in the repo (the deployed file; it is copied to /boot/config/rakazo-vpn-manager.py). Tests: `python3 infra/compose/vpn-manager-test/test_vpn_manager.py` (40 tests, all host commands mocked).
+- Host VPN manager is now infra/vpn-manager/rakazo-vpn-manager.py in the repo (moved there from infra/compose in 0.6.0) (the deployed file; it is copied to /boot/config/rakazo-vpn-manager.py). Tests: `python3 infra/vpn-manager/test/test_vpn_manager.py` (all host commands mocked).
 - Restart the daemon WITHOUT touching kernel rules (they persist): send SIGTERM to the process whose cmdline is exactly `python3 /boot/config/rakazo-vpn-manager.py`, then run the /boot/config/go launch line. Do not `pgrep -f` a pattern that also appears in your own shell command line (it will match the shell).
 - Env for the daemon: RAKAZO_VPN_ALLOWED_HOSTS (extra Host headers for the :5174 dashboard; *.ts.net names are always accepted), RAKAZO_VPN_HTTP_PORT, RAKAZO_VPN_STATE_PATH, RAKAZO_VPN_SOCK. State file keeps a .bak next to it.
 - Supervisor (infra/sandboxes/supervisor/src/routes.ts, runs from source with tsx): PUT /vpn/homes refuses to lock or pick a VPN unless computer egress is restricted, and refuses to lock without SANDBOX_COMPUTER_DNS (needed so DNS cannot leave around the Kill Switch). Both are set live.

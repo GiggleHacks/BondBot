@@ -46,6 +46,7 @@ export function usePaletteActions({
     messaging: messagingEnabled,
     wallet: Boolean(me?.paymentWalletProvider),
     computer: me?.computerSettingsEnabled === true && computersAreUnavailable(me?.sandboxProvider),
+    vpn: false,
     billing: me?.billingEnabled === true,
     updates: Boolean(desktopBridge()?.update),
     labs: Boolean(me?.labsAvailable.length),

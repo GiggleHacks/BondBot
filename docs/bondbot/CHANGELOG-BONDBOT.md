@@ -242,3 +242,11 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Verified live: all services healthy, API reports 1.10.1, no error lines, the three compose files and the sudo computer override are in use, speech server reachable, the send sound file is served.
 - Not checked: the update screen with live speed and time left (it shows at the next update), and the sounds by ear.
 - Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v051-20261128/rollback.sh (0.5.0 app and updater; the database stays).
+
+## v0.6.0 / 1.11.0 (2026-11-28)
+- VPN files are now managed in the app instead of by hand on the server. Settings > VPN uploads one or many WireGuard (.conf) files at once, tests each one (it says which country and IP bots appear from, or what went wrong) and removes them. Step-by-step help for making a file, with Proton VPN as the example.
+- New bot has a VPN choice under the name, with "Block the internet if the VPN stops working" (Kill Switch) on by default. A bot made with a VPN gets its own computer. With no file yet, "Connect through a VPN" uploads one right there and tests it.
+- The VPN chip menu links to Settings > VPN. It no longer says "Proton VPN" or assumes Thailand when the host country is unknown; country names come from the browser, so any country works.
+- Each Space only sees the files it uploaded, plus files an operator put in the VPN manager's folder (shown as "Added on the server", which the app cannot delete). A bot can only be given a VPN its Space can see. A VPN still used by a bot cannot be removed.
+- VPN manager (infra/vpn-manager/, moved from infra/compose/): new upload, remove and test calls; uploaded files are checked (refused if they run commands or do not send all traffic) and saved root-only beside a small note naming their Space; tunnels keep a 25 s keepalive so "connected" stays true on idle tunnels; stale routing rules for a mark or table are cleared before a tunnel is set up. It can now also run as an optional Compose service (`--profile vpn`). Setup guide: docs/bondbot/VPN.md.
+- No database change. Existing hand-placed files keep working as shared files.

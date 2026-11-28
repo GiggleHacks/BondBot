@@ -7,6 +7,7 @@ import {
   CreditCard,
   FlaskConical,
   Gauge,
+  Globe,
   KeyRound,
   Layers,
   MessageCircle,
@@ -32,6 +33,7 @@ export function useSettingsNavItems(available: {
   messaging: boolean;
   wallet: boolean;
   computer: boolean;
+  vpn: boolean;
   billing: boolean;
   updates: boolean;
   labs: boolean;
@@ -88,6 +90,16 @@ export function useSettingsNavItems(available: {
       : []),
     ...(available.computer
       ? [{ id: "computer" as const, label: t`Computers`, icon: Monitor }]
+      : []),
+    ...(available.vpn
+      ? [
+          {
+            id: "vpn" as const,
+            label: "VPN",
+            icon: Globe,
+            description: "Connect bots to the internet through your own VPN.",
+          },
+        ]
       : []),
     ...(available.labs ? [{ id: "labs" as const, label: t`Labs`, icon: FlaskConical }] : []),
     { id: "usage", label: t`Usage`, icon: Gauge },

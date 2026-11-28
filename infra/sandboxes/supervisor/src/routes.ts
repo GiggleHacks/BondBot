@@ -119,9 +119,13 @@ import {
   workspaceTarget,
 } from "./supervisor-logic.js";
 import {
+  addHostVpnProfile,
   fetchHostVpnStatus,
+  HostVpnError,
   reconcileHomeVpnPolicies,
+  removeHostVpnProfile,
   setHomeVpnPolicy,
+  testHostVpnProfile,
   vpnSocketPath,
 } from "./vpn-manager.js";
 
@@ -159,10 +163,65 @@ app.get("/diagnostics/egress", (c) => c.text(computerEgressReport()));
 
 app.get("/vpn/status", async (c) => {
   try {
-    return c.json(await fetchHostVpnStatus());
+    return c.json({ ...(await fetchHostVpnStatus()), killSwitchAvailable: Boolean(computerDns) });
   } catch (error) {
     getLogger().error("vpn status lookup failed", error);
     return c.json({ error: error instanceof Error ? error.message : "vpn status failed" }, 502);
+  }
+});
+
+const vpnProfileId = /^[a-z0-9_-]{1,64}$/;
+
+/** The request's JSON body, or undefined when it is not JSON (the schema then refuses it). */
+async function jsonBody(c: Context): Promise<unknown> {
+  try {
+    return await c.req.json();
+  } catch (error) {
+    if (error instanceof SyntaxError) return undefined;
+    throw error;
+  }
+}
+const vpnOwner = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+
+function hostVpnFailure(c: Context, error: unknown, what: string) {
+  if (error instanceof HostVpnError && error.status >= 400 && error.status < 500) {
+    return c.json({ error: error.message }, error.status === 409 ? 409 : 400);
+  }
+  getLogger().error(`vpn ${what} failed`, error);
+  return c.json({ error: error instanceof Error ? error.message : `vpn ${what} failed` }, 502);
+}
+
+app.post("/vpn/profiles", async (c) => {
+  const body = z
+    .object({ name: z.string().max(200), config: z.string().min(1).max(8192), owner: vpnOwner })
+    .safeParse(await jsonBody(c));
+  if (!body.success) return c.json({ error: "invalid VPN profile payload" }, 400);
+  try {
+    return c.json(await addHostVpnProfile(body.data), 201);
+  } catch (error) {
+    return hostVpnFailure(c, error, "profile upload");
+  }
+});
+
+app.delete("/vpn/profiles/:id", async (c) => {
+  const id = c.req.param("id");
+  const body = z.object({ owner: vpnOwner }).safeParse(await jsonBody(c));
+  if (!vpnProfileId.test(id) || !body.success) return c.json({ error: "invalid VPN profile" }, 400);
+  try {
+    await removeHostVpnProfile(id, body.data.owner);
+    return c.json({ ok: true });
+  } catch (error) {
+    return hostVpnFailure(c, error, "profile removal");
+  }
+});
+
+app.post("/vpn/profiles/:id/test", async (c) => {
+  const id = c.req.param("id");
+  if (!vpnProfileId.test(id)) return c.json({ error: "invalid VPN profile" }, 400);
+  try {
+    return c.json(await testHostVpnProfile(id));
+  } catch (error) {
+    return hostVpnFailure(c, error, "profile test");
   }
 });
 

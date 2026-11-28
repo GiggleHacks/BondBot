@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
-import type { BotAvatarSet } from "@rakazo/contracts";
+import type { BotAvatarSet, VpnProfileInfo } from "@rakazo/contracts";
 import { ORGANIC_AVATAR_LOOKS } from "@rakazo/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot as createReactRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ComputerVpnController } from "../use-computer-vpn";
 import type { CreateBotDialogInput } from "./create-bot-dialog";
 
 vi.mock("@lingui/react/macro", () => {
@@ -41,12 +42,34 @@ afterEach(() => {
 async function render(
   onCreate: (input: CreateBotDialogInput) => Promise<void>,
   avatarSet: BotAvatarSet = "organic",
+  vpn?: ComputerVpnController,
 ) {
   await act(async () => {
     root.render(
-      <CreateBotDialog avatarSet={avatarSet} onCancel={() => undefined} onCreate={onCreate} />,
+      <CreateBotDialog
+        avatarSet={avatarSet}
+        vpn={vpn}
+        onCancel={() => undefined}
+        onCreate={onCreate}
+      />,
     );
   });
+}
+
+function vpnWith(profiles: VpnProfileInfo[]): ComputerVpnController {
+  return {
+    overview: {
+      supported: true,
+      killSwitchAvailable: true,
+      hostIp: null,
+      hostCountry: null,
+      profiles,
+      bots: {},
+    },
+    pendingBotId: null,
+    refreshVpn: async () => undefined,
+    setBotVpn: async () => null,
+  };
 }
 
 function button(name: string) {
@@ -72,6 +95,41 @@ async function click(element: HTMLElement) {
 }
 
 describe("CreateBotDialog", () => {
+  it("sends the chosen VPN, locked by default, and none until one is chosen", async () => {
+    const onCreate = vi.fn(async (_input: CreateBotDialogInput) => undefined);
+    await render(
+      onCreate,
+      "organic",
+      vpnWith([
+        {
+          id: "vpn-0123456789ab",
+          name: "wg-JP-412",
+          countryCode: "JP",
+          countryName: "Japan",
+          serverLabel: "JP#412",
+          up: true,
+          handshakeAgeSec: 5,
+          shared: false,
+        },
+      ]),
+    );
+    await typeName("Scout");
+    const trigger = document.querySelector<HTMLElement>('[role="combobox"]')!;
+    expect(trigger.textContent).toBe("No VPN");
+    await act(async () => trigger.click());
+    const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+      (element) => element.textContent === "Japan (JP#412)",
+    );
+    await act(async () => option?.click());
+    await click(button("Create"));
+    expect(onCreate.mock.calls[0]?.[0].vpn).toEqual({ profile: "vpn-0123456789ab", locked: true });
+  });
+
+  it("offers an upload with instructions when there is no VPN file yet", async () => {
+    await render(async () => undefined, "organic", vpnWith([]));
+    expect(document.body.textContent).toContain("Connect through a VPN");
+    expect(document.querySelector('[role="combobox"]')).toBeNull();
+  });
   it("creates only once the name is not blank", async () => {
     const onCreate = vi.fn(async () => undefined);
     await render(onCreate);

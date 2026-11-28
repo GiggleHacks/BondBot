@@ -417,9 +417,28 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../../data:/data
+      # The optional VPN manager's socket; empty unless it runs.
+      - /var/run/rakazo-vpn:/var/run/rakazo-vpn
     depends_on:
       computer:
         condition: service_completed_successfully
+
+  # Optional: per-bot VPNs from WireGuard files uploaded in Settings (docs/bondbot/VPN.md).
+  # Start it with `--profile vpn`. It edits the host's routing and firewall, hence host network
+  # and privileged; the supervisor reaches it through the socket in /var/run/rakazo-vpn.
+  vpn:
+    profiles: [vpn]
+    build:
+      context: ../..
+      dockerfile: infra/vpn-manager/Dockerfile
+    image: ${RAKAZO_VPN_IMAGE:-rakazo-vpn}:${RAKAZO_VPN_IMAGE_TAG:-local}
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/rakazo-vpn:/var/run/rakazo-vpn
+      - vpn-data:/data
 
   computer:
     image: rakazo/computer:local
@@ -653,6 +672,7 @@ services:
 volumes:
   ingress:
   tailscale-ingress-state:
+  vpn-data:
   postgres:
   pgdata:
   webassets:

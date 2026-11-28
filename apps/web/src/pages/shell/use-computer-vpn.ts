@@ -1,8 +1,4 @@
-import type {
-  BotVpnStatus,
-  ComputerVpnOverview,
-  SetComputerVpnInput,
-} from "@rakazo/contracts";
+import type { BotVpnStatus, ComputerVpnOverview, SetComputerVpnInput } from "@rakazo/contracts";
 import { toast } from "@rakazo/ui-web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { createSpaceRpc } from "../../lib/query/rpc";
@@ -13,6 +9,8 @@ export interface ComputerVpnController {
   pendingBotId: string | null;
   refreshVpn: () => Promise<void>;
   setBotVpn: (input: SetComputerVpnInput) => Promise<BotVpnStatus | null>;
+  /** Opens Settings › VPN, where WireGuard files are uploaded and tested. */
+  openVpnSettings?: () => void;
 }
 
 const POLL_MS = 15_000;
@@ -22,15 +20,17 @@ function pollingAllowed(): boolean {
   return document.visibilityState !== "hidden" && navigator.onLine !== false;
 }
 
-/** Polls live per-computer Proton VPN state and exit IPs, and exposes mutations. */
+/** Polls live per-computer VPN state and exit IPs, and exposes mutations. */
 export function useComputerVpn({
   rpc,
   spaceId,
   refreshBots,
+  openVpnSettings,
 }: {
   rpc: ReturnType<typeof createSpaceRpc>;
   spaceId: string | undefined;
   refreshBots: (includeArchived?: boolean) => Promise<void>;
+  openVpnSettings?: () => void;
 }): ComputerVpnController {
   const [overview, setOverview] = useState<ComputerVpnOverview | null>(null);
   const overviewRef = useRef<ComputerVpnOverview | null>(null);
@@ -108,8 +108,7 @@ export function useComputerVpn({
         return updated;
       } catch (error) {
         playVpnSound("error");
-        const message =
-          error instanceof Error ? error.message : "Failed to update VPN settings";
+        const message = error instanceof Error ? error.message : "Failed to update VPN settings";
         toast.error(message);
         return null;
       } finally {
@@ -119,8 +118,18 @@ export function useComputerVpn({
     [refreshBots, refreshVpn, rpc],
   );
 
+  // The caller passes a new function each render; the controller keeps its identity.
+  const openSettings = useRef(openVpnSettings);
+  openSettings.current = openVpnSettings;
+  const openVpnSettingsStable = useCallback(() => openSettings.current?.(), []);
   return useMemo(
-    () => ({ overview, pendingBotId, refreshVpn, setBotVpn }),
-    [overview, pendingBotId, refreshVpn, setBotVpn],
+    () => ({
+      overview,
+      pendingBotId,
+      refreshVpn,
+      setBotVpn,
+      openVpnSettings: openVpnSettingsStable,
+    }),
+    [overview, pendingBotId, refreshVpn, setBotVpn, openVpnSettingsStable],
   );
 }

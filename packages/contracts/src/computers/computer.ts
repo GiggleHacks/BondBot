@@ -186,11 +186,15 @@ export type ComputerVpnRuntimeState = z.infer<typeof ComputerVpnRuntimeStateSche
 
 export const VpnProfileInfoSchema = z.object({
   id: z.string(),
+  /** The uploaded file's name, without .conf. */
+  name: z.string(),
   countryCode: z.string(),
   countryName: z.string(),
   serverLabel: z.string(),
   up: z.boolean(),
   handshakeAgeSec: z.number().int().nonnegative().nullable(),
+  /** Put on the server by its operator for every Space; it cannot be removed from the app. */
+  shared: z.boolean(),
 });
 export type VpnProfileInfo = z.infer<typeof VpnProfileInfoSchema>;
 
@@ -208,6 +212,8 @@ export type BotVpnStatus = z.infer<typeof BotVpnStatusSchema>;
 
 export const ComputerVpnOverviewSchema = z.object({
   supported: z.boolean(),
+  /** Whether a computer can be locked to its VPN so it never goes online without it. */
+  killSwitchAvailable: z.boolean(),
   hostIp: z.string().nullable(),
   hostCountry: z.string().nullable(),
   profiles: z.array(VpnProfileInfoSchema),
@@ -222,3 +228,48 @@ export const SetComputerVpnInputSchema = z.object({
   switchToDedicated: z.boolean().optional(),
 });
 export type SetComputerVpnInput = z.infer<typeof SetComputerVpnInputSchema>;
+
+/** One WireGuard file is about one connection; a bulk upload is a handful of them. */
+export const VPN_PROFILE_UPLOAD_LIMIT = 25;
+export const VPN_PROFILE_MAX_BYTES = 8192;
+
+export const AddVpnProfilesInputSchema = z.object({
+  files: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(200),
+        config: z.string().min(1).max(VPN_PROFILE_MAX_BYTES),
+      }),
+    )
+    .min(1)
+    .max(VPN_PROFILE_UPLOAD_LIMIT),
+});
+export type AddVpnProfilesInput = z.infer<typeof AddVpnProfilesInputSchema>;
+
+export const AddVpnProfilesResultSchema = z.object({
+  added: z.array(VpnProfileInfoSchema),
+  /** Files that were not added, each with a reason written for the person. */
+  failed: z.array(z.object({ name: z.string(), message: z.string() })),
+});
+export type AddVpnProfilesResult = z.infer<typeof AddVpnProfilesResultSchema>;
+
+export const VpnProfileIdInputSchema = z.object({ id: z.string().trim().min(1).max(64) });
+
+export const VpnTestOutcomeSchema = z.enum([
+  "connected",
+  /** The VPN server never answered: the file is old, revoked or for another account. */
+  "no_handshake",
+  /** The server answered but no traffic got through it. */
+  "no_internet",
+  /** Traffic left from the server's own address, so the VPN is not hiding it. */
+  "not_private",
+]);
+export type VpnTestOutcome = z.infer<typeof VpnTestOutcomeSchema>;
+
+export const VpnTestResultSchema = z.object({
+  profile: VpnProfileInfoSchema,
+  outcome: VpnTestOutcomeSchema,
+  exitIp: z.string().nullable(),
+  exitCountry: z.string().nullable(),
+});
+export type VpnTestResult = z.infer<typeof VpnTestResultSchema>;

@@ -23,9 +23,11 @@ import {
   ShieldAlert,
   ShieldCheck,
   Unlock,
+  Upload,
 } from "lucide-react";
 import { useState } from "react";
 import { CountryFlag } from "../../components/CountryFlag";
+import { countryNameFor, UNKNOWN_COUNTRY, vpnProfileLabel } from "../../components/vpn/vpn-labels";
 import type { ComputerVpnController } from "./use-computer-vpn";
 
 export type PendingVpnChoice = {
@@ -36,26 +38,15 @@ export type PendingVpnChoice = {
   label: string;
 };
 
-const COUNTRY_LABELS: Record<string, string> = {
-  AU: "Australia",
-  BR: "Brazil",
-  CA: "Canada",
-  CH: "Switzerland",
-  DE: "Germany",
-  FR: "France",
-  GB: "United Kingdom",
-  HK: "Hong Kong",
-  JP: "Japan",
-  KR: "South Korea",
-  NL: "Netherlands",
-  SG: "Singapore",
-  TH: "Thailand",
-  TW: "Taiwan",
-  US: "United States",
-};
-
 function countryLabelFor(code: string): string {
-  return COUNTRY_LABELS[code.toUpperCase()] ?? code.toUpperCase();
+  return countryNameFor(code);
+}
+
+/** A file that never said where it goes is known by its name until a test finds out. */
+function profileCountry(profile: VpnProfileInfo): string {
+  return profile.countryCode === UNKNOWN_COUNTRY
+    ? profile.name
+    : countryNameFor(profile.countryCode);
 }
 
 export function resolveBotVpnDisplay(
@@ -73,13 +64,13 @@ export function resolveBotVpnDisplay(
   const profile = botVpn.vpnProfile
     ? overview.profiles.find((p) => p.id === botVpn.vpnProfile)
     : undefined;
-  const hostCountry = overview.hostCountry ?? "TH";
+  const hostCountry = overview.hostCountry ?? UNKNOWN_COUNTRY;
   const state = botVpn.state;
 
   if (state === "vpn" && profile) {
     return {
       countryCode: profile.countryCode,
-      countryName: profile.countryName,
+      countryName: profileCountry(profile),
       serverLabel: profile.serverLabel,
       state,
       locked: botVpn.vpnLocked,
@@ -89,7 +80,7 @@ export function resolveBotVpnDisplay(
   if (state === "blocked") {
     return {
       countryCode: profile?.countryCode ?? hostCountry,
-      countryName: profile?.countryName ?? "Blocked",
+      countryName: profile ? profileCountry(profile) : "Blocked",
       serverLabel: profile?.serverLabel ?? null,
       state,
       locked: botVpn.vpnLocked,
@@ -99,7 +90,7 @@ export function resolveBotVpnDisplay(
   if (state === "stopped" && profile) {
     return {
       countryCode: profile.countryCode,
-      countryName: profile.countryName,
+      countryName: profileCountry(profile),
       serverLabel: profile.serverLabel,
       state,
       locked: botVpn.vpnLocked,
@@ -349,7 +340,7 @@ export function ComputerVpnPopover({
         botName,
         profile: selectedProfile,
         locked: true,
-        label: prof ? `${prof.countryName} (${prof.serverLabel})` : selectedProfile,
+        label: prof ? vpnProfileLabel(prof) : selectedProfile,
       });
       return;
     }
@@ -371,7 +362,7 @@ export function ComputerVpnPopover({
 
   const statusText =
     display.state === "vpn"
-      ? "Protected via Proton VPN"
+      ? "Protected by VPN"
       : display.state === "blocked"
         ? "Kill Switch active — internet blocked"
         : display.state === "fallback"
@@ -470,9 +461,13 @@ export function ComputerVpnPopover({
                   locked && "cursor-not-allowed opacity-50",
                 )}
               >
-                <CountryFlag code={overview.hostCountry ?? "TH"} />
+                <CountryFlag code={overview.hostCountry} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate">{`Direct (${countryLabelFor(overview.hostCountry ?? "TH")})`}</div>
+                  <div className="truncate">
+                    {overview.hostCountry
+                      ? `Direct (${countryLabelFor(overview.hostCountry)})`
+                      : "Direct"}
+                  </div>
                   <div className="text-label text-muted-foreground">
                     {locked ? "Unlock Kill Switch to switch to Direct" : "Your host IP"}
                   </div>
@@ -487,13 +482,7 @@ export function ComputerVpnPopover({
                     key={prof.id}
                     type="button"
                     disabled={busy}
-                    onClick={() =>
-                      void applySelection(
-                        prof.id,
-                        locked,
-                        `${prof.countryName} (${prof.serverLabel})`,
-                      )
-                    }
+                    onClick={() => void applySelection(prof.id, locked, vpnProfileLabel(prof))}
                     className={cn(
                       "flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-start text-body-sm transition-colors",
                       active
@@ -504,8 +493,12 @@ export function ComputerVpnPopover({
                     <CountryFlag code={prof.countryCode} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
-                        <span className="truncate">{prof.countryName}</span>
-                        <span className="text-label text-muted-foreground">{prof.serverLabel}</span>
+                        <span className="truncate">{profileCountry(prof)}</span>
+                        {prof.serverLabel !== prof.name || prof.countryCode !== UNKNOWN_COUNTRY ? (
+                          <span className="text-label text-muted-foreground">
+                            {prof.serverLabel}
+                          </span>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-1 text-label text-muted-foreground">
                         <span
@@ -521,6 +514,21 @@ export function ComputerVpnPopover({
                   </button>
                 );
               })}
+              {vpn.openVpnSettings ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    vpn.openVpnSettings?.();
+                  }}
+                  className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-start text-body-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+                >
+                  <Upload className="size-3.5 shrink-0" aria-hidden="true" />
+                  <span>
+                    {overview.profiles.length ? "Add or test VPN files" : "Add a VPN file"}
+                  </span>
+                </button>
+              ) : null}
             </div>
 
             <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-2.5">

@@ -18,9 +18,12 @@ import {
   Input,
 } from "@rakazo/ui-web";
 import { useRef, useState } from "react";
+import type { NewBotVpnChoice } from "../../../components/vpn/CreateBotVpnField";
+import { CreateBotVpnField } from "../../../components/vpn/CreateBotVpnField";
 import { useSave } from "../../../lib/query/query";
 import type { RpcClient } from "../../../lib/query/rpc";
 import { errorText } from "../../../lib/query/user-error";
+import type { ComputerVpnController } from "../use-computer-vpn";
 import { BotLookPicker } from "./avatar-studio-popover";
 
 export interface CreateBotDialogInput {
@@ -30,16 +33,20 @@ export interface CreateBotDialogInput {
   id?: string;
   /** The organic family the preview drew; omitted when a studio shape is picked. */
   avatarFamily?: number;
+  /** Set when the bot should start on its own computer behind this VPN. */
+  vpn?: { profile: string; locked: boolean };
 }
 
 /** Mounted only while open; the parent unmounts it from `onCancel` or after `onCreate`. */
 export function CreateBotDialog({
   avatarSet,
+  vpn,
   onCancel,
   onCreate,
 }: {
   /** The account's set: the server gives it to the new bot, so the preview draws it too. */
   avatarSet: BotAvatarSet;
+  vpn?: ComputerVpnController;
   onCancel: () => void;
   onCreate: (input: CreateBotDialogInput, client: RpcClient) => Promise<void>;
 }) {
@@ -47,6 +54,7 @@ export function CreateBotDialog({
   const nameRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [look, setLook] = useState(newBotLook);
+  const [vpnChoice, setVpnChoice] = useState<NewBotVpnChoice>({ profile: null, locked: false });
   const identity = newBotPreviewIdentity(avatarSet, look);
   // Creating the bot closes this dialog, so a success keeps it held.
   const save = useSave({ save: onCreate, closesScreen: true });
@@ -56,7 +64,13 @@ export function CreateBotDialog({
 
   function create() {
     if (!trimmed || submitting) return;
-    save.run({ name: trimmed, ...newBotLookInput(avatarSet, look) });
+    save.run({
+      name: trimmed,
+      ...newBotLookInput(avatarSet, look),
+      ...(vpnChoice.profile
+        ? { vpn: { profile: vpnChoice.profile, locked: vpnChoice.locked } }
+        : {}),
+    });
   }
 
   return (
@@ -115,6 +129,7 @@ export function CreateBotDialog({
               setLook((current) => ({ ...current, color, identity: picked ?? current.identity }));
             }}
           />
+          {vpn ? <CreateBotVpnField vpn={vpn} value={vpnChoice} onChange={setVpnChoice} /> : null}
           <DialogFooter>
             <Button type="button" variant="outline" disabled={submitting} onClick={onCancel}>
               <Trans>Cancel</Trans>

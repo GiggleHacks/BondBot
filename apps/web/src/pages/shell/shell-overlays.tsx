@@ -17,6 +17,7 @@ import { queryClient } from "../../lib/query/query";
 import type { createSpaceRpc, RpcClient } from "../../lib/query/rpc";
 import { FALLBACK_BOT_COLOR } from "./chat/chat-shared";
 import type { ShellOverlay } from "./shell-overlay-url";
+import type { ComputerVpnController } from "./use-computer-vpn";
 
 const SettingsOverlay = lazyOverlay(() =>
   import("../settings/SettingsOverlay").then((module) => module.SettingsOverlay),
@@ -132,6 +133,8 @@ export function SettingsOverlays({
   active,
   peerBot,
   openNewSpace,
+  vpn,
+  botNames,
 }: {
   rpc: ReturnType<typeof createSpaceRpc>;
   queries: SpaceQueries;
@@ -156,6 +159,8 @@ export function SettingsOverlays({
   active: Bot | undefined;
   peerBot: (botId: string) => { color: string; avatarSet?: BotAvatarSet } | undefined;
   openNewSpace: () => void;
+  vpn: ComputerVpnController;
+  botNames: ReadonlyMap<string, string>;
 }) {
   const voiceStatusKey = queries.voice.status.queryKey();
   return (
@@ -163,6 +168,8 @@ export function SettingsOverlays({
       {overlay?.kind === "settings" && showSettings ? (
         <SettingsOverlay
           shellRpc={rpc}
+          vpn={vpn}
+          botNames={botNames}
           space={settingsSpace}
           spaces={spaces}
           onRenameSpace={renameSpace}

@@ -27,6 +27,7 @@ import { computersAreUnavailable } from "../../components/computers/ComputersUna
 import { ApprovalRulesSettings } from "../../components/settings/ApprovalRulesSettings";
 import { SETTINGS_CONTENT_WIDTH } from "../../components/settings/SettingsRows";
 import { VaultSettings } from "../../components/vault/VaultSettings";
+import { VpnSettingsPanel } from "../../components/vpn/VpnSettingsPanel";
 import { canChooseOwnComputer } from "../../lib/computers/computer-sandbox";
 import { CLIENT_BUILD } from "../../lib/platform/client-build";
 import { desktopBridge } from "../../lib/platform/desktop";
@@ -38,6 +39,7 @@ import { ModelSettingsOverlay } from "../model-settings/ModelSettingsOverlay";
 import { PluginsOverlay } from "../plugins/PluginsOverlay";
 import type { SettingsSpace } from "../shell/create-delete-dialogs";
 import type { SettingsSection } from "../shell/shell-overlay-url";
+import type { ComputerVpnController } from "../shell/use-computer-vpn";
 import {
   ComputerSettingsPanel,
   GeneralSettingsPanels,
@@ -55,6 +57,8 @@ import { SpacesSettingsPanel } from "./SpacesSettingsPanel";
 import { useSettingsNavItems } from "./settings-nav";
 import { UsageSettingsPanel } from "./UsageSettingsPanel";
 import { VoiceSettingsOverlay } from "./VoiceSettingsOverlay";
+
+const NO_BOT_NAMES: ReadonlyMap<string, string> = new Map();
 
 export function SettingsOverlay({
   space,
@@ -94,6 +98,8 @@ export function SettingsOverlay({
   onVoiceStatusMaybeChanged,
   onLeftSpace,
   shellRpc,
+  vpn,
+  botNames,
 }: {
   /** The space the Space page edits; it need not be the selected space. */
   space?: SettingsSpace | null;
@@ -139,6 +145,9 @@ export function SettingsOverlay({
   onLeftSpace?: (spaceId: string, activeSpaceId: string) => void;
   /** Pinned to the space this window shows; billing acts on it. */
   shellRpc: RpcClient;
+  /** The shown Space's VPNs; VPN settings appear only where the server has a VPN manager. */
+  vpn?: ComputerVpnController;
+  botNames?: ReadonlyMap<string, string>;
 }) {
   const { t, i18n } = useLingui();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -170,9 +179,11 @@ export function SettingsOverlay({
     thisComputer !== null ||
     plainHttp;
   const showUpdates = Boolean(desktopBridge()?.update);
+  const showVpn = Boolean(vpn?.overview?.supported);
   // A section that isn't available yet (billing before its flag loads) shows General until it is.
   const section =
     (requestedSection === "computer" && !showComputer) ||
+    (requestedSection === "vpn" && !showVpn) ||
     (requestedSection === "billing" && !billingEnabled) ||
     (requestedSection === "messaging" && !messagingEnabled) ||
     (requestedSection === "wallet" && !paymentWalletProvider) ||
@@ -204,6 +215,7 @@ export function SettingsOverlay({
     messaging: messagingEnabled,
     wallet: Boolean(paymentWalletProvider),
     computer: showComputer,
+    vpn: showVpn,
     billing: billingEnabled,
     updates: showUpdates,
     labs: labsAvailable.length > 0,
@@ -502,6 +514,9 @@ export function SettingsOverlay({
                       />
                       <ComputerDeviceSettings />
                     </div>
+                  ) : null}
+                  {section === "vpn" && vpn && showVpn ? (
+                    <VpnSettingsPanel vpn={vpn} botNames={botNames ?? NO_BOT_NAMES} />
                   ) : null}
                   {section === "labs" ? (
                     <LabsSettingsPanel

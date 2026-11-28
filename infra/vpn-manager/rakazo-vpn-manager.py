@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Host-side multi-tunnel Proton WireGuard VPN manager for Rakazo bot computers.
+"""Host-side multi-tunnel WireGuard VPN manager for Rakazo bot computers.
 
-Manages one WireGuard interface per .conf file in /boot/config/wireguard/rakazo-profiles/
-and applies per-bridge (rakazo-c<hash>) fwmark routing + optional per-bridge fail-closed
-kill-switch rules in iptables without interrupting host traffic or restarting containers.
+Manages one WireGuard interface per .conf file in RAKAZO_VPN_PROFILES_DIR and applies
+per-bridge (rakazo-c<hash>) fwmark routing + optional per-bridge fail-closed kill-switch
+rules in iptables without interrupting host traffic or restarting containers.
+
+Profiles come from two places: files the operator drops into the folder (shared by every
+Space) and files people upload in the app (POST /profiles), which are written next to them
+with a <id>.json sidecar naming the Space that owns them. Private keys never leave this host.
 
 Serves:
-  - Unix socket (/var/run/rakazo-vpn.sock) for rakazo-supervisor
-  - Local HTTP dashboard & API on 127.0.0.1:5174
+  - Unix socket (RAKAZO_VPN_SOCK) for rakazo-supervisor
+  - Local read-only HTTP dashboard on 127.0.0.1:5174
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ import html
 import json
 import os
 import re
+import secrets
 import signal
 import socket
 import subprocess
@@ -50,6 +55,15 @@ IPT = ["iptables", "-w"]
 IPT6 = ["ip6tables", "-w"]
 STALE_AFTER = 180
 STARTUP_GRACE = 25
+TRACE_URL = "https://1.1.1.1/cdn-cgi/trace"
+# Keeps handshakes fresh on idle tunnels, so "up" means the server still answers.
+KEEPALIVE_SEC = 25
+MAX_CONFIG_BYTES = 8192
+# wg-quick only reads a file whose name is a valid interface name: 15 characters at most.
+UPLOAD_ID_RE = re.compile(r"^vpn-[a-f0-9]{10}\Z")
+OWNER_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}\Z")
+WG_KEY_RE = re.compile(r"^[A-Za-z0-9+/]{43}=\Z")
+HOOK_KEYS = {"preup", "postup", "predown", "postdown"}
 
 COUNTRY_NAMES = {
     "AU": "Australia",
@@ -111,12 +125,43 @@ def bridge_for_home_key(home_key: str) -> str:
     return "rakazo-c" + hashlib.sha256(home_key.encode("utf-8")).hexdigest()[:7]
 
 
-def parse_profile_file(path: str, used_tables: set[int], used_marks: set[int]) -> dict:
-    stem = os.path.splitext(os.path.basename(path))[0]
-    profile_id = re.sub(r"[^a-z0-9_-]+", "-", stem.lower()).strip("-") or "vpn"
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
-        raw = f.read()
+def meta_path_for(conf_path: str) -> str:
+    return os.path.splitext(conf_path)[0] + ".json"
 
+
+def read_meta(conf_path: str) -> dict:
+    """The sidecar of an uploaded profile; operator files have none."""
+    try:
+        with open(meta_path_for(conf_path), "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return {}
+    except Exception as exc:
+        log(f"ignoring unreadable profile metadata for {conf_path}: {exc}")
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def write_private(path: str, text: str) -> None:
+    """Write a root-only file atomically (it holds a private key)."""
+    tmp = f"{path}.tmp-{secrets.token_hex(4)}"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def label_from_text(stem: str, raw: str) -> tuple[str | None, str]:
+    """Country code and server label from a file name like wg-JP-412 or a "# JP#412" comment."""
     country_code = None
     server_label = stem
     m_file = re.search(r"(?:^|[-_])([A-Za-z]{2})(?:[-_](\d+))?(?:$|[-_])", stem)
@@ -132,10 +177,25 @@ def parse_profile_file(path: str, used_tables: set[int], used_marks: set[int]) -
             server_label = m_srv.group(1).upper()
             country_code = server_label[:2]
             break
+    return country_code, server_label
 
-    if not country_code or country_code not in COUNTRY_NAMES:
-        # Still keep 2-letter code if matched in filename
-        country_code = country_code or "UN"
+
+def parse_profile_file(path: str, used_tables: set[int], used_marks: set[int]) -> dict:
+    stem = os.path.splitext(os.path.basename(path))[0]
+    profile_id = re.sub(r"[^a-z0-9_-]+", "-", stem.lower()).strip("-") or "vpn"
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        raw = f.read()
+    meta = read_meta(path)
+    name = meta.get("name") if isinstance(meta.get("name"), str) and meta.get("name") else None
+    owner = meta.get("owner") if isinstance(meta.get("owner"), str) and OWNER_RE.fullmatch(meta.get("owner")) else None
+
+    country_code, server_label = label_from_text(name or stem, raw)
+    if valid_country(meta.get("countryCode")):
+        country_code = meta["countryCode"]
+    # "UN" until a test learns the exit country.
+    country_code = country_code or "UN"
+    if name is None:
+        name = stem
 
     digest = hashlib.sha256(profile_id.encode("utf-8")).hexdigest()
     iface = f"wgrk_{digest[:6]}"
@@ -164,6 +224,8 @@ def parse_profile_file(path: str, used_tables: set[int], used_marks: set[int]) -
     return {
         "id": profile_id,
         "path": path,
+        "name": name,
+        "owner": owner,
         "countryCode": country_code,
         "countryName": COUNTRY_NAMES.get(country_code, country_code),
         "serverLabel": server_label,
@@ -286,6 +348,7 @@ def ensure_tunnel_up(profile: dict) -> None:
     rc, stripped, err = sh(["wg-quick", "strip", conf])
     if rc != 0 or not stripped:
         raise RuntimeError(f"wg-quick strip failed for {conf}: {err}")
+    stripped = with_keepalive(stripped)
 
     # Recreate cleanly if missing; if already present, update wg conf in place.
     rc_link, _, _ = sh(["ip", "link", "show", "dev", iface])
@@ -317,8 +380,9 @@ def ensure_tunnel_up(profile: dict) -> None:
     rc, _, err = sh(["ip", "route", "replace", "default", "dev", iface, "table", table])
     if rc != 0:
         raise RuntimeError(f"ip route default dev {iface} table {table} failed: {err}")
-    while sh(["ip", "rule", "del", "fwmark", f"{mark}/0xffff", "lookup", table, "priority", RULE_PRIO])[0] == 0:
-        pass
+    # Any rule left for this mark or table (a profile removed, or numbers that moved after a
+    # restart) would steer traffic into the wrong tunnel, so clear both before adding ours.
+    clear_rules(mark, table)
     rc, _, err = sh(["ip", "rule", "add", "fwmark", f"{mark}/0xffff", "lookup", table, "priority", RULE_PRIO])
     if rc != 0:
         raise RuntimeError(f"ip rule add fwmark {mark} table {table} failed: {err}")
@@ -331,6 +395,237 @@ def ensure_tunnel_up(profile: dict) -> None:
         rc, _, err = sh([*IPT, "-t", "mangle", "-A", "FORWARD", "-o", iface, "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"])
         if rc != 0:
             log(f"TCPMSS clamp for {iface} failed: {err}")
+
+
+def with_keepalive(stripped: str) -> str:
+    """Add PersistentKeepalive to every peer that has none."""
+    out: list[str] = []
+    in_peer = False
+    has_keepalive = False
+
+    def close_peer() -> None:
+        if in_peer and not has_keepalive:
+            out.append(f"PersistentKeepalive = {KEEPALIVE_SEC}")
+
+    for line in stripped.splitlines():
+        s = line.strip()
+        if s.startswith("["):
+            close_peer()
+            in_peer = s.lower() == "[peer]"
+            has_keepalive = False
+        elif in_peer and s.split("=", 1)[0].strip().lower() == "persistentkeepalive":
+            has_keepalive = True
+        out.append(line)
+    close_peer()
+    return "\n".join(out)
+
+
+def clear_rules(mark: str, table: str) -> None:
+    for selector in (["fwmark", f"{mark}/0xffff"], ["lookup", table]):
+        for _ in range(64):
+            if sh(["ip", "rule", "del", *selector, "priority", RULE_PRIO])[0] != 0:
+                break
+
+
+def teardown_tunnel(profile: dict) -> None:
+    """Undo ensure_tunnel_up for a profile that is being removed."""
+    iface = profile["iface"]
+    clear_rules(profile["markHex"], str(profile["table"]))
+    sh(["ip", "route", "flush", "table", str(profile["table"])])
+    while sh([*IPT, "-t", "nat", "-D", "POSTROUTING", "-o", iface, "-j", "MASQUERADE"])[0] == 0:
+        pass
+    while sh([*IPT, "-t", "mangle", "-D", "FORWARD", "-o", iface, "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"])[0] == 0:
+        pass
+    sh(["ip", "link", "del", iface])
+
+
+class ProfileInUse(Exception):
+    pass
+
+
+def validate_config(text: object) -> str:
+    """Check an uploaded WireGuard file; the messages are shown to the person who uploaded it."""
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("This file is empty.")
+    if len(text.encode("utf-8")) > MAX_CONFIG_BYTES:
+        raise ValueError("This file is too big to be a WireGuard file.")
+    text = text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+    if any((ord(c) < 32 and c not in "\n\t") or ord(c) == 127 for c in text):
+        raise ValueError("This is not a WireGuard file. Upload the .conf file your VPN gave you.")
+
+    section = None
+    interfaces: list[dict[str, str]] = []
+    peers: list[dict[str, str]] = []
+    for line in text.split("\n"):
+        s = line.split("#", 1)[0].strip()
+        if not s:
+            continue
+        if s.startswith("[") and s.endswith("]"):
+            section = s[1:-1].strip().lower()
+            if section == "interface":
+                interfaces.append({})
+            elif section == "peer":
+                peers.append({})
+            else:
+                raise ValueError(f"This file has an unknown section [{s[1:-1].strip()}].")
+            continue
+        if "=" not in s or section is None:
+            raise ValueError("This is not a WireGuard file. Upload the .conf file your VPN gave you.")
+        key, value = (part.strip() for part in s.split("=", 1))
+        if key.lower() in HOOK_KEYS:
+            raise ValueError("This file runs commands (PreUp, PostUp, PreDown or PostDown). Remove those lines and upload it again.")
+        (interfaces if section == "interface" else peers)[-1][key.lower()] = value
+
+    if len(interfaces) != 1:
+        raise ValueError("This is not a WireGuard file: it needs one [Interface] section.")
+    iface = interfaces[0]
+    if not WG_KEY_RE.fullmatch(iface.get("privatekey", "")):
+        raise ValueError("This file has no private key. Download the full file from your VPN again.")
+    addresses = [a.strip() for a in iface.get("address", "").split(",") if a.strip()]
+    if not any(re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}(?:/\d{1,2})?", a) for a in addresses):
+        raise ValueError("This file has no IPv4 address (Address = ...), which bots need.")
+    if not peers:
+        raise ValueError("This file has no server ([Peer] section).")
+    for peer in peers:
+        if not WG_KEY_RE.fullmatch(peer.get("publickey", "")):
+            raise ValueError("This file's server has no public key.")
+        if not peer.get("endpoint"):
+            raise ValueError("This file's server has no address (Endpoint = ...).")
+        allowed = [a.strip() for a in peer.get("allowedips", "").split(",")]
+        if "0.0.0.0/0" not in allowed:
+            raise ValueError("This file only sends some traffic through the VPN. Download one that sends all traffic (AllowedIPs = 0.0.0.0/0).")
+    return text if text.endswith("\n") else text + "\n"
+
+
+def clean_name(name: object) -> str:
+    raw = name if isinstance(name, str) else ""
+    raw = os.path.basename(raw.replace("\\", "/"))
+    if raw.lower().endswith(".conf"):
+        raw = raw[:-5]
+    raw = "".join(c for c in raw if c.isprintable()).strip()
+    return raw[:80] or "VPN"
+
+
+def add_profile(config: object, name: object, owner: object) -> dict:
+    """Store an uploaded file, bring its tunnel up and return what callers may see of it."""
+    if not isinstance(owner, str) or not OWNER_RE.fullmatch(owner):
+        raise ValueError("owner is required")
+    text = validate_config(config)
+    label = clean_name(name)
+    with LOCK:
+        pid = f"vpn-{secrets.token_hex(5)}"
+        while pid in PROFILES:
+            pid = f"vpn-{secrets.token_hex(5)}"
+        os.makedirs(PROFILES_DIR, mode=0o700, exist_ok=True)
+        conf_path = os.path.join(PROFILES_DIR, f"{pid}.conf")
+        meta = {"name": label, "owner": owner, "createdAt": int(time.time())}
+        write_private(meta_path_for(conf_path), json.dumps(meta))
+        write_private(conf_path, text)
+        prof = None
+        try:
+            prof = parse_profile_file(
+                conf_path,
+                {p["table"] for p in PROFILES.values()},
+                {p["mark"] for p in PROFILES.values()},
+            )
+            rc, _, err = sh(["wg-quick", "strip", conf_path])
+            if rc != 0:
+                raise ValueError("This WireGuard file could not be read. Download it from your VPN again.")
+            ensure_tunnel_up(prof)
+        except Exception:
+            if prof:
+                teardown_tunnel(prof)
+            for path in (conf_path, meta_path_for(conf_path)):
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+            raise
+        PROFILES[pid] = prof
+        log(f"profile {pid} added for {owner}")
+        return profile_public(prof)
+
+
+def remove_profile(pid: str, owner: object) -> None:
+    with LOCK:
+        prof = PROFILES.get(pid)
+        if not prof:
+            raise ValueError(f"Unknown VPN profile: {pid}")
+        if not prof.get("owner"):
+            raise ValueError("This VPN file was added on the server. Remove it from the server's VPN folder.")
+        if owner != prof["owner"]:
+            raise ValueError(f"Unknown VPN profile: {pid}")
+        if any(cfg.get("profile") == pid for cfg in STATE["bridges"].values()):
+            raise ProfileInUse("A bot still uses this VPN. Give it another VPN first.")
+        teardown_tunnel(prof)
+        for path in (prof["path"], meta_path_for(prof["path"])):
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
+        PROFILES.pop(pid, None)
+        log(f"profile {pid} removed")
+
+
+def parse_trace(out: str) -> tuple[str | None, str | None]:
+    info = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
+    ip = info.get("ip")
+    if not ip or not re.fullmatch(r"[0-9.]{7,15}", ip):
+        return None, None
+    return ip, valid_country(info.get("loc"))
+
+
+def test_profile(pid: str) -> dict:
+    """Send one request through the tunnel and say whether it came out somewhere else.
+
+    result: "connected", "no_handshake" (the server never answered: an old, revoked or
+    mistyped file), "no_internet" (the server answered but nothing got through) or
+    "not_private" (the request left from this host's own address).
+    """
+    with LOCK:
+        prof = PROFILES.get(pid)
+        if not prof:
+            raise ValueError(f"Unknown VPN profile: {pid}")
+        prof = dict(prof)
+    if sh(["ip", "link", "show", "dev", prof["iface"]])[0] != 0:
+        with LOCK:
+            ensure_tunnel_up(prof)
+    host_ip, _ = refresh_host_ip()
+    rc, out, _ = sh(
+        ["curl", "-4", "-s", "--max-time", "8", "--interface", prof["iface"], TRACE_URL],
+        timeout=12,
+    )
+    exit_ip, exit_country = parse_trace(out) if rc == 0 and out else (None, None)
+    status = collect_tunnel_statuses([prof])[0]
+    if exit_ip and host_ip and exit_ip == host_ip:
+        result = "not_private"
+    elif exit_ip:
+        result = "connected"
+    elif status["handshakeAgeSec"] is None:
+        result = "no_handshake"
+    else:
+        result = "no_internet"
+
+    if result == "connected" and exit_country and prof["countryCode"] == "UN" and prof.get("owner"):
+        # The file did not say where it goes: remember where the test came out.
+        with LOCK:
+            live = PROFILES.get(pid)
+            if live:
+                meta = read_meta(live["path"])
+                meta["countryCode"] = exit_country
+                try:
+                    write_private(meta_path_for(live["path"]), json.dumps(meta))
+                except OSError as exc:
+                    log(f"could not save the country of {pid}: {exc}")
+                live["countryCode"] = exit_country
+                live["countryName"] = COUNTRY_NAMES.get(exit_country, exit_country)
+                prof = dict(live)
+    return {
+        "profile": {**profile_public(prof), "up": status["up"], "handshakeAgeSec": status["handshakeAgeSec"]},
+        "result": result,
+        "exitIp": exit_ip if result == "connected" else None,
+        "exitCountry": exit_country if result == "connected" else None,
+    }
 
 
 def tunnel_status(profile: dict) -> dict:
@@ -361,14 +656,23 @@ def tunnel_status(profile: dict) -> dict:
         up = (time.time() - STARTED_AT) < STARTUP_GRACE
 
     return {
-        "id": profile["id"],
-        "countryCode": profile["countryCode"],
-        "countryName": profile["countryName"],
-        "serverLabel": profile["serverLabel"],
-        "iface": iface,
+        **profile_public(profile),
         "up": up,
         "handshakeAgeSec": age,
         "endpoint": endpoint,
+    }
+
+
+def profile_public(profile: dict) -> dict:
+    """What callers may see of a profile: never its path, key or routing numbers."""
+    return {
+        "id": profile["id"],
+        "name": profile.get("name") or profile["id"],
+        "owner": profile.get("owner"),
+        "countryCode": profile["countryCode"],
+        "countryName": profile["countryName"],
+        "serverLabel": profile["serverLabel"],
+        "iface": profile["iface"],
     }
 
 
@@ -424,11 +728,7 @@ def collect_tunnel_statuses(profiles: list[dict]) -> list[dict]:
         else:
             up = (now - STARTED_AT) < STARTUP_GRACE
         out.append({
-            "id": profile["id"],
-            "countryCode": profile["countryCode"],
-            "countryName": profile["countryName"],
-            "serverLabel": profile["serverLabel"],
-            "iface": iface,
+            **profile_public(profile),
             "up": up,
             "handshakeAgeSec": age,
             "endpoint": endpoints.get(iface),
@@ -887,8 +1187,44 @@ class ApiHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             self.send_json(500, {"error": str(exc)})
 
+    def do_DELETE(self) -> None:
+        path = self.path.split("?", 1)[0]
+        m = re.fullmatch(r"/profiles/([a-z0-9_-]{1,64})", path)
+        if not m:
+            self.send_json(404, {"error": "Not found"})
+            return
+        try:
+            data = self.read_json()
+            remove_profile(m.group(1), data.get("owner"))
+            apply_iptables_policies()
+            self.send_json(200, {"ok": True})
+        except ProfileInUse as exc:
+            self.send_json(409, {"error": str(exc)})
+        except ValueError as exc:
+            self.send_json(400, {"error": str(exc)})
+        except Exception as exc:
+            self.send_json(500, {"error": str(exc)})
+
     def do_POST(self) -> None:
         path = self.path.split("?", 1)[0]
+        if path == "/profiles":
+            try:
+                data = self.read_json()
+                self.send_json(201, add_profile(data.get("config"), data.get("name"), data.get("owner")))
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+        m = re.fullmatch(r"/profiles/([a-z0-9_-]{1,64})/test", path)
+        if m:
+            try:
+                self.send_json(200, test_profile(m.group(1)))
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
         if path == "/reconcile":
             try:
                 data = self.read_json()

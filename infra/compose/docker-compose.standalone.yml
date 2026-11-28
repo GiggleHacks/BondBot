@@ -112,6 +112,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - appdata:/data
+      - /var/run/rakazo-vpn:/var/run/rakazo-vpn
       - secrets-supervisor:/run/rakazo-secrets:ro
     networks:
       - app
@@ -135,6 +136,20 @@ services:
       - sh
       - /run/rakazo-secrets/start
       - docker-entrypoint.sh
+  vpn:
+    profiles:
+      - vpn
+    build:
+      context: ../..
+      dockerfile: infra/vpn-manager/Dockerfile
+    image: ${RAKAZO_VPN_IMAGE:-rakazo-vpn}:${RAKAZO_VPN_IMAGE_TAG:-local}
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/rakazo-vpn:/var/run/rakazo-vpn
+      - vpn-data:/data
   migrate:
     image: ${RAKAZO_IMAGE:-ghcr.io/elie222/rakazo/app}:${RAKAZO_IMAGE_TAG:-latest}
     working_dir: /app/apps/api
@@ -1118,6 +1133,7 @@ volumes:
   pgdata:
   appdata:
   webassets:
+  vpn-data:
   secrets:
   secrets-postgres:
   secrets-migrate:

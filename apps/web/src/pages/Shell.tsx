@@ -3,12 +3,21 @@ import type { Bot } from "@rakazo/contracts";
 import { DEFAULT_NEW_BOT_AVATAR_SET, hasLab } from "@rakazo/contracts";
 import { chatWoke } from "@rakazo/core";
 import { bestEffort } from "@rakazo/logging/best-effort";
-import { Button } from "@rakazo/ui-web";
+import { Button, toast } from "@rakazo/ui-web";
 import { useIsMobile } from "@rakazo/ui-web/hooks/use-mobile";
 import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import type { Ref } from "react";
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useParams } from "react-router-dom";
 import { BondbotUpdateProvider } from "../components/bondbot-update/BondbotUpdateProvider";
 import { IncomingCall } from "../components/call/IncomingCall";
@@ -30,6 +39,7 @@ import { queryClient, spaceQueries } from "../lib/query/query";
 import type { RpcClient } from "../lib/query/rpc";
 import { createSpaceRpc, selectedSpaceId } from "../lib/query/rpc";
 import { SpaceRpcProvider } from "../lib/query/space-rpc";
+import { errorText } from "../lib/query/user-error";
 import { InboundOriginProvider } from "../lib/routines/inbound-url";
 import { screenDockPreference } from "../lib/screen-dock";
 import { BotUsageLine } from "./shell/bots/bot-usage-line";
@@ -245,8 +255,10 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
     rpc,
     spaceId: bootstrapMe?.spaceId ?? selectedSpaceId() ?? undefined,
     refreshBots,
+    openVpnSettings: () => openSettings("vpn"),
   });
   const [teamVpnChoice, setTeamVpnChoice] = useState<PendingVpnChoice | null>(null);
+  const botNames = useMemo(() => new Map(bots.map((bot) => [bot.id, bot.name])), [bots]);
   // On a phone, the Back gesture closes the newest open layer instead of leaving the app.
   useBackLayer(multiviewOpen, () => multiviewOpenPreference.set(false), isMobileSidebar);
   useBackLayer(mobileSidebarOpen, () => setMobileSidebarOpen(false), isMobileSidebar);
@@ -649,7 +661,23 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
 
   async function createBot(input: CreateBotDialogInput, client: RpcClient) {
     const isFirstBot = botsRef.current.length === 0;
-    const bot = await client.bots.create({ ...input, notifyOnFinish: true });
+    const { vpn: vpnChoice, ...botInput } = input;
+    // A VPN belongs to one computer, so a bot made with one gets its own.
+    const bot = await client.bots.create({
+      ...botInput,
+      notifyOnFinish: true,
+      ...(vpnChoice ? { computerMode: "dedicated" as const } : {}),
+    });
+    if (vpnChoice) {
+      try {
+        await client.computer.setVpn({ botId: bot.id, ...vpnChoice, switchToDedicated: true });
+      } catch (error) {
+        toast.error(
+          `${bot.name} was created, but its VPN could not be turned on. ${errorText(error, "Pick it again from the VPN menu.")}`,
+        );
+      }
+      void vpn.refreshVpn();
+    }
     openCreatedBot(bot);
     dialogs.setCreateBotOpen(false);
     await composer.startFocusPrompt(bot.id, isFirstBot);
@@ -1059,6 +1087,7 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
           closeMobileSidebar={() => setMobileSidebarOpen(false)}
           createBot={createBot}
           botAvatarSet={bootstrapMe?.botAvatarSet ?? DEFAULT_NEW_BOT_AVATAR_SET}
+          vpn={vpn.overview?.supported ? vpn : undefined}
           discardChatAttachments={composer.discardThreadAttachments}
           clearOpenThread={thread.clearOpenThread}
           deleteRoutineDialogProps={deleteRoutineDialogProps}
@@ -1102,6 +1131,8 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
           active={active}
           peerBot={view.resolveBot}
           openNewSpace={() => dialogs.setNewSpaceOpen(true)}
+          vpn={vpn}
+          botNames={botNames}
         />
       </Suspense>
 

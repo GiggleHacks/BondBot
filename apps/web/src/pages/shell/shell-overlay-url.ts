@@ -13,6 +13,7 @@ const SETTINGS_SECTIONS = [
   "wallet",
   "usage",
   "computer",
+  "vpn",
   "labs",
   "billing",
   "updates",

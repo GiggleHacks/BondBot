@@ -3,6 +3,8 @@ import * as z from "zod";
 import { Id } from "../ids.js";
 import { botId } from "../rpc/inputs.js";
 import {
+  AddVpnProfilesInputSchema,
+  AddVpnProfilesResultSchema,
   BotVpnStatusSchema,
   CloudComputersSchema,
   ComputerHomeVersionSchema,
@@ -16,6 +18,8 @@ import {
   ComputerUpdateSchema,
   ComputerVpnOverviewSchema,
   SetComputerVpnInputSchema,
+  VpnProfileIdInputSchema,
+  VpnTestResultSchema,
 } from "./computer.js";
 import { ComputerCommandSchema } from "./computer-command.js";
 
@@ -42,6 +46,11 @@ export const computersRpc = {
     status: oc.input(botId).output(ComputerStatusSchema),
     vpnState: oc.output(ComputerVpnOverviewSchema),
     setVpn: oc.input(SetComputerVpnInputSchema).output(BotVpnStatusSchema),
+    /** Uploads WireGuard files for this Space's bots; each one that is valid gets a tunnel. */
+    addVpnProfiles: oc.input(AddVpnProfilesInputSchema).output(AddVpnProfilesResultSchema),
+    removeVpnProfile: oc.input(VpnProfileIdInputSchema).output(z.object({ ok: z.literal(true) })),
+    /** Sends one request through the VPN and says where it came out. */
+    testVpnProfile: oc.input(VpnProfileIdInputSchema).output(VpnTestResultSchema),
     boot: oc.input(botId).output(ComputerStatusSchema),
     stop: oc.input(botId).output(ComputerStatusSchema),
     /** Null where the computer is off or its provider reports no usage. */

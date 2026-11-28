@@ -20,6 +20,7 @@ import {
   RenameBotSectionDialog,
 } from "./create-delete-dialogs";
 import type { Panel } from "./right-panel-state";
+import type { ComputerVpnController } from "./use-computer-vpn";
 
 type ChatTarget = { kind: "bot"; chat: Bot } | { kind: "group"; chat: Group };
 type SectionTarget = { section: BotSection; spaceId: string };
@@ -73,6 +74,7 @@ export function ShellDialogs({
   closeMobileSidebar,
   createBot,
   botAvatarSet,
+  vpn,
   clearOpenThread,
   discardChatAttachments,
   deleteRoutineDialogProps,
@@ -91,6 +93,8 @@ export function ShellDialogs({
   createBot: (input: CreateBotDialogInput, client: RpcClient) => Promise<void>;
   /** The account's set, which a new bot takes. */
   botAvatarSet: BotAvatarSet;
+  /** Offers a VPN for the new bot where the server has one. */
+  vpn?: ComputerVpnController;
   clearOpenThread: () => void;
   /** Drops a deleted chat's pending attachments with their previews. */
   discardChatAttachments: (threadKey: string) => void;
@@ -234,6 +238,7 @@ export function ShellDialogs({
       {createBotOpen ? (
         <CreateBotDialog
           avatarSet={botAvatarSet}
+          vpn={vpn}
           onCancel={() => setCreateBotOpen(false)}
           onCreate={createBot}
         />

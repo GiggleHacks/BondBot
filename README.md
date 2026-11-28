@@ -10,7 +10,8 @@ computer. It runs on your own machine, with your own model keys.
 - **Bots that work together.** Put them in a group, @mention them, and they split the work.
 - **Routines.** Run a bot on a schedule, from an email or from a webhook.
 - **Voice notes and calls.** Record offline; it sends and transcribes when you are back.
-- **VPN per bot,** with a kill switch.
+- **VPN per bot,** with a kill switch. Upload your VPN's WireGuard files in Settings and test
+  them in one click ([setup](./docs/bondbot/VPN.md)).
 - **Live reasoning** under each reply, and one-tap model switching.
 - **Phone friendly.** Split view with the bot's screen docked above the chat.
 - **The look.** A pixel skull that builds itself out of code, a Quake-font wordmark, pixel cursor
