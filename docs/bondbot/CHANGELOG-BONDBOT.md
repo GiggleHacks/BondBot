@@ -319,3 +319,8 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Verified live: services healthy, API reports 1.14.0, web answers 200 and carries the new view, speech server reachable. One expected "run.queue_delayed": a run in progress at the restart resumed about a minute later.
 - Not checked while signed in: the new view on live data.
 - Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v090-20261128/rollback.sh (0.8.0 app image and compose file; the database stays).
+
+## v0.10.0 / 1.15.0 (2026-11-28)
+
+- Quieter chat colours: your messages in a bot's chat sit on a dark bubble faintly tinted with the bot's colour instead of the full bright colour (web and mobile). Colorful chat uses muted tints.
+- Settings > General: the Terminal font switch is replaced by a Font picker (System, Inter, Geist, Serif, Rounded, Mono). Fonts ship with the app and load only once chosen. Anyone who had Terminal font on gets Mono.
