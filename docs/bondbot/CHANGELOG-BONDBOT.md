@@ -305,3 +305,17 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Verified live: services healthy, API reports 1.13.0, no API or worker error lines, web answers 200 and carries the new code, starred_models table in place with row security on.
 - Not checked while signed in: stars and the screen above chat on live data.
 - Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v080-20261128/rollback.sh (0.7.0 app image and compose file; the database stays).
+
+## v0.9.0 / 1.14.0 (2026-11-28)
+
+- Multiview has a third layout, "Text only": every screen is closed and each bot is a full-height chat column.
+- Each bot's screen can also be closed on its own (monitor button in its tile header); the chat then takes the whole tile. A closed screen stops streaming. Both choices are kept per device.
+- Also first shipped here, already on main: the app offers a macOS download when the server has BondBot.dmg.
+
+## Deployed to cccbox: 0.9.0 (2026-11-28 about 20:40 ICT, by hand)
+
+- Image built from 2b7514c5b2. No schema change. Rehearsed against a throwaway copy of the database: API started, PIN sign-up and sign-in worked.
+- Database dumped to /mnt/user/appdata/rakazo/backup-pre-v090-20261128/ first (with .env and the compose files).
+- Verified live: services healthy, API reports 1.14.0, web answers 200 and carries the new view, speech server reachable. One expected "run.queue_delayed": a run in progress at the restart resumed about a minute later.
+- Not checked while signed in: the new view on live data.
+- Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v090-20261128/rollback.sh (0.8.0 app image and compose file; the database stays).

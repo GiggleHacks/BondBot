@@ -5,6 +5,7 @@ import {
   Columns3,
   LayoutGrid,
   Menu,
+  MessageSquareText,
   PanelLeft,
   PanelTop,
   PictureInPicture2,
@@ -146,7 +147,7 @@ export function MultiviewWorkspace({
     setMobilePage((page) => (dx < 0 ? Math.min(mobilePages - 1, page + 1) : Math.max(0, page - 1)));
   }
 
-  const chats = config.layout === "chats";
+  const chats = config.layout !== "screens";
   const desktopGridClass = chats
     ? visibleBots.length >= 4
       ? "md:grid-cols-2 md:grid-rows-2 xl:grid-cols-4 xl:grid-rows-1"
@@ -287,6 +288,7 @@ export function MultiviewWorkspace({
               [
                 ["screens", "Large screens", PanelTop],
                 ["chats", "Large chats", PictureInPicture2],
+                ["text", "Text only", MessageSquareText],
               ] as const
             ).map(([layout, label, Icon]) => (
               <Button
@@ -386,6 +388,18 @@ export function MultiviewWorkspace({
                   maximizedHere={maximizedBotId === bot.id}
                   isMobile={isMobile}
                   layout={config.layout}
+                  screenClosed={config.closedScreens.includes(bot.id)}
+                  onToggleScreen={
+                    config.layout === "text"
+                      ? undefined
+                      : () =>
+                          updateConfig((prev) => ({
+                            ...prev,
+                            closedScreens: prev.closedScreens.includes(bot.id)
+                              ? prev.closedScreens.filter((id) => id !== bot.id)
+                              : [...prev.closedScreens, bot.id],
+                          }))
+                  }
                   chatHeight={config.chatHeights[bot.id]}
                   canRemove={tileIds.length > 2}
                   onChangeChatHeight={(height) =>
