@@ -3,7 +3,7 @@ import type { BondbotUpdateAvailability, BondbotUpdateJob } from "@rakazo/contra
 import { bestEffort } from "@rakazo/logging/best-effort";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { BONDBOT_VERSION } from "../../lib/bondbot-version";
 import { bondbotSkippedVersionPreference } from "../../lib/preferences/bondbot-update-pref";
 import { useQueryUserId, useSave, useSpaceQueries } from "../../lib/query/query";
@@ -11,8 +11,8 @@ import { useQueryUserId, useSave, useSpaceQueries } from "../../lib/query/query"
 export interface BondbotUpdateContextValue {
   availability: BondbotUpdateAvailability | null;
   job: BondbotUpdateJob | null;
-  /** True when the user can manage updates, an update is newer than skipped, or an update is active. */
-  showNotificationDot: boolean;
+  /** True while an update that has not been skipped is offered, or one is under way. */
+  showUpdate: boolean;
   /** True when a version update is offered (even if already started). */
   canOpenPopover: boolean;
   isUpdating: boolean;
@@ -34,8 +34,7 @@ export function useBondbotUpdate(): BondbotUpdateContextValue | null {
   return useContext(BondbotUpdateContext);
 }
 
-const HEALTH_POLL_INTERVAL_MS = 2_000;
-const PROGRESS_POLL_INTERVAL_MS = 1_500;
+const PROGRESS_POLL_INTERVAL_MS = 1_000;
 const RELOAD_DELAY_MS = 650;
 
 export function BondbotUpdateProvider({ children }: { children: ReactNode }) {
@@ -55,9 +54,7 @@ export function BondbotUpdateProvider({ children }: { children: ReactNode }) {
   const [pollingProgress, setPollingProgress] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [reloading, setReloading] = useState(false);
-  const [baselineApiVersion, setBaselineApiVersion] = useState<string | null>(null);
   const [progressTick, setProgressTick] = useState<object | null>(null);
-  const [healthTick, setHealthTick] = useState<object | null>(null);
 
   const statusQuery = useQuery({
     ...queries.bondbotUpdate.status.queryOptions({
@@ -74,23 +71,45 @@ export function BondbotUpdateProvider({ children }: { children: ReactNode }) {
   const updateAvailable = Boolean(availability?.canManage && availability.updateAvailable);
   const isSkipped = Boolean(targetVersion && skippedVersion && targetVersion === skippedVersion);
   const isUpdating = Boolean(job?.running || reconnecting);
-  const showNotificationDot = Boolean((updateAvailable && !isSkipped) || isUpdating);
+  // A started job stays on screen until it is dismissed or the app reloads.
+  const showUpdate = Boolean((updateAvailable && !isSkipped) || isUpdating || reloading);
   const canOpenPopover = Boolean(availability?.canManage || isUpdating);
 
   const applySave = useSave<string | undefined, BondbotUpdateJob>({
     save: (expectedVersion, rpc) => rpc.bondbotUpdate.apply({ expectedVersion }),
     onSaved: (startedJob) => {
       setJob(startedJob);
-      setBaselineApiVersion(availability?.currentApiVersion ?? null);
       if (startedJob.running) {
-        setPollingProgress(true);
-        setProgressTick({});
+        follow();
       } else if (startedJob.phase === "succeeded" && !startedJob.restartRequired) {
-        setReconnecting(true);
-        setHealthTick({});
+        setReloading(true);
       }
     },
   });
+
+  function follow() {
+    setPollingProgress(true);
+    setProgressTick({});
+  }
+
+  // An update started before this page loaded, or in another tab, is picked up and followed,
+  // so refreshing during an update loses nothing.
+  const canManage = Boolean(availability?.canManage);
+  useEffect(() => {
+    if (!canManage) return;
+    let current = true;
+    void bestEffort(
+      "follow a running BondBot update",
+      readProgress().then((running) => {
+        if (!current || !running.running) return;
+        setJob(running);
+        follow();
+      }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [canManage]);
 
   useTimeout(
     () => {
@@ -102,41 +121,27 @@ export function BondbotUpdateProvider({ children }: { children: ReactNode }) {
 
   useTimeout(
     () => {
-      void probeServerHealth();
-    },
-    reconnecting && healthTick ? HEALTH_POLL_INTERVAL_MS : null,
-    healthTick,
-  );
-
-  useTimeout(
-    () => {
       window.location.reload();
     },
     reloading ? RELOAD_DELAY_MS : null,
     reloading,
   );
 
+  function readProgress() {
+    return queryClient.fetchQuery({
+      ...queries.bondbotUpdate.progress.queryOptions(),
+      staleTime: 0,
+      retry: false,
+    });
+  }
+
   async function pollJobProgress() {
+    let next: BondbotUpdateJob;
     try {
-      const nextJob = await queryClient.fetchQuery({
-        ...queries.bondbotUpdate.progress.queryOptions(),
-        staleTime: 0,
-      });
-      setJob(nextJob);
-      if (!nextJob.running) {
-        setPollingProgress(false);
-        if (nextJob.phase === "succeeded" && !nextJob.restartRequired) {
-          setReconnecting(true);
-          setHealthTick({});
-        } else {
-          await bestEffort("refresh BondBot update status", checkNowInternal(false));
-        }
-        return;
-      }
-      setProgressTick({});
+      next = await readProgress();
     } catch {
-      // During Docker container recreate, the API briefly drops while services swap over.
-      setPollingProgress(false);
+      // The API drops while the services swap over. Keep asking until it answers: the update's
+      // own record then says whether it finished.
       setReconnecting(true);
       setJob((prev) =>
         prev
@@ -144,53 +149,32 @@ export function BondbotUpdateProvider({ children }: { children: ReactNode }) {
               ...prev,
               phase: "reconnecting",
               progress: Math.max(prev.progress, 94),
-              message: "Restarting BondBot and reconnecting...",
+              message: "Waiting for BondBot to come back",
+              detail: null,
             }
           : prev,
       );
-      setHealthTick({});
+      setProgressTick({});
+      return;
     }
-  }
-
-  async function probeServerHealth() {
-    try {
-      const healthUrl =
-        typeof window === "undefined"
-          ? "http://127.0.0.1:5173/health"
-          : `${window.location.origin}/health`;
-      const res = await fetch(healthUrl, { cache: "no-store" });
-      if (res.ok) {
-        const body = (await bestEffort(
-          "parse health payload",
-          res.json() as Promise<{ ok?: boolean; version?: string }>,
-        )) ?? { ok: false };
-        if (body.ok) {
-          const targetApi = job?.targetApiVersion ?? availability?.latestApiVersion ?? null;
-          const versionChanged =
-            (baselineApiVersion && body.version && body.version !== baselineApiVersion) ||
-            (targetApi && body.version === targetApi);
-          if (versionChanged || !targetApi) {
-            setReconnecting(false);
-            setReloading(true);
-            setJob((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    running: false,
-                    phase: "succeeded",
-                    progress: 100,
-                    message: "Updated! Reloading BondBot...",
-                  }
-                : prev,
-            );
-            return;
-          }
-        }
-      }
-    } catch {
-      // Server is still restarting; keep waiting quietly.
+    setReconnecting(false);
+    // A restarted updater has no record of the job; the new version then speaks for itself.
+    if (next.phase === "idle" && job) {
+      setPollingProgress(false);
+      setReloading(true);
+      return;
     }
-    setHealthTick({});
+    setJob(next);
+    if (next.running) {
+      setProgressTick({});
+      return;
+    }
+    setPollingProgress(false);
+    if (next.phase === "succeeded" && !next.restartRequired) {
+      setReloading(true);
+    } else {
+      await bestEffort("refresh BondBot update status", checkNowInternal(false));
+    }
   }
 
   async function checkNowInternal(force = true) {
@@ -223,6 +207,7 @@ export function BondbotUpdateProvider({ children }: { children: ReactNode }) {
     if (targetVersion) {
       bondbotSkippedVersionPreference.set(targetVersion);
     }
+    if (!job?.running) setJob(null);
   }
 
   function reloadApp() {
@@ -234,7 +219,7 @@ export function BondbotUpdateProvider({ children }: { children: ReactNode }) {
       value={{
         availability,
         job,
-        showNotificationDot,
+        showUpdate,
         canOpenPopover,
         isUpdating,
         reconnecting,

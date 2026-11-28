@@ -53,7 +53,10 @@ export function SidebarHeader({
   setCreateBotOpen: (open: boolean) => void;
 }) {
   const { t } = useLingui();
-  const hasWindowChrome = Boolean(desktopBridge());
+  // A desktop window with the system's own frame draws no controls in the page, so it must not
+  // reserve room for them: the logo sits at the far left as in a browser.
+  const hasWindowChrome =
+    Boolean(desktopBridge()) && windowChromeKind(desktopBridge()) !== "spacer";
   // The rail holds the window controls from md up; the phone drawer still needs them.
   const rail = useAppRail();
   const toggleLabel = mini ? t`Show bots` : t`Minimize bots`;

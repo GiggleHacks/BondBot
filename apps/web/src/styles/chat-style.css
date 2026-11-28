@@ -1,0 +1,120 @@
+/* Optional looks, off unless chosen in Settings > General: colour in the chat, and a terminal
+   typeface across the app. */
+html[data-chat-colors="on"] {
+  --cc-think: oklch(0.52 0.2 295);
+  --cc-shell: oklch(0.55 0.13 70);
+  --cc-web: oklch(0.52 0.16 250);
+  --cc-computer: oklch(0.55 0.2 350);
+  --cc-files: oklch(0.52 0.13 160);
+  --cc-memory: oklch(0.55 0.18 25);
+  --cc-other: oklch(0.52 0.1 210);
+  --cc-heading: oklch(0.5 0.17 250);
+  --cc-strong: oklch(0.52 0.17 45);
+  --cc-code: oklch(0.5 0.14 160);
+}
+
+html[data-theme="dark"][data-chat-colors="on"] {
+  --cc-think: oklch(0.78 0.13 300);
+  --cc-shell: oklch(0.83 0.14 85);
+  --cc-web: oklch(0.78 0.12 235);
+  --cc-computer: oklch(0.77 0.15 350);
+  --cc-files: oklch(0.82 0.14 160);
+  --cc-memory: oklch(0.76 0.14 30);
+  --cc-other: oklch(0.82 0.1 205);
+  --cc-heading: oklch(0.82 0.12 225);
+  --cc-strong: oklch(0.85 0.13 75);
+  --cc-code: oklch(0.85 0.14 155);
+}
+
+html[data-chat-colors="on"] {
+  /* Thinking */
+  [data-chat-part="reasoning"] > button,
+  [data-chat-part="reasoning"] > div {
+    color: var(--cc-think);
+  }
+
+  [data-chat-part="reasoning"] > div {
+    border-color: var(--cc-think);
+    background: color-mix(in oklab, var(--cc-think) 7%, transparent);
+  }
+
+  /* Actions, by what they touch */
+  [data-testid="tool-activity"] > button {
+    color: var(--cc-other);
+  }
+
+  [data-tool-kind="shell"] > :last-child {
+    color: var(--cc-shell);
+  }
+
+  [data-tool-kind="web"] > :last-child {
+    color: var(--cc-web);
+  }
+
+  [data-tool-kind="computer"] > :last-child {
+    color: var(--cc-computer);
+  }
+
+  [data-tool-kind="files"] > :last-child {
+    color: var(--cc-files);
+  }
+
+  [data-tool-kind="memory"] > :last-child {
+    color: var(--cc-memory);
+  }
+
+  [data-tool-kind="other"] > :last-child {
+    color: var(--cc-other);
+  }
+
+  [data-tool-failed] > * {
+    color: var(--destructive) !important;
+  }
+
+  /* Replies: headings, the words the bot stressed, code, links, lists and quotes */
+  [data-testid="message-bot-bubble"] {
+    :is(h1, h2, h3, h4) {
+      color: var(--cc-heading);
+    }
+
+    strong {
+      color: var(--cc-strong);
+    }
+
+    :not(pre) > code {
+      color: var(--cc-code);
+    }
+
+    a {
+      color: var(--cc-web);
+    }
+
+    li::marker {
+      color: var(--cc-heading);
+    }
+
+    blockquote {
+      border-color: var(--warning);
+      background: color-mix(in oklab, var(--warning) 9%, transparent);
+    }
+  }
+
+  /* Errors stand out as a block, not only as red words. */
+  [data-testid="transcript"] [role="alert"] {
+    border-inline-start: 3px solid var(--destructive);
+    border-radius: 6px;
+    background: color-mix(in oklab, var(--destructive) 10%, transparent);
+    padding: 6px 10px;
+  }
+}
+
+/* Cascadia Mono where installed, and the device's own monospace elsewhere. */
+html[data-terminal-font="on"] {
+  --font-sans:
+    "Cascadia Mono", "Cascadia Code", "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular,
+    Menlo, Consolas, "DejaVu Sans Mono", monospace;
+}
+
+html[data-terminal-font="on"] body {
+  font-family: var(--font-sans);
+}

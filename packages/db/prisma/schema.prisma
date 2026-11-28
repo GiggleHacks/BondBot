@@ -49,7 +49,7 @@ model User {
   /// Null lets each client keep its previous device preference.
   composerModelPicker          Boolean?
   streamReplies                Boolean?
-  notificationSounds           Boolean                       @default(false)
+  notificationSounds           Boolean                       @default(true)
   /// IANA timezone such as "Pacific/Auckland". Null until set; bots then get UTC only.
   timezone                    String?
   /// The app language last chosen, such as "es" or "pt-BR". Null until an app reports it;

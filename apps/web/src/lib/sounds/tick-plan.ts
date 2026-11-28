@@ -1,8 +1,8 @@
 /** One tick per this many streamed characters, so a fast stream ticks faster than a slow one. */
-const CHARS_PER_TICK = 12;
-const MAX_TICKS_PER_CHUNK = 6;
+const CHARS_PER_TICK = 24;
+const MAX_TICKS_PER_CHUNK = 3;
 /** Closest two ticks may sit, in seconds: a flood of text stays a patter, never a buzz. */
-const MIN_GAP = 0.07;
+const MIN_GAP = 0.12;
 /** How far ahead ticks are scheduled. When text stops arriving, the ticks stop this soon after. */
 const HORIZON = 0.45;
 const FIRST_CHUNK_SPREAD = 0.15;
@@ -45,4 +45,11 @@ export function planTicks(
     times,
     state: { nextFree: last === undefined ? state.nextFree : last + MIN_GAP, lastArrival: now },
   };
+}
+
+/** Another of `count` versions than the one just played, so a sound never repeats back to back. */
+export function nextVariant(count: number, last: number, random: () => number = Math.random) {
+  if (count < 2) return 0;
+  if (last < 0) return Math.floor(random() * count);
+  return (last + 1 + Math.floor(random() * (count - 1))) % count;
 }

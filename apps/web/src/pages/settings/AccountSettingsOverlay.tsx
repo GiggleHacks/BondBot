@@ -61,6 +61,16 @@ import {
   deviceChatPreferences,
   useChatPreferences,
 } from "../../lib/preferences/chat-preferences";
+import type { ChatSoundKind } from "../../lib/preferences/chat-sound-mutes-pref";
+import {
+  CHAT_SOUND_KINDS,
+  mutedChatSoundsPreference,
+  setChatSoundMuted,
+} from "../../lib/preferences/chat-sound-mutes-pref";
+import {
+  chatColorsPreference,
+  terminalFontPreference,
+} from "../../lib/preferences/chat-style-prefs";
 import { remoteImagesPreference } from "../../lib/preferences/remote-images-preference";
 import type { AppearancePreference } from "../../lib/preferences/ui-appearance";
 import { getUiAppearancePreference, setUiAppearance } from "../../lib/preferences/ui-appearance";
@@ -143,6 +153,8 @@ export function GeneralSettingsPanels({
     getUiAppearancePreference(),
   );
   const sidebarDensity = botsSidebarDensityPreference.use();
+  const chatColors = chatColorsPreference.use();
+  const terminalFont = terminalFontPreference.use();
   const sidebarDensityLabelId = useId();
   const botStyleLabelId = useId();
   const [botStyleError, setBotStyleError] = useState<string | null>(null);
@@ -336,6 +348,29 @@ export function GeneralSettingsPanels({
             />
           }
         />
+        {(
+          [
+            ["colorful-chat", "Colorful chat", chatColors, chatColorsPreference],
+            ["terminal-font", "Terminal font", terminalFont, terminalFontPreference],
+          ] as const
+        ).map(([id, label, checked, preference]) => (
+          <SettingsRow
+            key={id}
+            label={
+              <Label htmlFor={id} className="text-body font-normal text-foreground">
+                {label}
+              </Label>
+            }
+            control={
+              <Switch
+                id={id}
+                data-testid={`${id}-toggle`}
+                checked={checked}
+                onCheckedChange={(next) => preference.set(next)}
+              />
+            }
+          />
+        ))}
         {onBotAvatarSetChange ? (
           <SettingsRow
             label={
@@ -587,6 +622,7 @@ export function GeneralSettingsPanels({
               />
             }
           />
+          {me.chatPreferences.notificationSounds ? <ChatSoundKindRows /> : null}
         </SettingsGroup>
       ) : null}
 
@@ -913,4 +949,35 @@ function UiLocalePicker({
       onValueChange={onChange}
     />
   );
+}
+
+const CHAT_SOUND_LABELS: Record<ChatSoundKind, string> = {
+  sent: "When you send a message",
+  thinking: "While a bot thinks or writes",
+  tools: "When a bot uses a tool",
+  alerts: "When a bot needs you or fails",
+};
+
+/** Each kind of sound on its own switch, for this device. */
+function ChatSoundKindRows() {
+  const muted = mutedChatSoundsPreference.use();
+  const id = useId();
+  return CHAT_SOUND_KINDS.map((kind) => (
+    <SettingsRow
+      key={kind}
+      label={
+        <Label htmlFor={`${id}-${kind}`} className="text-body font-normal text-muted-foreground">
+          {CHAT_SOUND_LABELS[kind]}
+        </Label>
+      }
+      control={
+        <Switch
+          id={`${id}-${kind}`}
+          data-testid={`chat-sound-${kind}`}
+          checked={!muted.includes(kind)}
+          onCheckedChange={(checked) => setChatSoundMuted(kind, !checked)}
+        />
+      }
+    />
+  ));
 }

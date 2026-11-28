@@ -218,3 +218,18 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Sign-in page is smaller and holds still: the robot and the BOND BOT wordmark are drawn once.
 - Checked: type-check passes (the two old billing errors aside); unit tests and repo checks match 0.4.1's failures; 87 targeted browser tests pass and 4 fail the same way on 0.4.1. Not heard or seen on a real server before deploy: the sounds in a live chat, real memory and CPU figures in the panel.
 
+
+## Deployed to cccbox: 0.5.0 (2026-11-28 07:51 ICT, by the in-app updater)
+- Updated with the app's own Update button (image built on cccbox from 1771c3aaf, about 6 minutes). Database dumped to /mnt/user/appdata/rakazo/backup-pre-v050-20261128/ while it built; no schema change.
+- Verified live: api, web, worker and supervisor healthy, API reports 1.10.0, the three compose files and the sudo computer override are in use, speech server reachable. One expected "run.queue_delayed" during the restart.
+- Seen: the update screen stayed at "Reconnecting 94%" although the server had finished (fixed in 0.5.1).
+- Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v050-20261128/rollback.sh
+
+## v0.5.1 / 1.10.1 (2026-11-28, not deployed)
+- Updates: the red dot is gone. An "Update to vX" button with Skip sits above the CPU and RAM meter. While updating it shows a checklist (download, build, database, restart), a moving bar, size and speed while downloading, time left (from the last update's length), the current build step, and that refreshing is safe.
+- Fixed: the page stayed at 94% for ever after a successful update, because it waited on /health, which the web server does not answer with JSON. It now follows the update's own record and reloads when that says finished. A page loaded during an update picks it up.
+- The updater sidecar reports live progress. It does not update itself: rebuild and replace its image once (rakazo-updater) for speed, time left and build steps.
+- Sounds are on by default (migration turns them on for existing accounts, which also turns on phone push sounds). Each kind has its own switch in Settings > General > Notifications. Thinking ticks are far quieter and sparser, the tool burst quieter, and the send, tool and thinking sounds have four versions each.
+- Settings > General has two optional looks, both off by default and kept per device. "Colorful chat" colours thinking, tool steps by what they touch (red when one failed), headings, emphasised words, code, links, quotes and errors. "Terminal font" uses Cascadia Mono where installed and the device's monospace elsewhere. The Dark blue theme goes well with it.
+- The bot panel's reading is now "RAM 1.2 GB  CPU 8%", green, amber or red by how full it is.
+- Linux (and Windows) desktop with the system window frame: the logo is at the far left again; the room for macOS window buttons is no longer reserved.

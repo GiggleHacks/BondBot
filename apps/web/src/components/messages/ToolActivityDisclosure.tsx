@@ -11,6 +11,7 @@ import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { Fragment } from "react";
 import { toolStepCount } from "../../lib/chat/tool-activity-view";
+import { toolKind } from "../../lib/chat/tool-kind";
 
 type ToolStep = Extract<ThreadMessage["blocks"][number], { kind: "steps" }>["steps"][number];
 
@@ -46,7 +47,11 @@ export function ToolSteps({
                 <ChatMarkdown>{step.note}</ChatMarkdown>
               </div>
             ) : null}
-            <div className="flex min-w-0 items-center gap-2 leading-5">
+            <div
+              className="flex min-w-0 items-center gap-2 leading-5"
+              data-tool-kind={toolKind(step.label)}
+              data-tool-failed={step.outcomes?.failed ? true : undefined}
+            >
               <span
                 className={`text-label ${
                   isCurrent

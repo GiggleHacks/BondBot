@@ -1,6 +1,7 @@
 import { Button, useCopyText } from "@rakazo/ui-web";
 import { ArrowDownToLine, Check, Copy, RefreshCw, RotateCw } from "lucide-react";
 import type { BondbotUpdateContextValue } from "./BondbotUpdateProvider";
+import { UpdateProgress } from "./UpdateProgress";
 
 export function BondBotUpdatePopover({
   update,
@@ -20,7 +21,6 @@ export function BondBotUpdatePopover({
   const targetLabel = targetVersion ? `v${targetVersion}` : null;
 
   const activeProgress = job && (job.running || job.phase !== "idle" || reloading);
-  const progressValue = reloading ? 100 : Math.min(100, Math.max(0, job?.progress ?? 0));
   const showApplyButton =
     availability.updateAvailable &&
     availability.canApply &&
@@ -71,40 +71,7 @@ export function BondBotUpdatePopover({
 
       {activeProgress && job ? (
         <div className="flex flex-col gap-2 rounded-lg border border-border/70 bg-muted/40 p-2.5">
-          <div className="flex items-center justify-between gap-2 text-caption">
-            <span className="truncate font-medium text-foreground">{job.message}</span>
-            <span className="shrink-0 tabular-nums text-muted-foreground">{progressValue}%</span>
-          </div>
-          <div
-            role="progressbar"
-            aria-label="BondBot update progress"
-            aria-valuenow={progressValue}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            className="h-2 w-full overflow-hidden rounded-full bg-muted"
-          >
-            <div
-              className={`h-full rounded-full transition-[width] duration-500 ease-out ${
-                job.phase === "failed"
-                  ? "bg-destructive"
-                  : job.phase === "succeeded"
-                    ? "bg-emerald-500"
-                    : "bg-primary animate-pulse"
-              }`}
-              style={{ width: `${progressValue}%` }}
-            />
-          </div>
-          {job.error ? <p className="text-caption text-destructive">{job.error}</p> : null}
-          {job.logTail && job.phase === "failed" ? (
-            <details className="text-[11px] text-muted-foreground">
-              <summary className="cursor-pointer select-none font-medium text-foreground/80">
-                Build output
-              </summary>
-              <pre className="mt-1.5 max-h-28 overflow-auto whitespace-pre-wrap rounded bg-background/80 p-2 font-mono text-[10px]">
-                {job.logTail}
-              </pre>
-            </details>
-          ) : null}
+          <UpdateProgress job={job} />
           {job.phase === "succeeded" && job.restartRequired ? (
             <Button
               type="button"

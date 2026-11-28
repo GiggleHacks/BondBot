@@ -3,14 +3,26 @@ import { useQuery } from "@tanstack/react-query";
 import { useSpaceQueries } from "../../../lib/query/query";
 
 const GIB = 1024 ** 3;
-const gib = (bytes: number) => String(Math.round((bytes / GIB) * 10) / 10);
 
-export function usageText({ memoryBytes, memoryLimitBytes, cpuPercent }: ComputerStats): string {
-  return `${gib(memoryBytes)} of ${gib(memoryLimitBytes)} GB memory, ${cpuPercent}% CPU`;
+/** Green while there is room, amber when it is getting full, red when it is about to run out. */
+export function usageTone(share: number): string {
+  if (share >= 0.85) return "text-destructive";
+  return share >= 0.6 ? "text-warning" : "text-success";
+}
+
+export function usageReadings({ memoryBytes, memoryLimitBytes, cpuPercent }: ComputerStats) {
+  return [
+    {
+      label: "RAM",
+      value: `${Math.round((memoryBytes / GIB) * 10) / 10} GB`,
+      tone: usageTone(memoryBytes / memoryLimitBytes),
+    },
+    { label: "CPU", value: `${cpuPercent}%`, tone: usageTone(cpuPercent / 100) },
+  ];
 }
 
 /**
- * A faint reading of what the bot's computer is using. It is read when the panel opens, the
+ * A small colour-coded reading of what the bot's computer is using. It is read when the panel opens, the
  * window is focused and the computer starts; it is a snapshot, never polled.
  */
 export function BotUsageLine({
@@ -34,10 +46,15 @@ export function BotUsageLine({
   return (
     <p
       data-testid="bot-usage"
-      title="Memory and processor use of this bot's computer"
-      className="mt-1 text-label text-faint-foreground tabular-nums"
+      title={`This bot's computer. Memory limit ${Math.round(data.memoryLimitBytes / GIB)} GB.`}
+      className="mt-1 flex gap-3 text-label tabular-nums"
     >
-      {usageText(data)}
+      {usageReadings(data).map((reading) => (
+        <span key={reading.label} className="flex gap-1">
+          <span className="text-faint-foreground">{reading.label}</span>
+          <span className={reading.tone}>{reading.value}</span>
+        </span>
+      ))}
     </p>
   );
 }

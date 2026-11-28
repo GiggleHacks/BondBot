@@ -26,6 +26,11 @@
   const tinted = { blue: "#0b1220", purple: "#16141c" }[palette];
   const plain = theme === "light" ? "#ffffff" : "#0a0a0a";
   if (meta) meta.setAttribute("content", tinted || plain);
+  // Optional chat colours and terminal font, chosen in Settings on this device.
+  try {
+    if (localStorage.getItem("bondbot.chatColors") === "on") root.dataset.chatColors = "on";
+    if (localStorage.getItem("bondbot.terminalFont") === "on") root.dataset.terminalFont = "on";
+  } catch {}
   // macOS draws regular text at 420 (see --font-weight-normal); iPads report a Mac platform too.
   const nav = typeof navigator === "object" ? navigator : undefined;
   if (nav && /^Mac/.test(nav.platform || "") && !(nav.maxTouchPoints > 1)) {

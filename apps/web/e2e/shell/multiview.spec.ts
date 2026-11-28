@@ -28,7 +28,7 @@ test("Multiview resizes its chats and offers chat columns without reloading scre
 
   // The bot panel reads the running computer's usage faintly under the name.
   await openBotPanel(page);
-  await expect(page.getByTestId("bot-usage")).toHaveText("1.2 of 4 GB memory, 8% CPU");
+  await expect(page.getByTestId("bot-usage")).toHaveText("RAM1.2 GBCPU8%");
   await captureScreenshot(page, testInfo, "bot-panel-usage-and-sleeping-bot");
   await page.getByTestId("bot-settings-trigger").click();
 

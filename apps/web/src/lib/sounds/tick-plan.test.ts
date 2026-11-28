@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { idleTicks, planTicks } from "./tick-plan";
+import { idleTicks, nextVariant, planTicks } from "./tick-plan";
 
 const still = () => 0;
 const jumpy = () => 1;
@@ -41,4 +41,15 @@ describe("planTicks", () => {
   it("makes no sound for an empty chunk", () => {
     expect(planTicks(0, 1, idleTicks, still)).toEqual({ times: [], state: idleTicks });
   });
+});
+
+it("never picks the version just played", () => {
+  for (const random of [0, 0.5, 0.999]) {
+    for (let last = 0; last < 4; last += 1) {
+      const next = nextVariant(4, last, () => random);
+      expect(next).not.toBe(last);
+      expect(next).toBeGreaterThanOrEqual(0);
+      expect(next).toBeLessThan(4);
+    }
+  }
 });

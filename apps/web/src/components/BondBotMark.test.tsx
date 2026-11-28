@@ -47,7 +47,7 @@ describe("BondBotMark update indicator", () => {
     return () => act(() => root.unmount());
   }
 
-  it("renders red dot and opens update popover with progress bar", async () => {
+  it("opens the update popover with the running steps", async () => {
     const startUpdate = vi.fn();
     const skipCurrentUpdate = vi.fn();
     const cleanup = renderMark({
@@ -67,7 +67,7 @@ describe("BondBotMark update indicator", () => {
         restartRequired: false,
         logTail: null,
       },
-      showNotificationDot: true,
+      showUpdate: true,
       canOpenPopover: true,
       isUpdating: true,
       reconnecting: false,
@@ -82,7 +82,6 @@ describe("BondBotMark update indicator", () => {
       reloadApp: vi.fn(),
     });
 
-    expect(document.querySelector('[data-testid="bondbot-update-dot"]')).toBeTruthy();
     const trigger = document.querySelector<HTMLButtonElement>(
       '[data-testid="bondbot-mark-trigger"]',
     );
@@ -95,15 +94,17 @@ describe("BondBotMark update indicator", () => {
     await vi.waitFor(() => {
       expect(document.querySelector('[data-testid="bondbot-update-popover"]')).toBeTruthy();
     });
+    await vi.waitFor(() => expect(document.querySelector('[role="progressbar"]')).toBeTruthy());
     const bar = document.querySelector('[role="progressbar"]');
     expect(bar?.getAttribute("aria-valuenow")).toBe("42");
-    expect(document.body.textContent).toContain("Building BondBot v0.4.0...");
+    const states = [...document.querySelectorAll("li")].map((step) => step.dataset.state);
+    expect(states).toEqual(["done", "active", "pending", "pending"]);
+    expect(document.body.textContent).toContain("Safe to refresh or close this page.");
     cleanup();
   });
 
-  it("hides dot and trigger when no update context or non-admin user", () => {
+  it("hides the trigger when no update context or non-admin user", () => {
     const cleanup = renderMark(null);
-    expect(document.querySelector('[data-testid="bondbot-update-dot"]')).toBeNull();
     expect(document.querySelector('[data-testid="bondbot-mark-trigger"]')).toBeNull();
     cleanup();
   });

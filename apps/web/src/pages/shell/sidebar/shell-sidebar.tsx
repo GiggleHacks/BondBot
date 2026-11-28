@@ -16,6 +16,7 @@ import { useState } from "react";
 import { PasskeyOffer } from "../../../components/account/PasskeyOffer";
 import { useUsageHint } from "../../../components/billing/PlanUsage";
 import { useBilling } from "../../../components/billing/SubscriptionGate";
+import { UpdateCard } from "../../../components/bondbot-update/UpdateCard";
 import { CreateOrganizationDialog } from "../../../components/spaces/CreateOrganizationDialog";
 import { InviteDialog } from "../../../components/spaces/InviteDialog";
 import { useSignOut } from "../../../lib/auth/sign-out";
@@ -316,6 +317,8 @@ export function ShellSidebar({
         <div className={mini ? "hidden" : "contents"}>
           <PasskeyOffer />
         </div>
+        {/* The host's CPU and RAM meter sits just above the footer, so this lands above it. */}
+        <UpdateCard mini={mini} />
         <ShellSidebarFooter
           mini={mini}
           user={user}

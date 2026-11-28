@@ -92,10 +92,13 @@ export interface CommandResult {
   output: string;
 }
 
+type OnOutput = (chunk: string) => void;
+
 export type UpdaterCommandRunner = (
   command: string,
   args: string[],
-  options: { cwd: string; timeoutMs: number; env?: Record<string, string> },
+  // `onOutput` gets output as it arrives, for progress that cannot wait for the command to end.
+  options: { cwd: string; timeoutMs: number; env?: Record<string, string>; onOutput?: OnOutput },
 ) => Promise<CommandResult>;
 
 const PASSTHROUGH_ENV = [
@@ -202,8 +205,9 @@ export const runHostCommand: UpdaterCommandRunner = (command, args, options) => 
         output: output ? `${output}\n${reason}` : reason,
       });
     };
-    if (command === "git") execFile("git", argv, execOptions, done);
-    else execFile("docker", argv, execOptions, done);
+    const child = execFile(command === "git" ? "git" : "docker", argv, execOptions, done);
+    for (const stream of [child.stdout, child.stderr])
+      stream?.on("data", (chunk) => options.onOutput?.(String(chunk)));
   });
 };
 

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { access, mkdir, readFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { BondbotUpdateJob } from "@rakazo/contracts";
 import type { ComposeTarget } from "@rakazo/core";
@@ -13,11 +13,15 @@ import {
 import type { Logger } from "@rakazo/logging";
 import { bestEffort } from "@rakazo/logging";
 import type { Hono } from "hono";
+import type { StepProgress } from "./bondbot-progress.js";
+import { buildProgressReader, gitProgressReader } from "./bondbot-progress.js";
 import type { UpdaterCommandRunner } from "./index.js";
 import type { UpdaterConfig } from "./updater-logic.js";
 import { readEnvAssignment, readTagState } from "./updater-logic.js";
 
 const SOURCE_DIR_NAME = ".bondbot-source";
+/** How long the last successful update took, to estimate the next one. */
+const LAST_RUN_FILE = ".bondbot-update-last.json";
 const CLONE_TIMEOUT_MS = 300_000;
 const BUILD_TIMEOUT_MS = 1_800_000;
 const MIGRATE_TIMEOUT_MS = 300_000;
@@ -64,8 +68,37 @@ export function mountBondbotRoutes(
   },
 ) {
   let job: BondbotUpdateJob = initialBondbotJob();
+  let lastDurationSeconds: number | null = null;
+  const lastRunPath = path.join(deps.config.deployDir, LAST_RUN_FILE);
 
-  app.get("/bondbot/status", (c) => c.json(job));
+  async function readLastDuration(): Promise<number | null> {
+    const text = await readOptionalText(lastRunPath);
+    const seconds = Number(/"durationSeconds":\s*(\d+)/.exec(text ?? "")?.[1]);
+    return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+  }
+
+  function withEta(current: BondbotUpdateJob): BondbotUpdateJob {
+    if (!current.running || !current.startedAt || !lastDurationSeconds) return current;
+    const left = lastDurationSeconds - (Date.now() - Date.parse(current.startedAt)) / 1000;
+    // Past the last run's length there is nothing honest to say.
+    return left > 0 ? { ...current, etaSeconds: Math.round(left) } : current;
+  }
+
+  /** Places a command's own progress inside its share of the whole update. */
+  function liveProgress(from: number, to: number) {
+    return ({ fraction, detail, downloadedBytes, bytesPerSecond }: StepProgress) => {
+      job = {
+        ...job,
+        progress: Math.max(job.progress, Math.round(from + (to - from) * fraction)),
+        detail: detail?.slice(0, 300) ?? null,
+        downloadedBytes,
+        bytesPerSecond,
+        lastOutputAt: new Date().toISOString(),
+      };
+    };
+  }
+
+  app.get("/bondbot/status", (c) => c.json(withEta(job)));
 
   app.post("/bondbot/apply", async (c) => {
     if (job.running) return c.json(job, 202);
@@ -99,8 +132,9 @@ export function mountBondbotRoutes(
       logTail: null,
     };
 
+    lastDurationSeconds = await readLastDuration();
     void runBondbotApply();
-    return c.json(job, 202);
+    return c.json(withEta(job), 202);
   });
 
   async function runBondbotApply() {
@@ -131,7 +165,10 @@ export function mountBondbotRoutes(
         job = {
           ...job,
           phase: "building",
-          progress: 32,
+          progress: 20,
+          detail: null,
+          downloadedBytes: undefined,
+          bytesPerSecond: undefined,
           message: targetUiVersion
             ? `Building BondBot v${targetUiVersion}...`
             : "Building BondBot image...",
@@ -154,6 +191,7 @@ export function mountBondbotRoutes(
           "docker",
           [
             "build",
+            "--progress=plain",
             "-f",
             "infra/compose/Dockerfile",
             "--build-arg",
@@ -162,7 +200,11 @@ export function mountBondbotRoutes(
             imageRef,
             ".",
           ],
-          { cwd: sourceDir, timeoutMs: BUILD_TIMEOUT_MS },
+          {
+            cwd: sourceDir,
+            timeoutMs: BUILD_TIMEOUT_MS,
+            onOutput: buildProgressReader(liveProgress(20, 88)),
+          },
         );
         if (!buildResult.ok) {
           throw new UpdateFailure("Docker build failed.", buildResult.output);
@@ -171,7 +213,9 @@ export function mountBondbotRoutes(
         job = {
           ...job,
           phase: "migrating",
-          progress: 72,
+          progress: 90,
+          detail: null,
+          bytesPerSecond: undefined,
           message: "Running database migrations...",
         };
 
@@ -202,7 +246,7 @@ export function mountBondbotRoutes(
         job = {
           ...job,
           phase: "restarting",
-          progress: 88,
+          progress: 94,
           message: "Restarting BondBot services...",
         };
 
@@ -237,6 +281,14 @@ export function mountBondbotRoutes(
           finishedAt: new Date().toISOString(),
           logTail: upResult.output || null,
         };
+        const durationSeconds = Math.max(
+          1,
+          Math.round((Date.now() - Date.parse(job.startedAt!)) / 1000),
+        );
+        await bestEffort(
+          "remember how long the BondBot update took",
+          writeFile(lastRunPath, JSON.stringify({ durationSeconds })),
+        );
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -258,17 +310,26 @@ export function mountBondbotRoutes(
     job = {
       ...job,
       phase: "downloading",
-      progress: 16,
+      progress: 5,
       message: "Downloading latest BondBot code from GitHub...",
     };
+    const onOutput = gitProgressReader(liveProgress(5, 20));
 
     const hasRepo = await pathExists(path.join(sourceDir, ".git"));
     if (!hasRepo) {
       await mkdir(sourceDir, { recursive: true });
       const clone = await deps.run(
         "git",
-        ["clone", "--branch", BONDBOT_GITHUB_BRANCH, "--single-branch", BONDBOT_GIT_URL, sourceDir],
-        { cwd: deps.config.deployDir, timeoutMs: CLONE_TIMEOUT_MS },
+        [
+          "clone",
+          "--progress",
+          "--branch",
+          BONDBOT_GITHUB_BRANCH,
+          "--single-branch",
+          BONDBOT_GIT_URL,
+          sourceDir,
+        ],
+        { cwd: deps.config.deployDir, timeoutMs: CLONE_TIMEOUT_MS, onOutput },
       );
       if (!clone.ok) {
         throw new UpdateFailure("Could not clone BondBot from GitHub.", clone.output);
@@ -276,10 +337,11 @@ export function mountBondbotRoutes(
       return;
     }
 
-    const fetch = await deps.run("git", ["fetch", BONDBOT_GIT_URL, BONDBOT_GITHUB_BRANCH], {
-      cwd: sourceDir,
-      timeoutMs: CLONE_TIMEOUT_MS,
-    });
+    const fetch = await deps.run(
+      "git",
+      ["fetch", "--progress", BONDBOT_GIT_URL, BONDBOT_GITHUB_BRANCH],
+      { cwd: sourceDir, timeoutMs: CLONE_TIMEOUT_MS, onOutput },
+    );
     if (!fetch.ok) {
       throw new UpdateFailure("Could not fetch latest changes from GitHub.", fetch.output);
     }

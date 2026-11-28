@@ -380,7 +380,7 @@ test("a connected memory provider edits with its saved settings", async ({ page 
   await expect(save).toBeDisabled();
 });
 
-test("sounds start off and save the account choice", async ({ page }, testInfo) => {
+test("sounds start on and can be turned off for the account", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     Object.defineProperty(window, "rakazoDesktop", { value: { platform: "darwin" } });
   });
@@ -394,13 +394,17 @@ test("sounds start off and save the account choice", async ({ page }, testInfo) 
   const settings = await openUserSettings(page);
   const sound = settings.getByRole("switch", { name: "Play sounds while bots work" });
   await expect(sound).toBeEnabled();
-  await expect(sound).not.toBeChecked();
+  await expect(sound).toBeChecked();
   await sound.scrollIntoViewIfNeeded();
   await captureScreenshot(page, testInfo, "desktop-notification-sound");
+  // Each kind has its own switch under the main one.
+  await settings.getByTestId("chat-sound-thinking").click();
+  await expect(settings.getByTestId("chat-sound-thinking")).not.toBeChecked();
   await sound.click();
-  await expect(sound).toBeChecked();
+  await expect(sound).not.toBeChecked();
+  await expect(settings.getByTestId("chat-sound-thinking")).toHaveCount(0);
   await page.reload();
-  await expect(sound).toBeChecked();
+  await expect(sound).not.toBeChecked();
 });
 
 test("connected apps live in Settings, not beside the account button", async ({

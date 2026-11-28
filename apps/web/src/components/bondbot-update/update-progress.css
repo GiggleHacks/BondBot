@@ -1,0 +1,75 @@
+/* The update bar keeps moving while work runs, so a long step never looks stuck. */
+.bb-update-bar {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklab, currentColor 12%, transparent);
+}
+
+.bb-update-fill {
+  position: relative;
+  height: 100%;
+  min-width: 8px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    oklch(0.75 0.14 230),
+    oklch(0.68 0.16 280),
+    oklch(0.77 0.15 160),
+    oklch(0.75 0.14 230)
+  );
+  background-size: 200% 100%;
+  box-shadow: 0 0 10px 0 oklch(0.75 0.14 230 / 0.7);
+  transition: width 600ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Pixel blocks marching along the filled part. */
+.bb-update-fill::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: repeating-linear-gradient(90deg, transparent 0 6px, rgb(255 255 255 / 0.35) 6px 8px);
+  content: "";
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .bb-update-fill {
+    animation: bb-update-flow 1.8s linear infinite;
+  }
+
+  .bb-update-fill::after {
+    animation: bb-update-march 600ms linear infinite;
+  }
+
+  /* A light crossing the whole track, ahead of the fill too. */
+  .bb-update-bar[data-running]::after {
+    position: absolute;
+    inset: 0;
+    width: 35%;
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.45), transparent);
+    content: "";
+    animation: bb-update-sweep 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes bb-update-flow {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes bb-update-march {
+  to {
+    transform: translateX(8px);
+  }
+}
+
+@keyframes bb-update-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}

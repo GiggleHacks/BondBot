@@ -63,5 +63,12 @@ export const BondbotUpdateJobSchema = z.object({
   error: z.string().max(1000).nullable(),
   restartRequired: z.boolean(),
   logTail: z.string().max(4000).nullable(),
+  /** What the running command is doing now. The rest below come from its live output. */
+  detail: z.string().max(300).nullable().optional(),
+  downloadedBytes: z.number().nonnegative().optional(),
+  bytesPerSecond: z.number().nonnegative().optional(),
+  lastOutputAt: z.string().optional(),
+  /** Seconds left, judged by how long the last update took. Absent when that is unknown. */
+  etaSeconds: z.number().nonnegative().optional(),
 });
 export type BondbotUpdateJob = z.infer<typeof BondbotUpdateJobSchema>;

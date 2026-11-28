@@ -798,7 +798,7 @@ export function ReasoningBlock({ reasoning, live = false }: { reasoning: string;
   }, [reasoning, live, open]);
   if (!show) return null;
   return (
-    <div className="w-full max-w-full">
+    <div className="w-full max-w-full" data-chat-part="reasoning">
       <button
         type="button"
         aria-expanded={open}

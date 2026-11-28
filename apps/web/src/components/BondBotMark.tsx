@@ -16,11 +16,11 @@ export function BondBotMark({ mini = false }: { mini?: boolean }) {
   const update = useBondbotUpdate();
   const [open, setOpen] = useState(false);
 
-  const showDot = Boolean(update?.showNotificationDot);
+  const offered = Boolean(update?.showUpdate);
   const targetVersion =
     update?.availability?.latestUiVersion ?? update?.availability?.latestApiVersion ?? null;
   const label =
-    showDot && targetVersion
+    offered && targetVersion
       ? `BondBot v${BONDBOT_VERSION}, update to v${targetVersion} available`
       : `BondBot v${BONDBOT_VERSION}`;
 
@@ -28,7 +28,7 @@ export function BondBotMark({ mini = false }: { mini?: boolean }) {
     <>
       <style>{`.bb-mark{filter:brightness(.55)}html[data-theme="dark"] .bb-mark{filter:brightness(1.7)}.bb-ver{opacity:.75}`}</style>
       <div
-        className="relative flex w-fit select-none flex-col gap-1"
+        className="flex w-fit select-none flex-col gap-1"
         title={label}
         data-testid="bondbot-mark"
       >
@@ -36,13 +36,6 @@ export function BondBotMark({ mini = false }: { mini?: boolean }) {
         {mini ? null : (
           <QuakeText text={`V${BONDBOT_VERSION}`} zoom={1} className="bb-mark bb-ver" />
         )}
-        {showDot ? (
-          <span
-            data-testid="bondbot-update-dot"
-            aria-hidden="true"
-            className={`pointer-events-none absolute -top-0.5 ${mini ? "-end-0.5" : "-end-2"} size-2 rounded-full bg-destructive ring-2 ring-background`}
-          />
-        ) : null}
       </div>
     </>
   );
