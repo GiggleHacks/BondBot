@@ -3,12 +3,6 @@
 Version is shown at the top left of the sidebar (apps/web/src/lib/bondbot-version.ts). Bump it on every deploy.
 Format: major.minor.patch (patch = small fix, minor = new feature, major = big change).
 
-## Unreleased
-
-- Quick switch (model dropdown in the chat header): a star beside each model pins it to a Starred section at the top, above Most used (the 3 most used that are not starred) and All models. Stars are per account, so phone and desktop match. Needs migration 20270105000000_starred_models before the new API serves it.
-- Screen above chat on desktop too: the monitor button in the chat header (phone only before) now shows at every width, in the browser and the desktop app. While the screen is above the chat, the right panel's Computer box says 'Shown above chat' instead of drawing a second copy, and the dock hides while the full window or Multiview is open.
-- Screen above chat fixes: on desktop its Full screen button opens the full window (Take control, Teach, screenshot); its buttons move below the chat's find bar while that is open; an account can star at most 100 models.
-
 ## Server-side (2026-11-21, no UI version bump)
 
 - Auto-pay: with a spending limit set, a pay click that the limit allows no longer asks 'Pay on <site>?' (run-tool-gate.ts, autoPaid). Saved-card and saved-login approvals still ask. The limit still refuses anything over it, in another currency (limit currencies are only usd/eur/gbp/ils) or whose price cannot be read, and counts the click just before the press. With NO limit set, paying still asks every time. Limit set by David: 1.00 USD in total (period none; Settings can change it). DB row in spending_limits; patch in ui-autopay-20261121/. Rollback tag: pre-autopay-20261121 (and delete the spending_limits row to restore the old behaviour fully).
@@ -278,3 +272,9 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Verified live: services healthy, API reports 1.12.0, no API error lines, flag files served, a VPN test through the supervisor returns a ping.
 - Not checked while signed in: the unread bubbles, Test all and the new flags on live data.
 - Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v070-20261128/rollback.sh (0.6.0 app image, compose file and VPN manager; the database stays).
+
+## v0.8.0 / 1.13.0 (2026-11-28)
+- Quick switch (model dropdown in the chat header): a star beside each model pins it to a Starred section at the top, above Most used (the 3 most used that are not starred) and All models. Stars are per account, so phone and desktop match. Needs migration 20270105000000_starred_models before the new API serves it.
+- Screen above chat on desktop too: the monitor button in the chat header (phone only before) now shows at every width, in the browser and the desktop app. While the screen is above the chat, the right panel's Computer box says 'Shown above chat' instead of drawing a second copy, and the dock hides while the full window or Multiview is open.
+- Screen above chat fixes: on desktop its Full screen button opens the full window (Take control, Teach, screenshot); its buttons move below the chat's find bar while that is open; an account can star at most 100 models.
+- Database change: migration 20270105000000_starred_models adds the starred_models table (additive; the old release never reads it).
