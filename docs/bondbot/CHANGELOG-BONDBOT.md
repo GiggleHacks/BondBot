@@ -265,3 +265,10 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - The VPN manager reports the ping, so the host copy (/boot/config/rakazo-vpn-manager.py) has to be updated by hand. An older manager still works and shows "Working" without a ping.
 - VPN flags: a file named like wg-US-CA-1076 is now read as United States (it was read as country "WG" and had no flag), and every country has a flag (flag-icons package), not just 15.
 - No database change.
+
+## Deployed to cccbox: 0.7.0 (2026-11-28 about 09:50 ICT, updater started over ssh)
+- Host VPN manager replaced first (old copy in backup-pre-v070-20261128/). Same bots on the same VPNs and Kill Switches afterwards, no duplicate routing rules, all seven tunnels tested "connected" with a ping, and the two uploaded US files now read as United States.
+- App built on cccbox by the updater from 1694403b2d. Database dumped to /mnt/user/appdata/rakazo/backup-pre-v070-20261128/ first; no schema change.
+- Verified live: services healthy, API reports 1.12.0, no API error lines, flag files served, a VPN test through the supervisor returns a ping.
+- Not checked while signed in: the unread bubbles, Test all and the new flags on live data.
+- Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v070-20261128/rollback.sh (0.6.0 app image, compose file and VPN manager; the database stays).
