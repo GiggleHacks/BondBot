@@ -25,4 +25,5 @@ test("an incoming call does not ring in the chat", async ({ page }) => {
   await expect.poll(() => ringing).toBe(true);
   await expect(page.getByRole("combobox", { name: /Message/ })).toBeVisible();
   await expect(page.getByTestId("incoming-call")).toHaveCount(0);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
