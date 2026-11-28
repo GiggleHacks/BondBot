@@ -57,6 +57,7 @@ async function render(
   disk?: { cleaningUpDisk?: boolean; onCleanUpDisk: () => void; onDismissDiskWarning: () => void },
   embeddedScreenUrl: string | null = null,
   onWake = vi.fn(),
+  shownAbove = false,
 ) {
   await act(async () => {
     root.render(
@@ -64,6 +65,7 @@ async function render(
         bot={bot}
         computer={status}
         computerOpen={false}
+        shownAbove={shownAbove}
         embeddedScreenUrl={embeddedScreenUrl}
         screenFrameRef={() => undefined}
         computerScreenError={null}
@@ -129,6 +131,14 @@ it("shows a running computer's live screen with a full-screen button", async () 
     container.querySelector<HTMLButtonElement>('[data-testid="computer-preview-open"]')?.click(),
   );
   expect(onOpen).toHaveBeenCalledOnce();
+});
+
+it("leaves the live screen to the dock while it is shown above the chat", async () => {
+  const url = "https://screen.example.test/";
+  await render(computer("running"), vi.fn(), undefined, url, vi.fn(), true);
+  expect(container.querySelector("iframe")).toBeNull();
+  expect(container.textContent).toContain("Shown above chat");
+  expect(container.querySelector('[data-testid="computer-preview-open"]')).not.toBeNull();
 });
 
 it("shows the person's own machine from what the server says", async () => {

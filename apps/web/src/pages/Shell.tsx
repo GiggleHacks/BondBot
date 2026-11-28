@@ -242,7 +242,8 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
     multiviewOpenPreference.set(!multiviewOpenPreference.get());
   }, [setMobileSidebarOpen]);
   const screenDockOn = screenDockPreference.use();
-  const screenDockActive = screenDockOn && isMobileSidebar && !inGroup && Boolean(active);
+  // Multiview shows screens of its own, so the dock steps aside while it is open.
+  const screenDockActive = screenDockOn && !multiviewOpen && !inGroup && Boolean(active);
   const computerState = useComputerState({
     rpc,
     panel,
@@ -897,7 +898,7 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
                   };
                 }}
               />
-              {screenDockActive && active ? (
+              {screenDockActive && active && !computerOpen ? (
                 <DockedScreen
                   bot={active}
                   computer={computerState.computer}
@@ -905,7 +906,9 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
                   screenBotId={computerState.screenBotId ?? null}
                   screenFrameKey={computerState.screenFrameKey}
                   heldScreen={computerState.heldScreen}
-                  screenFrameRef={chatPanelOpen ? undefined : computerState.setScreenFrame}
+                  screenFrameRef={
+                    chatPanelOpen && isMobileSidebar ? undefined : computerState.setScreenFrame
+                  }
                   computerScreenError={computerControls.computerScreenError}
                   computerBooting={computerControls.computerBooting}
                   booting={computerState.booting}
@@ -1053,6 +1056,7 @@ function SpaceShell({ sidebarScrollRef }: { sidebarScrollRef: Ref<HTMLDivElement
             <ComputerPanel
               {...computerControls.panelProps(active)}
               screenBotId={computerState.screenBotId ?? null}
+              shownAbove={screenDockActive && !isMobileSidebar}
               sandboxProvider={bootstrapMe?.sandboxProvider}
               onRecovered={(sandboxProvider) => {
                 setBootstrapMe((prev) => (prev ? { ...prev, sandboxProvider } : prev));

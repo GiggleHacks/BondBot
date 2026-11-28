@@ -1,7 +1,7 @@
-// Local addition (David, 2026-11-21): the phone's docked screen above the chat.
+// Local addition (David, 2026-11-21): the docked screen above the chat.
 import { createStoredPreference } from "./preferences/stored-preference";
 
-/** Whether the live screen is docked above the chat on a phone. */
+/** Whether the live screen is docked above the chat, on this device. */
 export const screenDockPreference = createStoredPreference<boolean>({
   key: "rakazo.screenDock",
   parse: (raw) => raw === "on",
@@ -27,6 +27,7 @@ export function clampDockHeight(height: number, viewportHeight: number): number 
   return Math.min(max, Math.max(DOCK_MIN_HEIGHT, Math.round(height)));
 }
 
-export function defaultDockHeight(viewportHeight: number): number {
-  return clampDockHeight(viewportHeight * 0.32, viewportHeight);
+/** A wide window has the room for a larger screen than a phone does. */
+export function defaultDockHeight(viewportHeight: number, phone: boolean): number {
+  return clampDockHeight(viewportHeight * (phone ? 0.32 : 0.45), viewportHeight);
 }

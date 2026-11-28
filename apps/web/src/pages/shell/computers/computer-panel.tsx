@@ -14,6 +14,8 @@ type ComputerPanelProps = {
   bot: Bot;
   computer: ComputerStatus | null;
   computerOpen: boolean;
+  /** The screen is docked above the chat, so the preview here stays empty. */
+  shownAbove?: boolean;
   embeddedScreenUrl: string | null;
   /** Bot that owns `embeddedScreenUrl`; mismatches stay hidden across bot switches. */
   screenBotId?: string | null;
@@ -93,6 +95,7 @@ function ComputerPreview({
   bot,
   computer,
   computerOpen,
+  shownAbove,
   embeddedScreenUrl,
   screenFrameKey,
   heldScreen,
@@ -161,6 +164,11 @@ function ComputerPreview({
         {computerOpen ? (
           <div className="grid h-full place-items-center text-body text-muted-foreground/80">
             <Trans>Open in full window</Trans>
+          </div>
+        ) : shownAbove ? (
+          // A second frame of one screen would spend a sign-in link that only works once.
+          <div className="grid h-full place-items-center text-body text-muted-foreground/80">
+            <Trans>Shown above chat</Trans>
           </div>
         ) : runsOnUserMachine(computer) ? (
           <DesktopKindEmptyState className="grid h-full place-items-center px-6 text-center text-body text-muted-foreground/80" />

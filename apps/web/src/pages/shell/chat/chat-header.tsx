@@ -55,7 +55,7 @@ export function ChatHeader({
   onTogglePanel: () => void;
   onCall: (bot: Bot) => void;
   vpn?: ComputerVpnController;
-  /** The phone's docked screen is showing. */
+  /** The screen docked above the chat is showing. */
   screenDocked?: boolean;
   /** Shows or hides the docked screen; left out where there is nothing to dock. */
   onToggleScreenDock?: () => void;
@@ -200,17 +200,19 @@ export function ChatHeader({
           </IconTooltip>
         ) : null}
         {onToggleScreenDock && !inGroup && active ? (
-          <Button
-            variant="floating"
-            size="icon-lg"
-            data-testid="screen-dock-toggle"
-            aria-label={screenDocked ? "Hide screen" : "Show screen"}
-            aria-pressed={screenDocked}
-            onClick={onToggleScreenDock}
-            className={`app-no-drag md:hidden ${screenDocked ? "text-emerald-300 ring-1 ring-emerald-400/60" : ""}`}
-          >
-            <Monitor strokeWidth={1.75} className="size-4.5" />
-          </Button>
+          <IconTooltip label={screenDocked ? t`Hide screen` : t`Show screen`}>
+            <Button
+              variant="floating"
+              size="icon-lg"
+              data-testid="screen-dock-toggle"
+              aria-label={screenDocked ? t`Hide screen` : t`Show screen`}
+              aria-pressed={screenDocked}
+              onClick={onToggleScreenDock}
+              className={`app-no-drag ${screenDocked ? "text-emerald-300 ring-1 ring-emerald-400/60" : ""}`}
+            >
+              <Monitor strokeWidth={1.75} className="size-4.5" />
+            </Button>
+          </IconTooltip>
         ) : null}
         {phoneCallsEnabled && !inGroup && active ? (
           <IconTooltip label={inCall ? t`Open call` : t`Call`}>

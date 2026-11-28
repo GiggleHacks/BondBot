@@ -1,8 +1,9 @@
-// Local addition (David, 2026-11-21): the live screen docked above the chat on a phone, with a
-// draggable divider, a full screen view and a way to close it.
+// Local addition (David, 2026-11-21): the live screen docked above the chat, with a draggable
+// divider, a full screen view and a way to close it. Phone only until 2026-11-28, now every width.
 import type { Bot, ComputerStatus } from "@rakazo/contracts";
 import { computerPreviewPlaceholder } from "@rakazo/i18n/computer-preview";
 import { Button } from "@rakazo/ui-web";
+import { useIsMobile } from "@rakazo/ui-web/hooks/use-mobile";
 import { Maximize2, MessageSquare, RefreshCw, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -80,6 +81,7 @@ export function DockedScreen({
   onClose: () => void;
 }) {
   const viewport = useViewportHeight();
+  const phone = useIsMobile();
   const [chosen, setChosen] = useState(() => screenDockHeightPreference.get());
   const [full, setFull] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -98,7 +100,7 @@ export function DockedScreen({
   const drag = useRef<{ startY: number; startHeight: number } | null>(null);
   // The Back gesture leaves full screen first.
   useBackLayer(full, () => setFull(false));
-  const height = clampDockHeight(chosen || defaultDockHeight(viewport), viewport);
+  const height = clampDockHeight(chosen || defaultDockHeight(viewport, phone), viewport);
   // The newest height, so letting go saves what the last drag step set even before it has rendered.
   const latest = useRef(height);
   latest.current = height;
@@ -281,7 +283,7 @@ export function DockedScreen({
   return (
     <div
       data-testid="docked-screen"
-      className={`relative shrink-0 bg-background md:hidden ${full ? "z-[80]" : "z-[5]"}`}
+      className={`relative shrink-0 bg-background ${full ? "z-[80]" : "z-[5]"}`}
       style={{ marginTop: HEADER_OFFSET, height: height + DIVIDER_HEIGHT }}
     >
       <div
@@ -359,7 +361,7 @@ export function DockedScreen({
             style={full ? { bottom: 88 } : undefined}
           >
             <span className="rounded-full bg-black/60 px-3 py-1 text-[11px] text-white ring-1 ring-white/20">
-              Tap the screen to control
+              {phone ? "Tap" : "Click"} the screen to control
             </span>
           </div>
         ) : null}

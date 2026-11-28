@@ -6,6 +6,7 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 ## Unreleased
 
 - Quick switch (model dropdown in the chat header): a star beside each model pins it to a Starred section at the top, above Most used (the 3 most used that are not starred) and All models. Stars are per account, so phone and desktop match. Needs migration 20270105000000_starred_models before the new API serves it.
+- Screen above chat on desktop too: the monitor button in the chat header (phone only before) now shows at every width, in the browser and the desktop app. While the screen is above the chat, the right panel's Computer box says 'Shown above chat' instead of drawing a second copy, and the dock hides while the full window or Multiview is open.
 
 ## Server-side (2026-11-21, no UI version bump)
 
