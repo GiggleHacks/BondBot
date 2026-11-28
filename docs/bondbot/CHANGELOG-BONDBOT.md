@@ -278,3 +278,9 @@ Format: major.minor.patch (patch = small fix, minor = new feature, major = big c
 - Screen above chat on desktop too: the monitor button in the chat header (phone only before) now shows at every width, in the browser and the desktop app. While the screen is above the chat, the right panel's Computer box says 'Shown above chat' instead of drawing a second copy, and the dock hides while the full window or Multiview is open.
 - Screen above chat fixes: on desktop its Full screen button opens the full window (Take control, Teach, screenshot); its buttons move below the chat's find bar while that is open; an account can star at most 100 models.
 - Database change: migration 20270105000000_starred_models adds the starred_models table (additive; the old release never reads it).
+
+## Deployed to cccbox: 0.8.0 (2026-11-28 about 11:40 ICT, updater started over ssh)
+- App built on cccbox by the updater from d47a716b4a. Database dumped to /mnt/user/appdata/rakazo/backup-pre-v080-20261128/ first (with .env and the compose files).
+- Verified live: services healthy, API reports 1.13.0, no API or worker error lines, web answers 200 and carries the new code, starred_models table in place with row security on.
+- Not checked while signed in: stars and the screen above chat on live data.
+- Rollback: bash /mnt/user/appdata/rakazo/backup-pre-v080-20261128/rollback.sh (0.7.0 app image and compose file; the database stays).
