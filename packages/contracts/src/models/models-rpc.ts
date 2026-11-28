@@ -50,6 +50,11 @@ const OrganizationModelConnectionSchema = z.object({
   label: z.string(),
 });
 
+const StarredModelSchema = z.object({
+  provider: z.string().min(1).max(200),
+  modelId: z.string().min(1).max(256),
+});
+
 export const modelsRpc = {
   /** The models this account's runs used most over the last 30 days, most used first (local addition). */
   botModels: {
@@ -62,6 +67,11 @@ export const modelsRpc = {
         }),
       ),
     ),
+    /** The models this account pinned to the top of the quick switch, oldest first. */
+    starred: oc.output(z.array(StarredModelSchema)),
+    setStarred: oc
+      .input(StarredModelSchema.extend({ starred: z.boolean() }))
+      .output(z.object({ ok: z.literal(true) })),
   },
   models: {
     organizationConnections: {

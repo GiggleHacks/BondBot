@@ -1,4 +1,5 @@
-// Local addition (David, 2026-11-21): the models this account's runs used most in the last 30 days.
+// Local addition (David, 2026-11-21): what the quick switch lists first, most used and starred.
+import { accountPreferencesChangesScope } from "@rakazo/db";
 import type { RouterContext } from "./context.js";
 
 export function modelUsageRoutes(ctx: RouterContext) {
@@ -27,6 +28,28 @@ export function modelUsageRoutes(ctx: RouterContext) {
             modelId: row.modelId as string,
             runs: row._count._all,
           }));
+      }),
+      starred: authed.botModels.starred.handler(async ({ context }) => {
+        return deps.prisma.starredModel.findMany({
+          where: { userId: context.actor.userId },
+          orderBy: [{ createdAt: "asc" }, { modelId: "asc" }],
+          select: { provider: true, modelId: true },
+        });
+      }),
+      // Sets rather than toggles, so a repeated or late request cannot undo a star.
+      setStarred: authed.botModels.setStarred.handler(async ({ context, input }) => {
+        const { userId } = context.actor;
+        const row = { userId, provider: input.provider, modelId: input.modelId };
+        if (input.starred) {
+          await deps.prisma.starredModel.createMany({ data: row, skipDuplicates: true });
+        } else {
+          await deps.prisma.starredModel.deleteMany({ where: row });
+        }
+        await deps.events.publishSpaceChange?.(
+          accountPreferencesChangesScope(userId),
+          "preferences",
+        );
+        return { ok: true as const };
       }),
     },
   };

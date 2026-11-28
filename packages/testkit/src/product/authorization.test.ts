@@ -466,6 +466,8 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["threads/declineCall"],
       ["threads/answer"],
       ["botModels/mostUsed"],
+      ["botModels/starred"],
+      ["botModels/setStarred", { provider: "p", modelId: "m", starred: true }],
       ["computer/vpnState"],
       ["computer/setVpn"],
       ["computer/status", { botId: "missing-bot" }],

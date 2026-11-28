@@ -113,6 +113,7 @@ model User {
   workActivityTokens          WorkActivityToken[]
   workActivityStartTokens     WorkActivityStartToken[]
   trustedLinkSites            TrustedLinkSite[]
+  starredModels               StarredModel[]
   feedbackReports             FeedbackReport[]
   emailSends                  EmailSend[]
   botEmailSends               BotEmailSend[]
@@ -1018,6 +1019,18 @@ model TrustedLinkSite {
 
   @@unique([userId, site])
   @@map("trusted_link_sites")
+}
+
+/// A model one user pinned to the top of the quick switch, in every space.
+model StarredModel {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider  String
+  modelId   String
+  createdAt DateTime @default(now())
+
+  @@id([userId, provider, modelId])
+  @@map("starred_models")
 }
 
 model UserVoiceCredential {

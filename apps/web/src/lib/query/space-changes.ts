@@ -24,6 +24,7 @@ const READS: Record<ReadChangeKind, readonly Procedure[]> = {
     ["approvalRules", "effective"],
     ["autoReview", "get"],
     ["spaceSettings", "overrides"],
+    ["botModels", "starred"],
   ],
   runs: [
     ["runs", "list"],

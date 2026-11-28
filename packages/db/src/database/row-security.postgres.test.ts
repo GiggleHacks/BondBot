@@ -103,6 +103,7 @@ function rowsFor(t: Tenant, tag: string): Array<[string, Record<string, unknown>
     ],
     ["userVoiceCredential", { userId: t.userId, provider: "p", secretId: t.personalSecretId }],
     ["trustedLinkSite", { userId: t.userId, site: `${tag}.example.test` }],
+    ["starredModel", { userId: t.userId, provider: "p", modelId: `m-${tag}` }],
     ["spendingLimit", { userId: t.userId, amount: 100, currency: "usd", period: "month" }],
     [
       "payment",
